@@ -2,6 +2,7 @@ node_modules/
 dist/
 release/
 android/
+desktop-build.log
 .env
 .env.*
 !.env.example
