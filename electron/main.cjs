@@ -1,7 +1,8 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
+const {execFile}=require('child_process');
 const {WebSocketServer,WebSocket}=require('ws');
 
 let win;
@@ -13,6 +14,8 @@ let apiConnections=[];
 const pending=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
+let browserView=null;
+let browserState={url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -39,6 +42,126 @@ function registerAuthProtocol(){
   }else{
     app.setAsDefaultProtocolClient(AUTH_SCHEME);
   }
+}
+
+
+function installAppMenu(){
+  const template=[
+    {
+      label:'File',
+      submenu:[
+        {label:'New chat',accelerator:'CmdOrCtrl+N',click:()=>win?.webContents.send('app-command','new-chat')},
+        {type:'separator'},
+        process.platform==='darwin'?{role:'close'}:{role:'quit'}
+      ]
+    },
+    {label:'Edit',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
+    {label:'View',submenu:[{role:'reload'},{role:'forceReload'},{type:'separator'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{type:'separator'},{role:'togglefullscreen'}]},
+    {label:'Help',submenu:[{label:'About Free AI',click:()=>win?.webContents.send('app-command','about')}]}
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function browserSnapshot(){
+  if(!browserView)return {...browserState};
+  const wc=browserView.webContents;
+  return {
+    url:wc.getURL()||browserState.url,
+    title:wc.getTitle()||browserState.title||'New tab',
+    loading:wc.isLoading(),
+    canGoBack:wc.canGoBack(),
+    canGoForward:wc.canGoForward()
+  };
+}
+
+function emitBrowserState(){
+  browserState=browserSnapshot();
+  if(win&&!win.isDestroyed())win.webContents.send('browser-state',browserState);
+}
+
+function normalizeBrowserUrl(input){
+  const raw=String(input||'').trim();
+  if(!raw)return 'https://www.google.com/';
+  if(/^https?:\/\//i.test(raw))return raw;
+  if(/^localhost(?::\d+)?(?:\/|$)/i.test(raw))return 'http://'+raw;
+  if(/^[\w.-]+\.[a-z]{2,}(?:[/:?#]|$)/i.test(raw))return 'https://'+raw;
+  return 'https://www.google.com/search?q='+encodeURIComponent(raw);
+}
+
+function ensureBrowserView(){
+  if(browserView)return browserView;
+  browserView=new WebContentsView({
+    webPreferences:{
+      sandbox:true,
+      contextIsolation:true,
+      nodeIntegration:false,
+      partition:'persist:freeai-browser'
+    }
+  });
+  win.contentView.addChildView(browserView);
+  const wc=browserView.webContents;
+  wc.setWindowOpenHandler(({url})=>{wc.loadURL(url).catch(()=>{});return {action:'deny'}});
+  for(const eventName of ['did-start-loading','did-stop-loading','did-navigate','did-navigate-in-page','page-title-updated']){
+    wc.on(eventName,()=>emitBrowserState());
+  }
+  return browserView;
+}
+
+function setBrowserBounds(bounds){
+  if(!browserView||!bounds)return;
+  const x=Math.max(0,Math.round(Number(bounds.x)||0));
+  const y=Math.max(0,Math.round(Number(bounds.y)||0));
+  const width=Math.max(1,Math.round(Number(bounds.width)||1));
+  const height=Math.max(1,Math.round(Number(bounds.height)||1));
+  browserView.setBounds({x,y,width,height});
+}
+
+function closeBrowserView(){
+  if(!browserView)return;
+  try{win?.contentView.removeChildView(browserView)}catch{}
+  try{browserView.webContents.close()}catch{}
+  browserView=null;
+  browserState={url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+}
+
+function runPowerShell(script){
+  return new Promise((resolve,reject)=>{
+    execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{windowsHide:true},(error,stdout,stderr)=>{
+      if(error)return reject(new Error(String(stderr||error.message||error)));
+      resolve(String(stdout||'').trim());
+    });
+  });
+}
+
+function displayPoint(displayId,nx,ny){
+  const displays=screen.getAllDisplays();
+  const display=displays.find(d=>String(d.id)===String(displayId))||screen.getPrimaryDisplay();
+  const x=display.bounds.x+Math.round(display.bounds.width*Math.min(1,Math.max(0,Number(nx)||0)));
+  const y=display.bounds.y+Math.round(display.bounds.height*Math.min(1,Math.max(0,Number(ny)||0)));
+  return {x,y,displayId:display.id};
+}
+
+async function clickWindowsPoint(x,y){
+  const script=`
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FreeAIMouse {
+  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
+}
+'@
+[FreeAIMouse]::SetCursorPos(${x},${y}) | Out-Null
+Start-Sleep -Milliseconds 80
+[FreeAIMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
+[FreeAIMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
+`;
+  await runPowerShell(script);
+}
+
+async function pasteWindowsText(text){
+  clipboard.writeText(String(text||''));
+  await runPowerShell("Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')");
 }
 
 function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
@@ -354,7 +477,7 @@ if(!gotSingleInstanceLock){
 }
 
 app.whenReady().then(()=>{
-  Menu.setApplicationMenu(null);
+  installAppMenu();
   registerAuthProtocol();
   loadApiConnections();
   startLocalBridge();
@@ -374,6 +497,7 @@ app.whenReady().then(()=>{
 });
 
 app.on('before-quit',()=>{
+  closeBrowserView();
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
   pending.clear();
@@ -413,6 +537,43 @@ ipcMain.handle('api:removeConnection',(_e,id)=>{
 });
 ipcMain.handle('computer:captureScreens',()=>captureScreens());
 
+
+
+ipcMain.handle('browser:open',async(_e,payload={})=>{
+  if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
+  const view=ensureBrowserView();
+  if(payload.bounds)setBrowserBounds(payload.bounds);
+  const url=normalizeBrowserUrl(payload.url);
+  await view.webContents.loadURL(url);
+  emitBrowserState();
+  return browserSnapshot();
+});
+ipcMain.handle('browser:navigate',async(_e,input)=>{
+  const view=ensureBrowserView();
+  const url=normalizeBrowserUrl(input);
+  await view.webContents.loadURL(url);
+  emitBrowserState();
+  return browserSnapshot();
+});
+ipcMain.handle('browser:setBounds',(_e,bounds)=>{setBrowserBounds(bounds);return true});
+ipcMain.handle('browser:back',()=>{if(browserView?.webContents.canGoBack())browserView.webContents.goBack();return browserSnapshot()});
+ipcMain.handle('browser:forward',()=>{if(browserView?.webContents.canGoForward())browserView.webContents.goForward();return browserSnapshot()});
+ipcMain.handle('browser:reload',()=>{browserView?.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:close',()=>{closeBrowserView();return true});
+
+ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
+  if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows. Screen preview still works on this platform.');
+  const point=displayPoint(displayId,nx,ny);
+  await clickWindowsPoint(point.x,point.y);
+  return point;
+});
+ipcMain.handle('computer:clickAndType',async(_e,{displayId,nx,ny,text}={})=>{
+  if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows.');
+  const point=displayPoint(displayId,nx,ny);
+  await clickWindowsPoint(point.x,point.y);
+  await pasteWindowsText(text);
+  return point;
+});
 
 ipcMain.handle('auth:openExternal',async(_e,url)=>{
   const parsed=new URL(String(url||''));
