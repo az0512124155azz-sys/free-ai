@@ -60,12 +60,14 @@ function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <svg viewBox="0 0 512 512" focusable="false">
       <g className="markFlow">
-        <path d="M96 136 C188 136 209 256 292 256 H364"/>
-        <path d="M96 376 C188 376 209 256 292 256"/>
+        <path d="M112 128 C215 128 235 220 336 256"/>
+        <path d="M112 256 C220 256 270 256 340 256"/>
+        <path d="M112 384 C215 384 235 292 336 256"/>
       </g>
-      <circle className="markSolid" cx="96" cy="136" r="34"/>
-      <circle className="markSolid" cx="96" cy="376" r="34"/>
-      <path className="markSolid" d="M344 196 L438 256 L344 316 Z"/>
+      <circle className="markSolid" cx="112" cy="128" r="31"/>
+      <circle className="markSolid" cx="112" cy="256" r="31"/>
+      <circle className="markSolid" cx="112" cy="384" r="31"/>
+      <circle className="markSolid markOutput" cx="390" cy="256" r="50"/>
     </svg>
   </span>;
 }
