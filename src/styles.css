@@ -243,6 +243,9 @@ button:disabled{opacity:.42;cursor:default}
   font-size:24px;line-height:30px;font-weight:450;letter-spacing:-.022em;margin:0 0 17px;color:var(--text);text-align:center
 }
 .workEmpty h1{font-size:27px;line-height:34px;margin-bottom:20px}
+.starterPrompts{width:min(768px,calc(100vw - 330px));display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+.starterPrompts button{background:transparent;border:1px solid var(--border-soft);border-radius:999px;padding:7px 11px;color:var(--text-tertiary);font-size:10.5px;transition:background 110ms var(--ease),color 110ms var(--ease),border-color 110ms var(--ease)}
+.starterPrompts button:hover{background:var(--hover);border-color:var(--border);color:var(--text)}
 .gptComposer{
   width:min(768px,calc(100vw - 330px));
   min-width:420px;
@@ -499,6 +502,8 @@ button:disabled{opacity:.42;cursor:default}
   .gptComposer,.gptComposer.workComposer,.gptComposer.compact{
     width:calc(100vw - 16px);min-width:0;max-width:none;border-radius:27px;padding:8px 9px;
   }
+  .starterPrompts{width:calc(100vw - 20px);overflow:auto;justify-content:flex-start;flex-wrap:nowrap;padding:0 2px 4px}
+  .starterPrompts button{white-space:nowrap;min-height:36px}
   .gptComposer.workComposer{padding-top:9px}
   .gptComposer textarea{font-size:16px;line-height:23px;height:39px;padding-left:7px;padding-right:7px}
   .gptComposer.workComposer textarea{height:58px}
