@@ -1,8 +1,15 @@
 name: Build Free AI
+
 on:
   workflow_dispatch:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: free-ai-build-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,31 +23,45 @@ jobs:
         include:
           - os: windows-latest
             artifact: windows
+            artifact_path: release/*.exe
           - os: macos-latest
             artifact: macos
+            artifact_path: release/*.dmg
           - os: ubuntu-latest
             artifact: linux
+            artifact_path: release/*.AppImage
+
     runs-on: ${{ matrix.os }}
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm install
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
       - id: desktop_build
+        name: Build desktop app
         continue-on-error: true
         run: node scripts/ci-desktop-build.mjs
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
       - name: Report desktop build failure
         if: steps.desktop_build.outcome == 'failure'
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            let log = fs.existsSync('desktop-build.log') ? fs.readFileSync('desktop-build.log','utf8') : 'No log file was created.';
+            let log = fs.existsSync('desktop-build.log')
+              ? fs.readFileSync('desktop-build.log', 'utf8')
+              : 'No log file was created.';
             if (log.length > 50000) log = log.slice(-50000);
+
             const title = 'CI diagnostic: desktop build failed on ${{ matrix.artifact }}';
             const body = [
               'Automated diagnostic from workflow run ' + context.runId + '.',
@@ -51,13 +72,14 @@ jobs:
               log,
               '~~~'
             ].join('\n');
+
             const existing = await github.rest.issues.listForRepo({
               owner: context.repo.owner,
               repo: context.repo.repo,
               state: 'open',
-              labels: 'ci-diagnostic',
               per_page: 100
             });
+
             const match = existing.data.find(i => i.title === title);
             if (match) {
               await github.rest.issues.update({
@@ -75,45 +97,98 @@ jobs:
                 labels: ['ci-diagnostic']
               });
             }
+
+      - name: Close stale desktop diagnostic
+        if: steps.desktop_build.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = 'CI diagnostic: desktop build failed on ${{ matrix.artifact }}';
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            const match = existing.data.find(i => i.title === title);
+            if (match) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                state: 'closed'
+              });
+            }
+
       - name: Fail job after diagnostic
         if: steps.desktop_build.outcome == 'failure'
         run: node -e "process.exit(1)"
+
       - uses: actions/upload-artifact@v4
         if: steps.desktop_build.outcome == 'success'
         with:
           name: free-ai-${{ matrix.artifact }}
-          path: release/*
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
 
   android:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-      - run: npm install
-      - run: npm run build:web
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Validate JavaScript
+        run: npm run validate
+
+      - name: Build web app
+        run: npm run build:web
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
-      - run: npx cap add android
-      - run: npx cap sync android
-      - run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
+
+      - name: Create Android project
+        run: npx cap add android
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Build APK
+        run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
+
       - uses: actions/upload-artifact@v4
         with:
           name: free-ai-android
           path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
 
   extension:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
-      - run: cd extension && zip -r ../free-ai-extension.zip .
+
+      - name: Validate extension JavaScript
+        run: |
+          node --check extension/background.js
+          node --check extension/content.js
+
+      - name: Package extension
+        run: cd extension && zip -r ../free-ai-extension.zip .
+
       - uses: actions/upload-artifact@v4
         with:
           name: free-ai-chrome-extension
           path: free-ai-extension.zip
+          if-no-files-found: error
