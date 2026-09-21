@@ -360,14 +360,12 @@ function App(){
       {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
       <nav className="primaryNav">
         <NavItem icon={SquarePen} label={product==='super'?'New task':'New chat'} active={page==='chat'&&!currentChatId} onClick={newChat}/>
-        <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>{setPage('images');setMobileNavOpen(false)}}/>
-        {!isNative&&<NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>{setPage('scheduled');setMobileNavOpen(false)}}/>}
         {!isNative&&<NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>}
         {!isNative&&<NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>}
       </nav>
       <div className="sidebarScroll">
         <div className="sidebarGroupTitle">Projects</div>
-        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}><Folder size={15}/>{product==='super'?'Code workspace':'Free AI Workspace'}</button>
+        <button className="projectItem" onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add code files':'Add workspace files'}</button>
         <div className="sidebarGroupTitle">Recents</div>
         {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
           <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
@@ -683,7 +681,7 @@ function Composer(props){
     {dictationError&&<div className="dictationError">{dictationError}</div>}
     {listening&&<div className="dictationState"><span className="liveDot"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&permissionPrefs?.showBottomPanel!==false&&<div className="workActions">
-      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>
+      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Add files</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       <button onClick={onBrowser}><Globe2 size={15}/>Browser</button>
     </div>}
@@ -747,7 +745,7 @@ function EffortMenu({effort,levels,choose}){
 function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
-    <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
+    <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
     <MenuRow icon={Chrome} label={isNative?'Free AI Browser':'Open browser'} sub={isNative?'Open an isolated browser inside the app':'Browse beside your chat'} onClick={onBrowser}/>
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
