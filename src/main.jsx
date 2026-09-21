@@ -599,14 +599,14 @@ function Composer(props){
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
         </div>
-        <div className="menuAnchor">
+        {Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
-          {effortMenu&&<EffortMenu effort={effort} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
-        </div>
+          {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
+        </div>}
         <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>
-        <button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
-          {busy?<RefreshCw className="spin" size={17}/>:prompt.trim()?<ArrowUp size={18}/>:<Volume2 size={18}/>}
-        </button>
+        {(busy||prompt.trim())&&<button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
+          {busy?<RefreshCw className="spin" size={17}/>:<ArrowUp size={18}/>}
+        </button>}
       </div>
     </div>
     {dictationError&&<div className="dictationError">{dictationError}</div>}
@@ -631,14 +631,15 @@ function ModelMenu({connected,selected,choose}){
   </div>
 }
 
-function EffortMenu({effort,choose}){
-  const values=['instant','medium','high','extra'];
-  const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'};
+function EffortMenu({effort,levels,choose}){
+  const fallback=['instant','medium','high','extra'];
+  const values=Array.isArray(levels)&&levels.length?levels:fallback;
+  const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'};
   const index=Math.max(0,values.indexOf(effort));
   return <div className="floatingMenu effortPicker sliderPicker">
     <div className="effortHead"><Brain size={18}/><div><b>{labels[effort]}</b><small>Reasoning effort</small></div></div>
     <input
-      className="effortSlider" type="range" min="0" max="3" step="1" value={index}
+      className="effortSlider" type="range" min="0" max={Math.max(0,values.length-1)} step="1" value={index}
       aria-label="Reasoning effort" aria-valuetext={labels[effort]}
       onChange={e=>choose(values[Number(e.target.value)])}
     />
