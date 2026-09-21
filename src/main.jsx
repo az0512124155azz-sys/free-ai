@@ -84,6 +84,7 @@ function App(){
   const [product,setProduct]=useState(()=>localStorage.getItem('freeai.product')||'free');
   const [productMenu,setProductMenu]=useState(false);
   const [mode,setMode]=useState('chat');
+  const [approvalMode,setApprovalMode]=useState('ask');
   const [modelMenu,setModelMenu]=useState(false);
   const [effortMenu,setEffortMenu]=useState(false);
   const [effort,setEffort]=useState('instant');
@@ -98,7 +99,8 @@ function App(){
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,
-    ...readJSON('freeai.prefs',{fullAccess:false,defaultPermissions:true,language:'English',showBottomPanel:true})
+    autoReviewEnabled:false,fullAccessEnabled:false,voiceLanguage:'system',voiceAutoSend:false,
+    ...readJSON('freeai.prefs',{defaultPermissions:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
@@ -163,6 +165,11 @@ function App(){
     if(!fresh){setSelected(null);setSelectedTool(null)}
     else if(fresh!==selected)setSelected(fresh);
   },[connected]);
+
+  useEffect(()=>{
+    if(approvalMode==='auto'&&!appPrefs.autoReviewEnabled)setApprovalMode('ask');
+    if(approvalMode==='full'&&!appPrefs.fullAccessEnabled)setApprovalMode('ask');
+  },[approvalMode,appPrefs.autoReviewEnabled,appPrefs.fullAccessEnabled]);
 
   useEffect(()=>{
     const root=document.documentElement;
@@ -231,7 +238,7 @@ function App(){
     if(value==='super')setMode('work');
   }
   function newChat(){
-    setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setApprovalMode('ask');
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
@@ -248,7 +255,7 @@ function App(){
     try{
       const payload={
         provider:selected.id,source:selected.source||'browser',text,effort,
-        product,mode,approvalMode:appPrefs.approvalMode||'ask',fullAccess:(appPrefs.approvalMode||'ask')==='full',
+        product,mode,approvalMode,fullAccess:approvalMode==='full',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
@@ -396,7 +403,7 @@ function App(){
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
-                fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
+                approvalMode={approvalMode} setApprovalMode={setApprovalMode} permissionPrefs={appPrefs}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -420,7 +427,7 @@ function App(){
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
-                  fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
+                  approvalMode={approvalMode} setApprovalMode={setApprovalMode} permissionPrefs={appPrefs}
                   onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -440,8 +447,8 @@ function App(){
     {sidePanel==='browser'&&<BrowserPane onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='computer'&&<ComputerPane
-      screens={screens} setScreens={setScreens} fullAccess={appPrefs.fullAccess}
-      onEnable={()=>persistPrefs({...appPrefs,fullAccess:true})}
+      screens={screens} setScreens={setScreens} approvalMode={approvalMode}
+      onSetApprovalMode={setApprovalMode} permissionPrefs={appPrefs}
       onClose={()=>setSidePanel(null)}
     />}
 
@@ -480,7 +487,7 @@ function Composer(props){
   const {
     compact,product,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
-    fullAccess,setFullAccess,onBrowser,onComputer,onPlugins
+    approvalMode,setApprovalMode,permissionPrefs,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
@@ -523,7 +530,12 @@ function Composer(props){
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
-        {mode==='work'&&<button className={'accessButton '+(fullAccess?'enabled':'')} onClick={()=>setFullAccess(!fullAccess)}><ShieldCheck size={15}/>Full access</button>}
+        {(mode==='work'||product==='super')&&<PermissionControl
+          mode={approvalMode}
+          setMode={setApprovalMode}
+          autoReviewEnabled={!!permissionPrefs?.autoReviewEnabled}
+          fullAccessEnabled={!!permissionPrefs?.fullAccessEnabled}
+        />}
       </div>
 
       <div className="composerRight">
@@ -560,6 +572,32 @@ function ModelMenu({connected,selected,choose}){
         <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name}</small></span>
         {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
       </button>)}
+  </div>
+}
+
+function PermissionControl({mode,setMode,autoReviewEnabled,fullAccessEnabled}){
+  const [open,setOpen]=useState(false);
+  const labels={ask:'Ask for approval',auto:'Approve for me',full:'Full access'};
+  const descriptions={
+    ask:'Review actions before they go beyond the workspace',
+    auto:'Automatically review eligible permission requests',
+    full:'Allow broad file and network access without asking each time'
+  };
+  return <div className="menuAnchor permissionAnchor">
+    <button className={'accessButton permissionButton '+mode} onClick={()=>setOpen(v=>!v)} aria-haspopup="menu" aria-expanded={open}>
+      <ShieldCheck size={15}/><span>{labels[mode]||labels.ask}</span><ChevronDown size={12}/>
+    </button>
+    {open&&<div className="floatingMenu permissionPicker" role="menu" aria-label="Permissions">
+      {[
+        ['ask',true],
+        ['auto',autoReviewEnabled],
+        ['full',fullAccessEnabled]
+      ].map(([value,enabled])=><button key={value} className={'permissionRow '+(mode===value?'selected':'')} disabled={!enabled} onClick={()=>{setMode(value);setOpen(false)}}>
+        <span className={'permissionIcon '+value}><ShieldCheck size={16}/></span>
+        <span><b>{labels[value]}</b><small>{enabled?descriptions[value]:'Enable this mode in Settings > General'}</small></span>
+        {mode===value&&<Check size={15}/>}
+      </button>)}
+    </div>}
   </div>
 }
 
@@ -724,39 +762,49 @@ function FilePane({file,onClose}){
   </aside>
 }
 
-function ComputerPane({screens,setScreens,fullAccess,onEnable,onClose}){
+function ComputerPane({screens,setScreens,approvalMode,onSetApprovalMode,permissionPrefs,onClose}){
   const [loading,setLoading]=useState(false);
   const [lastPoint,setLastPoint]=useState(null);
   const [typeText,setTypeText]=useState('');
+  const [pendingAction,setPendingAction]=useState(null);
   async function refresh(){
     if(!isDesktop)return;setLoading(true);
     try{setScreens(await window.desktopApi.captureScreens())}catch{setScreens([])}finally{setLoading(false)}
   }
   useEffect(()=>{refresh()},[]);
-  async function clickScreen(e,screen){
-    if(!fullAccess)return;
-    const rect=e.currentTarget.getBoundingClientRect();
-    const nx=(e.clientX-rect.left)/rect.width,ny=(e.clientY-rect.top)/rect.height;
-    setLastPoint({displayId:screen.displayId,nx,ny});
+  async function performAction(action){
+    if(!action)return;
+    setLastPoint(action);
     try{
-      if(typeText)await window.desktopApi.computerClickAndType({displayId:screen.displayId,nx,ny,text:typeText});
-      else await window.desktopApi.computerClick({displayId:screen.displayId,nx,ny});
+      if(typeText)await window.desktopApi.computerClickAndType({...action,text:typeText});
+      else await window.desktopApi.computerClick(action);
       setTimeout(refresh,500);
     }catch{}
+  }
+  async function clickScreen(e,screen){
+    if(!isDesktop)return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const action={displayId:screen.displayId,nx:(e.clientX-rect.left)/rect.width,ny:(e.clientY-rect.top)/rect.height};
+    if(approvalMode==='ask'){setPendingAction(action);return}
+    await performAction(action);
   }
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
-      <div><b>Computer use</b><small>{fullAccess?'Full access enabled':'Preview only'}</small></div>
-      {!fullAccess?<button className="enableAccess" onClick={onEnable}><ShieldCheck size={14}/>Enable full access</button>:<button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>}
+      <div><b>Computer use</b><small>{approvalMode==='ask'?'Ask before elevated actions':approvalMode==='auto'?'Approve eligible actions automatically':'Full access enabled'}</small></div>
+      <PermissionControl mode={approvalMode} setMode={onSetApprovalMode} autoReviewEnabled={!!permissionPrefs?.autoReviewEnabled} fullAccessEnabled={!!permissionPrefs?.fullAccessEnabled}/>
     </div>
     <div className="computerType"><input value={typeText} onChange={e=>setTypeText(e.target.value)} placeholder="Optional text to type after clicking"/><small>{typeText?'Click a point on the screen to click and type.':'Click the screen to control the mouse.'}</small></div>
     <div className="computerScreens">
-      {screens.map(screen=><div className={'computerScreen '+(!fullAccess?'previewOnly':'')} key={screen.id}>
+      {screens.map(screen=><div className="computerScreen" key={screen.id}>
         <img src={screen.thumbnail} alt={screen.name} onClick={e=>clickScreen(e,screen)}/><span>{screen.name}</span>
       </div>)}
       {!screens.length&&!loading&&<div className="paneEmpty"><Monitor size={34}/><b>No screen preview available</b></div>}
     </div>
+    {pendingAction&&<div className="approvalCard">
+      <div><ShieldCheck size={17}/><span><b>Allow this computer action?</b><small>Free AI wants to click the selected point{typeText?' and type your text':''}.</small></span></div>
+      <div className="approvalActions"><button onClick={()=>setPendingAction(null)}>Deny</button><button className="primaryAction" onClick={async()=>{const action=pendingAction;setPendingAction(null);await performAction(action)}}>Allow once</button></div>
+    </div>}
     {lastPoint&&<div className="controlStatus"><MousePointer2 size={13}/>Last control point sent</div>}
   </aside>
 }
@@ -782,10 +830,10 @@ function SettingsView(props){
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Profile'&&<SimpleSettings title="Profile" rows={[['Account','Manage your Free AI identity'],['Workspace','Personal workspace']]}/>}
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='Voice'&&<SimpleSettings title="Voice" rows={[['Voice input','Enabled'],['Playback','System default']]}/>}
+      {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Configuration'&&<SimpleSettings title="Configuration" rows={[['Default mode','Chat'],['Suggested prompts','On']]}/>}
       {section==='Keyboard shortcuts'&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your Windows desktop from Work mode." status={prefs.fullAccess?'Full access':'Preview only'} action={onComputer}/>}
+      {section==='Computer use'&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status="Permission-aware" action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title="Plugins" text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text="Open a real browser panel beside your chat." status={isDesktop?'Available':'Desktop only'} action={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -800,8 +848,9 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      <SettingRow title="Default permissions" desc="Free AI can access connected tools when you select them." control={<Toggle value={prefs.defaultPermissions} onChange={v=>setPrefs({...prefs,defaultPermissions:v})}/>}/>
-      <SettingRow title="Full access" desc="Allow Work mode to control the computer without asking for each manual click." control={<Toggle value={prefs.fullAccess} onChange={v=>setPrefs({...prefs,fullAccess:v})}/>}/>
+      <SettingRow title="Default permissions" desc="Free AI can work inside the current workspace and asks before going beyond it." control={<span className="valuePill">Ask for approval</span>}/>
+      <SettingRow title="Auto-review" desc="Make Approve for me available in Work and Super AI. Eligible requests can be reviewed automatically." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v})}/>}/>
+      <SettingRow title="Full access" desc="Make Full access available. This allows broad file and network access without approval for each action." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v})}/>}/>
     </div>
     <h3>General</h3>
     <div className="settingBlock">
@@ -821,6 +870,15 @@ function AppearanceSettings({prefs,setPrefs}){
       {!isNative&&<SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>}
       <SettingRow title="Accent color" desc="Used for active controls and voice actions." control={<select value={prefs.accent||'blue'} onChange={e=>setPrefs({...prefs,accent:e.target.value})}><option value="blue">Blue</option><option value="green">Green</option><option value="yellow">Yellow</option><option value="pink">Pink</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="neutral">Neutral</option></select>}/>
       {!isNative&&<SettingRow title="Text size" desc="Scale interface text without changing window zoom." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>} 
+    </div>
+  </div>
+}
+function VoiceSettings({prefs,setPrefs}){
+  return <div className="settingsPane">
+    <h3>Dictation</h3>
+    <div className="settingBlock">
+      <SettingRow title="Language" desc="Language used for microphone dictation." control={<select value={prefs.voiceLanguage||'system'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="system">System</option><option value="he-IL">עברית</option><option value="en-US">English</option><option value="fr-FR">Français</option></select>}/>
+      <SettingRow title="Auto-send" desc="Send automatically when dictation ends. Off keeps the transcript editable." control={<Toggle value={!!prefs.voiceAutoSend} onChange={v=>setPrefs({...prefs,voiceAutoSend:v})}/>}/>
     </div>
   </div>
 }
