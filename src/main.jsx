@@ -406,12 +406,17 @@ function ModelMenu({connected,selected,choose}){
 }
 
 function EffortMenu({effort,choose}){
-  const rows=[['instant','Instant','Fastest'],['medium','Medium','Balanced'],['high','High','Deeper reasoning'],['extra','Extra High','Maximum effort']];
-  return <div className="floatingMenu effortPicker">
-    <div className="floatingTitle">Reasoning effort</div>
-    {rows.map(([value,label,sub])=><button key={value} className="pickerRow" onClick={()=>choose(value)}>
-      <Brain size={16}/><span className="pickerText"><b>{label}</b><small>{sub}</small></span>{effort===value&&<Check size={15}/>}
-    </button>)}
+  const values=['instant','medium','high','extra'];
+  const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'};
+  const index=Math.max(0,values.indexOf(effort));
+  return <div className="floatingMenu effortPicker sliderPicker">
+    <div className="effortHead"><Brain size={18}/><div><b>{labels[effort]}</b><small>Reasoning effort</small></div></div>
+    <input
+      className="effortSlider" type="range" min="0" max="3" step="1" value={index}
+      onChange={e=>choose(values[Number(e.target.value)])}
+    />
+    <div className="effortTicks"><span/><span/><span/><span/></div>
+    <div className="effortScale"><span>Fast</span><span>Deep</span></div>
   </div>
 }
 
