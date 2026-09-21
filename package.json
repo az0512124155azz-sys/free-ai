@@ -40,7 +40,8 @@
     "@capacitor/browser": "^8.0.0",
     "lucide-react": "^0.468.0",
     "@capacitor/inappbrowser": "^4.0.3",
-    "@capgo/capacitor-speech-recognition": "^8.0.0"
+    "@capgo/capacitor-speech-recognition": "^8.0.0",
+    "sharp": "^0.34.4"
   },
   "build": {
     "appId": "com.freeai.desktop",
