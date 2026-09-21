@@ -2,9 +2,9 @@ import {spawn} from 'node:child_process';
 import {createWriteStream} from 'node:fs';
 
 const log=createWriteStream('desktop-build.log',{flags:'w'});
-const child=spawn(process.platform==='win32'?'npm.cmd':'npm',['run','desktop:dist'],{
-  stdio:['ignore','pipe','pipe'],
-  shell:false,
+const command='npm run desktop:dist';
+const child=spawn(command,{
+  shell:true,
   env:process.env
 });
 
@@ -16,12 +16,12 @@ for(const stream of [child.stdout,child.stderr]){
 }
 
 child.on('error',err=>{
-  console.error(err);
-  log.end();
-  process.exit(1);
+  const text='Spawn error: '+(err?.stack||err?.message||String(err))+'\n';
+  process.stderr.write(text);
+  log.write(text);
+  log.end(()=>process.exit(1));
 });
 
 child.on('close',code=>{
-  log.end();
-  process.exit(code??1);
+  log.end(()=>process.exit(code??1));
 });
