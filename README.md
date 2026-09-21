@@ -78,6 +78,8 @@ VITE_SUPABASE_ANON_KEY
 
 The matching values should also be configured as GitHub Actions secrets for release builds.
 
+Full Google setup instructions: `docs/google-auth.md`.
+
 Google OAuth additionally requires the correct redirect URLs to be allowed in the Supabase/Google provider configuration for the platform being used.
 
 If Supabase is not configured, development builds enter a local workspace instead of hanging on a login screen.
