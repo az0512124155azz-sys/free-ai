@@ -246,8 +246,8 @@ function App(){
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     setSelectedTool(null);setPage('chat');
   }
-  async function send(){
-    const text=prompt.trim();
+  async function send(overrideText){
+    const text=(typeof overrideText==='string'?overrideText:prompt).trim();
     if(!text||busy)return;
     if(!selected){setModelMenu(true);return}
     setBusy(true);setPrompt('');
@@ -280,7 +280,23 @@ function App(){
   async function openBrowser(){
     setPlusMenu(false);
     if(isNative){
-      try{await Browser.open({url:'https://www.google.com/',presentationStyle:'fullscreen'})}catch{}
+      try{
+        await InAppBrowser.openInWebView({
+          url:'https://www.google.com/',
+          options:{
+            showURL:true,
+            showToolbar:true,
+            showNavigationButtons:true,
+            closeButtonText:'Close',
+            clearCache:false,
+            clearSessionCache:false,
+            android:{hardwareBack:true,allowZoom:true,pauseMedia:true},
+            iOS:{allowsBackForwardNavigationGestures:true,allowInLineMediaPlayback:true}
+          }
+        });
+      }catch(e){
+        console.error('Free AI mobile browser failed',e);
+      }
       return;
     }
     setSidePanel('browser');
@@ -490,29 +506,122 @@ function Composer(props){
     approvalMode,setApprovalMode,permissionPrefs,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
+  const [dictationError,setDictationError]=useState('');
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
+  const dictationBaseRef=useRef('');
+  const dictationTextRef=useRef('');
+  const nativeVoiceHandlesRef=useRef([]);
+  const webRecognitionRef=useRef(null);
 
-  function startVoice(){
+  function voiceLanguage(){
+    const configured=permissionPrefs?.voiceLanguage;
+    return configured&&configured!=='system'?configured:(navigator.language||'en-US');
+  }
+  function applyTranscript(text){
+    const clean=String(text||'').trim();
+    dictationTextRef.current=clean;
+    const base=dictationBaseRef.current.trimEnd();
+    const next=[base,clean].filter(Boolean).join(base&&clean?' ':'');
+    setPrompt(next);
+    return next;
+  }
+  async function cleanupNativeVoice(){
+    const handles=nativeVoiceHandlesRef.current.splice(0);
+    for(const handle of handles){try{await handle?.remove?.()}catch{}}
+  }
+  async function stopVoice(){
+    try{
+      if(isNative)await SpeechRecognition.stop();
+      else webRecognitionRef.current?.stop?.();
+    }catch{}
+    await cleanupNativeVoice();
+    webRecognitionRef.current=null;
+    setListening(false);
+  }
+  async function startNativeVoice(){
+    const availability=await SpeechRecognition.available();
+    if(!availability?.available)throw new Error('Speech recognition is not available on this device.');
+    const permission=await SpeechRecognition.checkPermissions();
+    let state=permission?.speechRecognition;
+    if(state!=='granted'){
+      const requested=await SpeechRecognition.requestPermissions();
+      state=requested?.speechRecognition;
+    }
+    if(state!=='granted')throw new Error('Microphone permission was not granted.');
+
+    dictationBaseRef.current=prompt;
+    dictationTextRef.current='';
+    await cleanupNativeVoice();
+
+    nativeVoiceHandlesRef.current.push(await SpeechRecognition.addListener('partialResults',event=>{
+      const text=event?.accumulatedText||event?.matches?.[0]||event?.accumulated||'';
+      if(text)applyTranscript(text);
+    }));
+    nativeVoiceHandlesRef.current.push(await SpeechRecognition.addListener('listeningState',event=>{
+      const active=event?.status==='started';
+      setListening(active);
+      if(event?.status==='stopped'){
+        const finalText=[dictationBaseRef.current.trimEnd(),dictationTextRef.current.trim()].filter(Boolean).join(' ');
+        if(permissionPrefs?.voiceAutoSend&&finalText.trim())setTimeout(()=>send(finalText),0);
+        cleanupNativeVoice();
+      }
+    }));
+
+    await SpeechRecognition.start({
+      language:voiceLanguage(),
+      maxResults:3,
+      partialResults:true,
+      popup:false,
+      addPunctuation:true
+    });
+    setListening(true);
+  }
+  function startWebVoice(){
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!Recognition){return}
+    if(!Recognition)throw new Error('Dictation is not available in this browser.');
     const recognition=new Recognition();
-    recognition.lang=document.documentElement.lang||navigator.language||'en-US';
-    recognition.interimResults=false;
+    dictationBaseRef.current=prompt;
+    dictationTextRef.current='';
+    recognition.lang=voiceLanguage();
+    recognition.interimResults=true;
     recognition.continuous=false;
+    recognition.maxAlternatives=1;
     recognition.onstart=()=>setListening(true);
-    recognition.onend=()=>setListening(false);
-    recognition.onerror=()=>setListening(false);
+    recognition.onerror=e=>{setListening(false);setDictationError(e?.error==='not-allowed'?'Microphone permission was denied.':'Dictation stopped unexpectedly.')};
     recognition.onresult=e=>{
       const text=[...e.results].map(r=>r[0]?.transcript||'').join(' ').trim();
-      if(text)setPrompt(p=>(p? p+' ':'')+text);
+      if(text)applyTranscript(text);
     };
+    recognition.onend=()=>{
+      setListening(false);
+      const finalText=[dictationBaseRef.current.trimEnd(),dictationTextRef.current.trim()].filter(Boolean).join(' ');
+      if(permissionPrefs?.voiceAutoSend&&finalText.trim())setTimeout(()=>send(finalText),0);
+      webRecognitionRef.current=null;
+    };
+    webRecognitionRef.current=recognition;
     recognition.start();
+  }
+  async function startVoice(){
+    setDictationError('');
+    if(listening){await stopVoice();return}
+    try{
+      if(isNative)await startNativeVoice();
+      else startWebVoice();
+    }catch(e){
+      setListening(false);
+      setDictationError(e?.message||'Dictation could not start.');
+    }
   }
   useEffect(()=>{
     const handler=()=>startVoice();
     window.addEventListener('freeai:start-voice',handler);
-    return()=>window.removeEventListener('freeai:start-voice',handler);
-  },[]);
+    return()=>{
+      window.removeEventListener('freeai:start-voice',handler);
+      try{webRecognitionRef.current?.stop?.()}catch{}
+      if(isNative)SpeechRecognition.stop().catch(()=>{});
+      cleanupNativeVoice();
+    };
+  },[listening,prompt,permissionPrefs?.voiceLanguage,permissionPrefs?.voiceAutoSend]);
 
   return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
@@ -549,12 +658,14 @@ function Composer(props){
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>
-        <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Listening…':'Voice input'} aria-label="Voice input"><Mic2 size={18}/></button>
+        <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Stop dictation':'Dictation'} aria-label={listening?'Stop dictation':'Start dictation'}><Mic2 size={18}/></button>
         <button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
           {busy?<RefreshCw className="spin" size={17}/>:prompt.trim()?<ArrowUp size={18}/>:<Volume2 size={18}/>}
         </button>
       </div>
     </div>
+    {dictationError&&<div className="dictationError">{dictationError}</div>}
+    {listening&&<div className="dictationState"><span className="liveDot"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&<div className="workActions">
       <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
