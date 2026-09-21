@@ -733,7 +733,7 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
-    <MenuRow icon={Chrome} label={isNative?'Open web browser':'Attach browser'} sub={isNative?'Open a site in the system browser':'Browse beside your chat'} onClick={onBrowser}/>
+    <MenuRow icon={Chrome} label={isNative?'Free AI Browser':'Open browser'} sub={isNative?'Open an isolated browser inside the app':'Browse beside your chat'} onClick={onBrowser}/>
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
