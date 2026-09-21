@@ -407,7 +407,7 @@ function App(){
         <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
       </section>}
 
-      {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')}/>}
+      {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')} onRefresh={()=>window.desktopApi?.scanProviders?.().catch(()=>{})}/>}
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
       {page==='images'&&<PlaceholderPage title="Images" subtitle="Image generation and visual workspaces will live here." icon={Image}/>}
       {page==='scheduled'&&<PlaceholderPage title="Scheduled" subtitle="Scheduled prompts and recurring jobs will appear here." icon={Clock3}/>}
@@ -571,28 +571,43 @@ function ProfileMenu({session,onSettings}){
   </div>
 }
 
-function PluginsPage({tools,connected,onBack}){
-  const popular=[
-    ['Gmail','Read and manage Gmail',Mail],['Google Drive','Drive, Docs, Sheets or Slides',HardDrive],
-    ['GitHub','Triage PRs, issues, CI, and publish flows',GitBranch],['Calendar','Manage calendar events',CalendarDays],
-    ['Supabase','Manage and query databases',Database],['Browser','Control the in-app browser',Globe2],
-    ['Computer','Control Windows apps',Monitor],['Files','Work with local documents',FileText]
-  ];
+function PluginsPage({tools,connected,onBack,onRefresh}){
   return <div className="contentPage">
-    <PageTop onBack={onBack} title="Plugins" action="Add"/>
+    <PageTop onBack={onBack} title="Plugins" action={isDesktop?'Refresh':null} onAction={onRefresh}/>
     <div className="contentInner">
-      <h1>Plugins</h1><p className="pageLead">Work with Free AI across your favorite tools</p>
-      <div className="searchBar"><Search size={17}/><input placeholder="Search plugins"/></div>
+      <h1>Plugins</h1>
+      <p className="pageLead">Use MCP/connectors that are already installed and authorized in a connected AI provider.</p>
+      <div className="searchBar"><Search size={17}/><input placeholder="Search detected plugins"/></div>
+
       <section className="pluginSection">
-        <div className="sectionHeading"><h2>Installed</h2><Settings size={16}/></div>
+        <div className="sectionHeading"><h2>Installed and detected</h2><span className="pluginMeta">{tools.length} tools</span></div>
         <div className="installedStrip">
-          {connected.map(p=><div key={p.id} className={'installedIcon '+p.id} title={modelLabel(p)}>{modelLabel(p).slice(0,1)}</div>)}
-          {tools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={15}/></div>)}
-          {!connected.length&&!tools.length&&<span className="muted">No browser models or MCP tools detected yet.</span>}
+          {tools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
+          {!tools.length&&<span className="muted">No MCP tools are currently detected.</span>}
         </div>
       </section>
-      <section className="pluginSection"><h2>Available in Free AI</h2>
-        <div className="pluginGrid">{popular.map(([name,desc,Icon])=><div className="pluginCard" key={name}><span className="pluginIcon"><Icon size={20}/></span><span><b>{name}</b><small>{desc}</small></span><Plus size={18}/></div>)}</div>
+
+      <section className="pluginSection">
+        <h2>Connected providers</h2>
+        <div className="pluginGrid">
+          {connected.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
+            <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
+            <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API connection':((provider.mcps?.length||0)+' MCP/connectors detected')}</small></span>
+            <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
+          </div>)}
+          {!connected.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider is connected</b><span>Open a supported AI site in Chrome with the Free AI extension, or add an API model in Settings.</span></div>}
+        </div>
+      </section>
+
+      <section className="pluginSection">
+        <h2>Tools available across models</h2>
+        <div className="toolList">
+          {tools.map(t=><div className="detectedToolRow" key={t.key}>
+            <span className="pluginIcon"><Plug size={18}/></span>
+            <span><b>{t.mcp}</b><small>Installed in {t.ownerName}. Free AI can route its result to another connected model.</small></span>
+          </div>)}
+          {!tools.length&&<div className="pluginHint"><Chrome size={20}/><div><b>Install or authorize the MCP in its provider first</b><span>Free AI only exposes tools that the connected provider reports as installed.</span></div></div>}
+        </div>
       </section>
     </div>
   </div>
@@ -611,8 +626,8 @@ function ExplorePage({tools,chats,onBack}){
   </div>
 }
 
-function PageTop({onBack,title,action}){
-  return <div className="pageTop"><button onClick={onBack}><ArrowLeft size={16}/>Back to app</button><b>{title}</b>{action?<button className="pillAction">{action}<ChevronDown size={13}/></button>:<span/>}</div>
+function PageTop({onBack,title,action,onAction}){
+  return <div className="pageTop"><button onClick={onBack}><ArrowLeft size={16}/>Back to app</button><b>{title}</b>{action?<button className="pillAction" onClick={onAction}>{action}{action==='Add'&&<ChevronDown size={13}/>}</button>:<span/>}</div>
 }
 function PlaceholderPage({title,subtitle,icon:Icon}){
   return <div className="placeholderPage"><Icon size={38}/><h1>{title}</h1><p>{subtitle}</p></div>
