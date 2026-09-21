@@ -1,6 +1,6 @@
 {
   "name": "free-ai",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "author": "Free AI",
   "description": "Cross-platform AI control center for browser AI models",
@@ -36,7 +36,8 @@
     "vite": "^7.1.7",
     "wait-on": "^8.0.4",
     "@capacitor/app": "^8.0.0",
-    "@capacitor/browser": "^8.0.0"
+    "@capacitor/browser": "^8.0.0",
+    "lucide-react": "^0.468.0"
   },
   "build": {
     "appId": "com.freeai.desktop",
