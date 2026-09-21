@@ -168,6 +168,25 @@ async function pasteWindowsText(text){
   await runPowerShell("Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')");
 }
 
+async function startWindowsVoiceTyping(){
+  const script=`
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FreeAIKeys {
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+}
+'@
+[FreeAIKeys]::keybd_event(0x5B,0,0,[UIntPtr]::Zero)
+Start-Sleep -Milliseconds 30
+[FreeAIKeys]::keybd_event(0x48,0,0,[UIntPtr]::Zero)
+Start-Sleep -Milliseconds 30
+[FreeAIKeys]::keybd_event(0x48,0,2,[UIntPtr]::Zero)
+[FreeAIKeys]::keybd_event(0x5B,0,2,[UIntPtr]::Zero)
+`;
+  await runPowerShell(script);
+}
+
 function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
 
 function encodeSecret(value){
@@ -540,6 +559,11 @@ ipcMain.handle('api:removeConnection',(_e,id)=>{
   return apiConnections.map(publicApiConnection);
 });
 ipcMain.handle('computer:captureScreens',()=>captureScreens());
+ipcMain.handle('dictation:start',async()=>{
+  if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');
+  await startWindowsVoiceTyping();
+  return {ok:true,mode:'windows-voice-typing'};
+});
 
 
 
