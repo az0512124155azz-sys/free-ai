@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  issues: write
+
 jobs:
   desktop:
     strategy:
@@ -23,11 +27,59 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run desktop:dist
+      - id: desktop_build
+        continue-on-error: true
+        run: node scripts/ci-desktop-build.mjs
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      - name: Report desktop build failure
+        if: steps.desktop_build.outcome == 'failure'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let log = fs.existsSync('desktop-build.log') ? fs.readFileSync('desktop-build.log','utf8') : 'No log file was created.';
+            if (log.length > 50000) log = log.slice(-50000);
+            const title = 'CI diagnostic: desktop build failed on ${{ matrix.artifact }}';
+            const body = [
+              'Automated diagnostic from workflow run ' + context.runId + '.',
+              '',
+              'Commit: ' + context.sha,
+              '',
+              '~~~text',
+              log,
+              '~~~'
+            ].join('\n');
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'ci-diagnostic',
+              per_page: 100
+            });
+            const match = existing.data.find(i => i.title === title);
+            if (match) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: match.number,
+                body
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['ci-diagnostic']
+              });
+            }
+      - name: Fail job after diagnostic
+        if: steps.desktop_build.outcome == 'failure'
+        run: node -e "process.exit(1)"
       - uses: actions/upload-artifact@v4
+        if: steps.desktop_build.outcome == 'success'
         with:
           name: free-ai-${{ matrix.artifact }}
           path: release/*
