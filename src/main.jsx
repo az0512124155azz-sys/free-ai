@@ -421,7 +421,7 @@ function App(){
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
-                product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'}
+                product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                 approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
@@ -446,7 +446,7 @@ function App(){
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
-                  product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'}
+                  product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                   approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                   onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
@@ -490,13 +490,14 @@ function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,approvalMode,setApprovalMode,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,approvalMode,setApprovalMode,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
   const [approvalMenu,setApprovalMenu]=useState(false);
   const nativeSpeechHandles=useRef([]);
   const webRecognition=useRef(null);
+  const dictationBase=useRef('');
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
 
   async function stopVoice(){
@@ -517,6 +518,7 @@ function Composer(props){
     if(listening){await stopVoice();return}
     setDictationError('');
     const language=voiceLanguage==='auto'?(navigator.language||'en-US'):voiceLanguage;
+    dictationBase.current=prompt.trimEnd();
     if(isNative){
       try{
         const available=await SpeechRecognition.available();
@@ -527,7 +529,7 @@ function Composer(props){
 
         const partial=await SpeechRecognition.addListener('partialResults',event=>{
           const text=event?.matches?.[0]?.trim();
-          if(text)setPrompt(text);
+          if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
         });
         const stateHandle=await SpeechRecognition.addListener('listeningState',event=>setListening(event?.status==='started'));
         const errorHandle=await SpeechRecognition.addListener('error',event=>{
@@ -556,7 +558,7 @@ function Composer(props){
     recognition.onerror=e=>{setListening(false);setDictationError(e?.error||'Dictation failed.');webRecognition.current=null};
     recognition.onresult=e=>{
       const text=[...e.results].map(r=>r[0]?.transcript||'').join(' ').trim();
-      if(text)setPrompt(text);
+      if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
     };
     recognition.start();
   }
@@ -613,7 +615,7 @@ function Composer(props){
     </div>
     {dictationError&&<div className="dictationError">{dictationError}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
-    {mode==='work'&&<div className="workActions">
+    {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
       <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
@@ -653,8 +655,8 @@ function EffortMenu({effort,levels,choose}){
 function PermissionModeMenu({value,choose}){
   const rows=[
     ['ask','Ask for approval','Review actions before they go beyond the current workspace.'],
-    ['auto','Approve for me','Automatically approve eligible low-risk actions.'],
-    ['full','Full access','Allow broad file and network access without asking each time.']
+    ['auto','Approve for me','Automatically approve eligible low-risk actions; typed actions still ask.'],
+    ['full','Full access','Run supported computer actions without asking each time.']
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
@@ -841,7 +843,7 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
       ny:(e.clientY-rect.top)/rect.height,
       text:typeText||''
     };
-    if(approvalMode==='ask'){setPendingAction(action);return}
+    if(approvalMode==='ask'||(approvalMode==='auto'&&!!action.text)){setPendingAction(action);return}
     await executeAction(action);
   }
 
@@ -877,12 +879,13 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
 function SettingsView(props){
   const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
-  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Git','Environments']);
-  const visibleSettings=settingsSections.filter(([,label])=>!isNative||!hiddenOnMobile.has(label));
+  const [settingsQuery,setSettingsQuery]=useState('');
+  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Git','Environments']);
+  const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
-      <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
+      <div className="settingsSearch"><Search size={15}/><input value={settingsQuery} onChange={e=>setSettingsQuery(e.target.value)} placeholder="Search settings"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
         {visibleSettings.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
@@ -915,16 +918,12 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      <SettingRow title="Default permissions" desc="Free AI can access connected tools when you select them." control={<Toggle value={prefs.defaultPermissions} onChange={v=>setPrefs({...prefs,defaultPermissions:v})}/>}/>
-      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI handle actions that need permission." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Ask for approval</option><option value="auto">Approve for me</option><option value="full">Full access</option></select>}/>} 
+      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI handle supported computer actions." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Ask for approval</option><option value="auto">Approve for me</option><option value="full">Full access</option></select>}/>} 
     </div>
-    <h3>General</h3>
+    {!isNative&&<><h3>General</h3>
     <div className="settingBlock">
-      <SettingRow title="Language" desc="Language for the app UI" control={<select value={prefs.language} onChange={e=>setPrefs({...prefs,language:e.target.value})}><option>English</option><option>עברית</option><option>Français</option></select>}/>
-      <SettingRow title="Bottom panel" desc="Show panel controls in Work mode" control={<Toggle value={prefs.showBottomPanel} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
-      <SettingRow title="Speed" desc="Default reasoning speed" control={<span className="valuePill">Standard</span>}/>
-      <SettingRow title="Suggested prompts" desc="Show starter actions in empty chats" control={<Toggle value={prefs.suggestedPrompts!==false} onChange={v=>setPrefs({...prefs,suggestedPrompts:v})}/>}/>
-    </div>
+      <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
+    </div></>}
   </div>
 }
 function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
@@ -975,9 +974,8 @@ function VoiceSettings({prefs,setPrefs}){
   </div>
 }
 function ConfigurationSettings({prefs,setPrefs}){
-  return <div className="settingsPane"><h3>Chat</h3><div className="settingBlock">
-    <SettingRow title="Suggested prompts" desc="Show starter actions in empty chats." control={<Toggle value={prefs.suggestedPrompts!==false} onChange={v=>setPrefs({...prefs,suggestedPrompts:v})}/>}/>
-    {!isNative&&<SettingRow title="Bottom panel" desc="Show extra Work controls below the composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>}
+  return <div className="settingsPane"><h3>Work</h3><div className="settingBlock">
+    <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
   </div></div>
 }
 function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<span className="valuePill">{b}</span>}/>)}</div></div>}
