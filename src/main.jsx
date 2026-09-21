@@ -4,6 +4,8 @@ import {createClient} from '@supabase/supabase-js';
 import {Capacitor} from '@capacitor/core';
 import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
+import {SpeechRecognition} from '@capgo/capacitor-speech-recognition';
+import {InAppBrowser} from '@capgo/capacitor-inappbrowser';
 import {
   AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,
   CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,ExternalLink,
@@ -56,9 +58,11 @@ function humanSize(bytes){
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <svg viewBox="0 0 24 24" focusable="false">
-      <rect x="2.25" y="2.25" width="19.5" height="19.5" rx="6.25"/>
-      <path className="markLetter" d="M7.4 6.5h8.9v2.45h-6.15v2.8h5.15v2.4h-5.15v3.95H7.4z"/>
-      <path className="markSpark" d="M17.65 4.65l.48 1.17 1.17.48-1.17.48-.48 1.17-.48-1.17L16 6.3l1.17-.48z"/>
+      <path className="markStroke" d="M4.25 6.75C8.2 6.75 8.15 12 12 12H18.2"/>
+      <path className="markStroke" d="M4.25 17.25C8.2 17.25 8.15 12 12 12"/>
+      <circle className="markNode" cx="4.25" cy="6.75" r="1.55"/>
+      <circle className="markNode" cx="4.25" cy="17.25" r="1.55"/>
+      <circle className="markAccent" cx="19.8" cy="12" r="2"/>
     </svg>
   </span>;
 }
@@ -72,6 +76,8 @@ function App(){
   const [messages,setMessages]=useState([]);
   const [prompt,setPrompt]=useState('');
   const [busy,setBusy]=useState(false);
+  const [product,setProduct]=useState(()=>localStorage.getItem('freeai.product')||'free');
+  const [productMenu,setProductMenu]=useState(false);
   const [sidebarOpen,setSidebarOpen]=useState(true);
   const [mobileNavOpen,setMobileNavOpen]=useState(false);
   const [mobileModeMenu,setMobileModeMenu]=useState(false);
@@ -89,11 +95,11 @@ function App(){
   const [sidePanel,setSidePanel]=useState(null);
   const [selectedFile,setSelectedFile]=useState(null);
   const [screens,setScreens]=useState([]);
-  const [chats,setChats]=useState(()=>readJSON('freeai.chats',[]));
+  const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
-    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,
-    ...readJSON('freeai.prefs',{fullAccess:false,defaultPermissions:true,language:'English',showBottomPanel:true})
+    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
@@ -187,13 +193,24 @@ function App(){
       const target=e.target;
       if(!(target instanceof Element))return;
       if(!target.closest('.menuAnchor')){setModelMenu(false);setEffortMenu(false);setPlusMenu(false)}
+      if(!target.closest('.productSwitcher'))setProductMenu(false);
       if(!target.closest('.profileMenu')&&!target.closest('.profileButton'))setProfileMenu(false);
       if(!target.closest('.mobileModeAnchor'))setMobileModeMenu(false);
     };
     window.addEventListener('keydown',onKey);
     document.addEventListener('pointerdown',onPointer);
     return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
-  },[profileMenu,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+  },[profileMenu,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+
+  useEffect(()=>{
+    localStorage.setItem('freeai.product',product);
+    setChats(readJSON('freeai.chats.'+product,[]));
+    setCurrentChatId(null);
+    setMessages([]);
+    setSelectedTool(null);
+    setSidePanel(null);
+    if(product==='super')setMode('work');
+  },[product]);
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
@@ -210,7 +227,7 @@ function App(){
     setChats(prev=>{
       const chat={id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,updatedAt:Date.now()};
       const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
-      localStorage.setItem('freeai.chats',JSON.stringify(next));return next;
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
     });
   }
   function newChat(){
@@ -231,7 +248,7 @@ function App(){
     try{
       const payload={
         provider:selected.id,source:selected.source||'browser',text,effort,
-        mode,fullAccess:mode==='work'&&appPrefs.fullAccess,
+        mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
@@ -256,7 +273,22 @@ function App(){
   async function openBrowser(){
     setPlusMenu(false);
     if(isNative){
-      try{await Browser.open({url:'https://www.google.com/',presentationStyle:'fullscreen'})}catch{}
+      try{
+        await InAppBrowser.openWebView({
+          url:'https://www.google.com/',
+          options:{
+            toolbarType:'navigation',
+            visibleTitle:true,
+            toolbarColor:'#181818',
+            toolbarTextColor:'#FFFFFF',
+            activeNativeNavigationForWebview:true,
+            handleDownloads:true,
+            persistWebViewData:true,
+            showReloadButton:true,
+            closeModal:true
+          }
+        });
+      }catch(e){console.error('Free AI mobile browser failed',e)}
       return;
     }
     setSidePanel('browser');
