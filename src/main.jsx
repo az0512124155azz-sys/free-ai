@@ -426,6 +426,7 @@ function App(){
                 onComputer={isDesktop?()=>{setPlusMenu(false);setSidePanel('computer')}:null}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
               />
+              {appPrefs.suggestedPrompts!==false&&<StarterPrompts product={product} mode={mode} onChoose={setPrompt}/>} 
             </div>
           : <div className="conversationView">
               <div className="messageList">
@@ -453,7 +454,7 @@ function App(){
               </div>
             </div>
         }
-        <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
+        <div className="stageFooter">{product==='super'?'Super AI':'Free AI'} can make mistakes. Check important information.</div>
       </section>}
 
       {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')} onRefresh={()=>window.desktopApi?.scanProviders?.().catch(()=>{})}/>}
@@ -495,6 +496,15 @@ function ProductMenu({product,choose}){
       {product==='super'&&<Check size={15}/>}
     </button>
   </div>
+}
+
+function StarterPrompts({product,mode,onChoose}){
+  const items=product==='super'
+    ? ['Fix a bug in my project','Review this repository','Plan a coding task']
+    : mode==='work'
+      ? ['Research and build a plan','Open the browser and investigate','Use my installed plugins']
+      : ['Compare my connected models','Summarize an attached file','Research a topic'];
+  return <div className="starterPrompts">{items.map(item=><button key={item} onClick={()=>onChoose(item)}>{item}</button>)}</div>
 }
 
 function NavItem({icon:Icon,label,active,onClick}){
@@ -669,7 +679,7 @@ function Composer(props){
     </div>
     {dictationError&&<div className="dictationError">{dictationError}</div>}
     {listening&&<div className="dictationState"><span className="liveDot"/>Listening… tap the microphone to stop</div>}
-    {mode==='work'&&<div className="workActions">
+    {mode==='work'&&permissionPrefs?.showBottomPanel!==false&&<div className="workActions">
       <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       <button onClick={onBrowser}><Globe2 size={15}/>Browser</button>
@@ -974,7 +984,7 @@ function GeneralSettings({prefs,setPrefs}){
     </div>
     <h3>General</h3>
     <div className="settingBlock">
-      <SettingRow title="Language" desc="Language for the app UI" control={<select value={prefs.language} onChange={e=>setPrefs({...prefs,language:e.target.value})}><option>English</option><option>עברית</option><option>Français</option></select>}/>
+      <SettingRow title="Language" desc="The current UI build is English. Additional languages will be enabled after translation QA." control={<span className="valuePill">English</span>}/>
       <SettingRow title="Bottom panel" desc="Show panel controls in Work mode" control={<Toggle value={prefs.showBottomPanel} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
       <SettingRow title="Speed" desc="Default reasoning speed" control={<span className="valuePill">Standard</span>}/>
       <SettingRow title="Suggested prompts" desc="Show starter actions in empty chats" control={<Toggle value={prefs.suggestedPrompts!==false} onChange={v=>setPrefs({...prefs,suggestedPrompts:v})}/>}/>
