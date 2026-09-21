@@ -4,6 +4,8 @@ import {createClient} from '@supabase/supabase-js';
 import {Capacitor} from '@capacitor/core';
 import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
+import {InAppBrowser} from '@capacitor/inappbrowser';
+import {SpeechRecognition} from '@capgo/capacitor-speech-recognition';
 import {
   AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,
   CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,ExternalLink,
@@ -56,9 +58,10 @@ function humanSize(bytes){
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <svg viewBox="0 0 24 24" focusable="false">
-      <rect x="2.25" y="2.25" width="19.5" height="19.5" rx="6.25"/>
-      <path className="markLetter" d="M7.4 6.5h8.9v2.45h-6.15v2.8h5.15v2.4h-5.15v3.95H7.4z"/>
-      <path className="markSpark" d="M17.65 4.65l.48 1.17 1.17.48-1.17.48-.48 1.17-.48-1.17L16 6.3l1.17-.48z"/>
+      <path className="markLobe markTop" d="M12 2.7c2.15 0 4.16 1.22 5.13 3.13.97 1.91.77 4.18-.52 5.89L12 17.72 7.39 11.72c-1.29-1.71-1.49-3.98-.52-5.89C7.84 3.92 9.85 2.7 12 2.7Z"/>
+      <path className="markLobe markLeft" d="M3.35 14.92c1.07-1.86 3.08-3.05 5.22-3.08 2.14-.03 4.18 1.09 5.3 2.91L17.8 21H8.23c-2.14 0-4.12-1.14-5.18-3-1.06-1.86-1.02-4.15.3-6.08Z" transform="rotate(120 12 12)"/>
+      <path className="markLobe markRight" d="M3.35 14.92c1.07-1.86 3.08-3.05 5.22-3.08 2.14-.03 4.18 1.09 5.3 2.91L17.8 21H8.23c-2.14 0-4.12-1.14-5.18-3-1.06-1.86-1.02-4.15.3-6.08Z" transform="rotate(240 12 12)"/>
+      <path className="markCore" d="M12 8.25 15.75 12 12 15.75 8.25 12 12 8.25Z"/>
     </svg>
   </span>;
 }
@@ -78,6 +81,8 @@ function App(){
   const [sidebarSearchOpen,setSidebarSearchOpen]=useState(false);
   const [sidebarSearch,setSidebarSearch]=useState('');
   const [page,setPage]=useState('chat');
+  const [product,setProduct]=useState(()=>localStorage.getItem('freeai.product')||'free');
+  const [productMenu,setProductMenu]=useState(false);
   const [mode,setMode]=useState('chat');
   const [modelMenu,setModelMenu]=useState(false);
   const [effortMenu,setEffortMenu]=useState(false);
@@ -197,8 +202,9 @@ function App(){
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
-    return q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):chats;
-  },[chats,sidebarSearch]);
+    const productChats=chats.filter(chat=>(chat.product||'free')===product);
+    return q?productChats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):productChats;
+  },[chats,sidebarSearch,product]);
 
   function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
   function saveCurrentChat(nextMessages,model=selected){
@@ -208,10 +214,21 @@ function App(){
     let id=currentChatId;
     if(!id){id=crypto.randomUUID();setCurrentChatId(id)}
     setChats(prev=>{
-      const chat={id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,updatedAt:Date.now()};
+      const chat={id,title,product,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,updatedAt:Date.now()};
       const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
       localStorage.setItem('freeai.chats',JSON.stringify(next));return next;
     });
+  }
+  function switchProduct(next){
+    const value=next==='super'?'super':'free';
+    setProduct(value);
+    localStorage.setItem('freeai.product',value);
+    setProductMenu(false);
+    setCurrentChatId(null);
+    setMessages([]);
+    setSelectedTool(null);
+    setPage('chat');
+    if(value==='super')setMode('work');
   }
   function newChat(){
     setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
@@ -231,7 +248,7 @@ function App(){
     try{
       const payload={
         provider:selected.id,source:selected.source||'browser',text,effort,
-        mode,fullAccess:mode==='work'&&appPrefs.fullAccess,
+        product,mode,approvalMode:appPrefs.approvalMode||'ask',fullAccess:(appPrefs.approvalMode||'ask')==='full',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
@@ -294,14 +311,20 @@ function App(){
   if(!session&&supabase)return <Auth/>;
 
   const sidebarName=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Free AI';
-  const heading=mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
+  const productLabel=product==='super'?'Super AI':'Free AI';
+  const heading=product==='super'?'What should we build?':mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
   return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
 
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
-        <button className="brandButton" title="Free AI"><BrandMark size={20}/><b>Free AI</b><ChevronDown size={14}/></button>
+        <div className="productAnchor">
+          <button className="brandButton" title="Switch product" aria-haspopup="menu" aria-expanded={productMenu} onClick={()=>setProductMenu(v=>!v)}>
+            <BrandMark size={20}/><b>{productLabel}</b><ChevronDown size={14}/>
+          </button>
+          {productMenu&&<ProductMenu product={product} choose={switchProduct}/>}
+        </div>
         <div className="brandActions">
           <button title="Search chats" aria-label="Search chats" onClick={()=>setSidebarSearchOpen(v=>!v)}><Search size={16}/></button>
           <button className="mobileCloseNav" title="Close navigation" onClick={()=>setMobileNavOpen(false)}><X size={17}/></button>
@@ -309,7 +332,7 @@ function App(){
       </div>
       {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
       <nav className="primaryNav">
-        <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
+        <NavItem icon={SquarePen} label={product==='super'?'New task':'New chat'} active={page==='chat'&&!currentChatId} onClick={newChat}/>
         <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>{setPage('images');setMobileNavOpen(false)}}/>
         <NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>{setPage('scheduled');setMobileNavOpen(false)}}/>
         <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
@@ -317,7 +340,7 @@ function App(){
       </nav>
       <div className="sidebarScroll">
         <div className="sidebarGroupTitle">Projects</div>
-        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}><Folder size={15}/>Free AI Workspace</button>
+        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}><Folder size={15}/>{product==='super'?'Code workspace':'Free AI Workspace'}</button>
         <div className="sidebarGroupTitle">Recents</div>
         {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
           <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
@@ -342,11 +365,11 @@ function App(){
           <button className="headerIcon mobileNavTrigger" onClick={()=>setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={18}/></button>
           {!sidebarOpen&&<button className="headerIcon desktopSidebarTrigger" onClick={()=>setSidebarOpen(true)} aria-label="Open sidebar"><PanelLeft size={18}/></button>}
         </div>
-        <div className="modeSwitch" role="tablist" aria-label="Experience">
+        {product==='free'&&<div className="modeSwitch" role="tablist" aria-label="Experience">
           <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
           <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
-        </div>
-        <div className="mobileModeAnchor">
+        </div>}
+        {product==='free'&&<div className="mobileModeAnchor">
           <button className="mobileModeButton" aria-haspopup="menu" aria-expanded={mobileModeMenu} onClick={()=>setMobileModeMenu(v=>!v)}>
             <span>{mode==='work'?'Work':'Chat'}</span><ChevronDown size={14}/>
           </button>
@@ -354,7 +377,8 @@ function App(){
             <button className={mode==='chat'?'active':''} onClick={()=>{setMode('chat');setMobileModeMenu(false)}}>Chat</button>
             <button className={mode==='work'?'active':''} onClick={()=>{setMode('work');setMobileModeMenu(false)}}>Work</button>
           </div>}
-        </div>
+        </div>}
+        {product==='super'&&<div className="superHeaderLabel">Super AI</div>}
         <div className="headerRight">
           {sidePanel&&<button className="headerIcon" onClick={()=>setSidePanel(null)} title="Close side panel"><X size={17}/></button>}
           {sidebarOpen&&<button className="headerIcon" onClick={()=>setSidebarOpen(false)} title="Hide sidebar"><PanelLeft size={17}/></button>}
@@ -366,7 +390,7 @@ function App(){
           ? <div className={'emptyChat '+(mode==='work'?'workEmpty':'')}>
               <h1>{heading}</h1>
               <Composer
-                mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
+                product={product} mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
@@ -390,7 +414,7 @@ function App(){
               </div>
               <div className="conversationComposer">
                 <Composer
-                  compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
+                  compact product={product} mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
@@ -433,13 +457,28 @@ function App(){
   </div>
 }
 
+function ProductMenu({product,choose}){
+  return <div className="productMenu" role="menu" aria-label="Product">
+    <button className={product==='free'?'active':''} onClick={()=>choose('free')}>
+      <BrandMark size={22}/>
+      <span><b>Free AI</b><small>Chat and work with your connected models</small></span>
+      {product==='free'&&<Check size={15}/>}
+    </button>
+    <button className={product==='super'?'active':''} onClick={()=>choose('super')}>
+      <span className="superGlyph"><Code2 size={17}/></span>
+      <span><b>Super AI</b><small>Build, debug, and work on code</small></span>
+      {product==='super'&&<Check size={15}/>}
+    </button>
+  </div>
+}
+
 function NavItem({icon:Icon,label,active,onClick}){
   return <button className={'navItem '+(active?'active':'')} onClick={onClick}><Icon size={16}/><span>{label}</span></button>
 }
 
 function Composer(props){
   const {
-    compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
+    compact,product,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
     fullAccess,setFullAccess,onBrowser,onComputer,onPlugins
   }=props;
@@ -473,7 +512,7 @@ function Composer(props){
     <textarea
       value={prompt} onChange={e=>setPrompt(e.target.value)}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
-      placeholder={mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
+      placeholder={product==='super'?'Ask Super AI to build, debug, or change code':mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
     />
     <div className="composerBottom">
       <div className="composerLeft">
