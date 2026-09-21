@@ -187,6 +187,7 @@ function App(){
     const onKey=e=>{
       if(e.key!=='Escape')return;
       if(profileMenu){setProfileMenu(false);return}
+      if(productMenu){setProductMenu(false);return}
       if(modelMenu){setModelMenu(false);return}
       if(effortMenu){setEffortMenu(false);return}
       if(plusMenu){setPlusMenu(false);return}
@@ -200,12 +201,13 @@ function App(){
       if(!(target instanceof Element))return;
       if(!target.closest('.menuAnchor')){setModelMenu(false);setEffortMenu(false);setPlusMenu(false)}
       if(!target.closest('.profileMenu')&&!target.closest('.profileButton'))setProfileMenu(false);
+      if(!target.closest('.productAnchor'))setProductMenu(false);
       if(!target.closest('.mobileModeAnchor'))setMobileModeMenu(false);
     };
     window.addEventListener('keydown',onKey);
     document.addEventListener('pointerdown',onPointer);
     return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
-  },[profileMenu,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+  },[profileMenu,productMenu,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
