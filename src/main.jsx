@@ -169,6 +169,30 @@ function App(){
     root.style.setProperty('--ui-scale',String((Number(appPrefs.textSize)||100)/100));
   },[appPrefs.appearance,appPrefs.contrast,appPrefs.accent,appPrefs.textSize]);
 
+  useEffect(()=>{
+    const onKey=e=>{
+      if(e.key!=='Escape')return;
+      if(profileMenu){setProfileMenu(false);return}
+      if(modelMenu){setModelMenu(false);return}
+      if(effortMenu){setEffortMenu(false);return}
+      if(plusMenu){setPlusMenu(false);return}
+      if(mobileModeMenu){setMobileModeMenu(false);return}
+      if(mobileNavOpen){setMobileNavOpen(false);return}
+      if(settingsOpen){setSettingsOpen(false);return}
+      if(sidePanel){setSidePanel(null)}
+    };
+    const onPointer=e=>{
+      const target=e.target;
+      if(!(target instanceof Element))return;
+      if(!target.closest('.menuAnchor')){setModelMenu(false);setEffortMenu(false);setPlusMenu(false)}
+      if(!target.closest('.profileMenu')&&!target.closest('.profileButton'))setProfileMenu(false);
+      if(!target.closest('.mobileModeAnchor'))setMobileModeMenu(false);
+    };
+    window.addEventListener('keydown',onKey);
+    document.addEventListener('pointerdown',onPointer);
+    return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
+  },[profileMenu,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
     return q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):chats;
@@ -316,9 +340,9 @@ function App(){
           <button className="headerIcon mobileNavTrigger" onClick={()=>setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={18}/></button>
           {!sidebarOpen&&<button className="headerIcon desktopSidebarTrigger" onClick={()=>setSidebarOpen(true)} aria-label="Open sidebar"><PanelLeft size={18}/></button>}
         </div>
-        <div className="modeSwitch">
-          <button className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
-          <button className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
+        <div className="modeSwitch" role="tablist" aria-label="Experience">
+          <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
+          <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
         </div>
         <div className="mobileModeAnchor">
           <button className="mobileModeButton" aria-haspopup="menu" aria-expanded={mobileModeMenu} onClick={()=>setMobileModeMenu(v=>!v)}>
@@ -452,7 +476,7 @@ function Composer(props){
     <div className="composerBottom">
       <div className="composerLeft">
         <div className="menuAnchor">
-          <button className="plusCircle" onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
+          <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
             fileRef={fileRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
@@ -463,13 +487,13 @@ function Composer(props){
 
       <div className="composerRight">
         <div className="menuAnchor">
-          <button className="modelButton" onClick={()=>setModelMenu(v=>!v)}>
+          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} onClick={()=>setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
         </div>
         <div className="menuAnchor">
-          <button className="effortButton" onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
+          <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>
         <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Listening…':'Voice input'} aria-label="Voice input"><Mic2 size={18}/></button>
@@ -487,10 +511,10 @@ function Composer(props){
 }
 
 function ModelMenu({connected,selected,choose}){
-  return <div className="floatingMenu modelPicker">
+  return <div className="floatingMenu modelPicker" role="listbox" aria-label="Select model">
     <div className="floatingTitle">Select model</div>
     {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
-      connected.map(model=><button key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
+      connected.map(model=><button role="option" aria-selected={selected?.id===model.id&&selected?.source===model.source} key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
         <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
         <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name}</small></span>
         {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
@@ -506,6 +530,7 @@ function EffortMenu({effort,choose}){
     <div className="effortHead"><Brain size={18}/><div><b>{labels[effort]}</b><small>Reasoning effort</small></div></div>
     <input
       className="effortSlider" type="range" min="0" max="3" step="1" value={index}
+      aria-label="Reasoning effort" aria-valuetext={labels[effort]}
       onChange={e=>choose(values[Number(e.target.value)])}
     />
     <div className="effortTicks"><span/><span/><span/><span/></div>
@@ -514,7 +539,7 @@ function EffortMenu({effort,choose}){
 }
 
 function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
-  return <div className="floatingMenu plusPicker">
+  return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
     <MenuRow icon={Chrome} label={isNative?'Open web browser':'Attach browser'} sub={isNative?'Open a site in the system browser':'Browse beside your chat'} onClick={onBrowser}/>
@@ -529,12 +554,14 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
 }
 
 function MenuRow({icon:Icon,label,sub,onClick}){
-  return <button className="menuRow" onClick={onClick}><Icon size={18}/><span><b>{label}</b>{sub&&<small>{sub}</small>}</span></button>
+  const body=<><Icon size={18}/><span><b>{label}</b>{sub&&<small>{sub}</small>}</span></>;
+  if(!onClick)return <div className="menuRow staticRow">{body}</div>;
+  return <button className="menuRow" role="menuitem" onClick={onClick}>{body}</button>
 }
 
 function ProfileMenu({session,onSettings}){
   const name=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'User';
-  return <div className="profileMenu">
+  return <div className="profileMenu" role="menu" aria-label="Account">
     <div className="profileMenuUser"><span className="avatar large">{initials(session)}</span><span><b>{name}</b><small>{session?.user?.email||'Free AI account'}</small></span></div>
     <MenuRow icon={Briefcase} label="Workspace settings" onClick={onSettings}/>
     <MenuRow icon={Settings} label="Settings" onClick={onSettings}/>
@@ -677,7 +704,7 @@ function ComputerPane({screens,setScreens,fullAccess,onEnable,onClose}){
 function SettingsView(props){
   const {section,setSection,onClose,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
-  return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')}>
+  return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
       <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
@@ -708,7 +735,7 @@ function SettingsView(props){
   </div>
 }
 
-function Toggle({value,onChange}){return <button className={'toggle '+(value?'on':'')} onClick={()=>onChange(!value)}><span/></button>}
+function Toggle({value,onChange}){return <button role="switch" aria-checked={value} className={'toggle '+(value?'on':'')} onClick={()=>onChange(!value)}><span/></button>}
 function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
@@ -731,9 +758,9 @@ function AppearanceSettings({prefs,setPrefs}){
     <h3>Theme</h3>
     <div className="settingBlock">
       <SettingRow title="Appearance" desc="Follow the system or choose a fixed theme." control={<select value={prefs.appearance||'dark'} onChange={e=>setPrefs({...prefs,appearance:e.target.value})}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>}/>
-      <SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>
+      {!isNative&&<SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>}
       <SettingRow title="Accent color" desc="Used for active controls and voice actions." control={<select value={prefs.accent||'blue'} onChange={e=>setPrefs({...prefs,accent:e.target.value})}><option value="blue">Blue</option><option value="green">Green</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="pink">Pink</option><option value="neutral">Neutral</option></select>}/>
-      <SettingRow title="Text size" desc="Scale interface text without changing window zoom." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>
+      {!isNative&&<SettingRow title="Text size" desc="Scale interface text without changing window zoom." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>} 
     </div>
   </div>
 }
