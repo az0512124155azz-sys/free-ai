@@ -286,6 +286,7 @@ button:disabled{opacity:.42;cursor:default}
 .permissionPicker{bottom:40px;width:330px}
 .permissionRow{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) 18px;gap:9px;align-items:center;background:transparent;border-radius:11px;padding:9px;text-align:left;color:var(--text-secondary)}
 .permissionRow:hover,.permissionRow.active{background:var(--hover);color:var(--text)}
+.permissionRow.disabled{opacity:.42;cursor:not-allowed}.permissionRow.disabled:hover{background:transparent;color:var(--text-secondary)}
 .permissionRow>span{display:flex;min-width:0;flex-direction:column}.permissionRow b{font-size:12px;font-weight:600}.permissionRow small{font-size:10px;color:var(--muted);line-height:1.35;margin-top:2px}
 .workActions{
   min-height:38px;border-top:1px solid var(--border-soft);margin:8px 0 -2px;padding:7px 2px 0;display:flex;gap:3px
