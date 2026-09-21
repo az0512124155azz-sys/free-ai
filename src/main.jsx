@@ -99,7 +99,8 @@ function App(){
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,language:'English',showBottomPanel:true})
+    autoReviewEnabled:false,fullAccessEnabled:false,
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
@@ -211,6 +212,14 @@ function App(){
     setSidePanel(null);
     if(product==='super')setMode('work');
   },[product]);
+
+  useEffect(()=>{
+    if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
+      persistPrefs({...appPrefs,approvalMode:'ask'});
+    }else if(appPrefs.approvalMode==='full'&&!appPrefs.fullAccessEnabled){
+      persistPrefs({...appPrefs,approvalMode:'ask'});
+    }
+  },[appPrefs.autoReviewEnabled,appPrefs.fullAccessEnabled]);
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
@@ -336,15 +345,15 @@ function App(){
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
         <div className="productSwitcher">
-          <button className="brandButton" title="Switch product" aria-haspopup="menu" aria-expanded={productMenu} onClick={()=>setProductMenu(v=>!v)}>
-            <BrandMark size={20}/><b>{product==='super'?'Super AI':'Free AI'}</b><ChevronDown size={14}/>
+          <button className="brandButton" title={isNative?'Free AI':'Switch product'} aria-haspopup={!isNative?'menu':undefined} aria-expanded={!isNative?productMenu:undefined} onClick={()=>!isNative&&setProductMenu(v=>!v)}>
+            <BrandMark size={20}/><b>{isNative?'Free AI':product==='super'?'Super AI':'Free AI'}</b>{!isNative&&<ChevronDown size={14}/>}
           </button>
-          {productMenu&&<div className="productMenu" role="menu">
+          {!isNative&&productMenu&&<div className="productMenu" role="menu">
             <button className={product==='free'?'active':''} onClick={()=>{setProduct('free');setProductMenu(false);setMode('chat')}}>
-              <BrandMark size={20}/><span><b>Free AI</b><small>Chat and work with all connected models</small></span>{product==='free'&&<Check size={16}/>}
+              <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
             </button>
             <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
-              <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Build, debug and run coding tasks</small></span>{product==='super'&&<Check size={16}/>}
+              <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Local coding, repositories and computer tasks</small></span>{product==='super'&&<Check size={16}/>}
             </button>
           </div>}
         </div>
@@ -358,9 +367,9 @@ function App(){
       <div className="mobileQuickStart">
         <button className="mobileNewChat" onClick={newChat}><SquarePen size={17}/><span>New chat</span></button>
         <div className="mobileExperienceRail" aria-label="Experiences">
-          <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>
-          <button className={page==='plugins'?'active':''} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Plugins</span></button>
-          <button className={page==='explore'?'active':''} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
+          <button className={product==='super'&&page==='chat'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><Monitor size={18}/><span>Remote</span></button>
+          <button className={page==='plugins'?'active':''} onClick={()=>{setProduct('free');setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Apps</span></button>
+          <button className={page==='explore'?'active':''} onClick={()=>{setProduct('free');setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
         </div>
       </div>
 
@@ -405,7 +414,7 @@ function App(){
         </div>:<div className="superHeaderLabel"><BrandMark size={16}/><span>Super AI</span></div>}
         <div className="mobileModeAnchor">
           <button className="mobileModeButton" aria-haspopup={product==='free'?'menu':undefined} aria-expanded={product==='free'?mobileModeMenu:undefined} onClick={()=>product==='free'&&setMobileModeMenu(v=>!v)}>
-            <span>{product==='super'?'Super AI':mode==='work'?'Free AI · Work':'Free AI · Chat'}</span>{product==='free'&&<ChevronDown size={14}/>}
+            <span>{product==='super'?(isNative?'Remote':'Super AI'):mode==='work'?'Free AI · Work':'Free AI · Chat'}</span>{product==='free'&&<ChevronDown size={14}/>}
           </button>
           {product==='free'&&mobileModeMenu&&<div className="mobileModeMenu" role="menu">
             <button className={mode==='chat'?'active':''} onClick={()=>{setMode('chat');setMobileModeMenu(false)}}>Chat</button>
