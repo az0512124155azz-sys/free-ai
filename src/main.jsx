@@ -377,7 +377,7 @@ function App(){
           <span className="profileName">{sidebarName}</span>
           <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-        <button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Voice</button>
+        <button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
         {profileMenu&&<ProfileMenu session={session} onSettings={()=>{setProfileMenu(false);setSettingsOpen(true)}}/>}
       </div>
@@ -673,9 +673,9 @@ function Composer(props){
           {effortMenu&&<EffortMenu effort={effort} levels={reasoningLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
         <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Stop dictation':'Dictation'} aria-label={listening?'Stop dictation':'Start dictation'}><Mic2 size={18}/></button>
-        <button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
-          {busy?<RefreshCw className="spin" size={17}/>:prompt.trim()?<ArrowUp size={18}/>:<Volume2 size={18}/>}
-        </button>
+        {prompt.trim()&&<button className="voiceOrb sendReady" onClick={()=>send()} disabled={busy||!selected} aria-label="Send">
+          {busy?<RefreshCw className="spin" size={17}/>:<ArrowUp size={18}/>}
+        </button>}
       </div>
     </div>
     {dictationError&&<div className="dictationError">{dictationError}</div>}
