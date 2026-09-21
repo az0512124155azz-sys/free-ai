@@ -1,55 +1,189 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage}=require('electron');
 const path=require('path');
-const {WebSocketServer,WebSocket}=require('ws');
+const fs=require('fs');
 const crypto=require('crypto');
+const {WebSocketServer,WebSocket}=require('ws');
 
 let win;
 let extensionSocket=null;
 let relaySocket=null;
-let providers=[];
+let relayReconnectTimer=null;
+let browserProviders=[];
+let apiConnections=[];
 const pending=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 
+function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
+
+function encodeSecret(value){
+  const text=JSON.stringify(value);
+  if(safeStorage.isEncryptionAvailable()) return {mode:'encrypted',data:safeStorage.encryptString(text).toString('base64')};
+  return {mode:'plain',data:Buffer.from(text,'utf8').toString('base64')};
+}
+
+function decodeSecret(payload){
+  if(!payload||!payload.data)return [];
+  try{
+    if(payload.mode==='encrypted'&&safeStorage.isEncryptionAvailable()){
+      return JSON.parse(safeStorage.decryptString(Buffer.from(payload.data,'base64')));
+    }
+    return JSON.parse(Buffer.from(payload.data,'base64').toString('utf8'));
+  }catch{return []}
+}
+
+function loadApiConnections(){
+  try{
+    const raw=JSON.parse(fs.readFileSync(apiStorePath(),'utf8'));
+    apiConnections=Array.isArray(decodeSecret(raw))?decodeSecret(raw):[];
+  }catch{apiConnections=[]}
+}
+
+function saveApiConnections(){
+  try{
+    fs.mkdirSync(path.dirname(apiStorePath()),{recursive:true});
+    fs.writeFileSync(apiStorePath(),JSON.stringify(encodeSecret(apiConnections)),'utf8');
+  }catch(e){console.error('Failed to save API connections',e)}
+}
+
+function publicApiConnection(c){
+  return {id:c.id,name:c.name,model:c.model,baseUrl:c.baseUrl,source:'api',hasKey:!!c.apiKey,mcps:[]};
+}
+
 function status(){
   return {
-    extension:!!(extensionSocket&&extensionSocket.readyState===1),
-    relay:!!(relaySocket&&relaySocket.readyState===1),
-    providers
+    extension:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
+    relay:!!(relaySocket&&relaySocket.readyState===WebSocket.OPEN),
+    providers:[
+      ...browserProviders.map(p=>({...p,source:'browser'})),
+      ...apiConnections.map(publicApiConnection)
+    ]
   };
 }
+
 function sendStatus(){
   const s=status();
   if(win&&!win.isDestroyed()) win.webContents.send('bridge-status',s);
-  if(relaySocket&&relaySocket.readyState===1) relaySocket.send(JSON.stringify({type:'providerStatus',...s}));
+  if(relaySocket&&relaySocket.readyState===WebSocket.OPEN){
+    relaySocket.send(JSON.stringify({type:'providerStatus',...s}));
+  }
 }
+
 function sendExtension(msg){
-  if(extensionSocket&&extensionSocket.readyState===1) extensionSocket.send(JSON.stringify(msg));
+  if(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN){
+    extensionSocket.send(JSON.stringify(msg));
+    return true;
+  }
+  return false;
 }
-function routeToExtension(msg){
+
+function routeToBrowser(msg){
   return new Promise((resolve,reject)=>{
-    if(!extensionSocket||extensionSocket.readyState!==1) return reject(new Error('Chrome extension is not connected.'));
-    if(msg.provider&&!providers.some(p=>p.id===msg.provider)) return reject(new Error('That browser model is not currently connected.'));
+    if(!extensionSocket||extensionSocket.readyState!==WebSocket.OPEN){
+      return reject(new Error('Chrome extension is not connected.'));
+    }
+    if(!browserProviders.some(p=>p.id===msg.provider)){
+      return reject(new Error('That browser model is not currently connected.'));
+    }
     const id=msg.id||crypto.randomUUID();
-    const timer=setTimeout(()=>{pending.delete(id);reject(new Error('AI response timed out.'));},150000);
+    const timer=setTimeout(()=>{
+      pending.delete(id);
+      reject(new Error('AI response timed out.'));
+    },180000);
     pending.set(id,{resolve,reject,timer});
     sendExtension({...msg,id,type:'prompt'});
   });
 }
 
+async function openAICompatibleChat(cfg,text){
+  const base=String(cfg.baseUrl||'').trim().replace(/\/$/,'');
+  if(!/^https?:\/\//i.test(base)) throw new Error('API endpoint must start with http:// or https://');
+  if(!cfg.model) throw new Error('API model is required.');
+  const endpoint=base.endsWith('/chat/completions')?base:base+'/chat/completions';
+  const headers={'Content-Type':'application/json'};
+  if(cfg.apiKey) headers.Authorization='Bearer '+cfg.apiKey;
+  const controller=new AbortController();
+  const timeout=setTimeout(()=>controller.abort(),120000);
+  try{
+    const response=await fetch(endpoint,{
+      method:'POST',
+      headers,
+      signal:controller.signal,
+      body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:text}],stream:false})
+    });
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok) throw new Error(data?.error?.message||data?.message||('API request failed: '+response.status));
+    const out=data?.choices?.[0]?.message?.content;
+    if(typeof out!=='string') throw new Error('The API returned an unsupported response format.');
+    return {text:out};
+  }catch(e){
+    if(e?.name==='AbortError') throw new Error('API request timed out.');
+    throw e;
+  }finally{clearTimeout(timeout)}
+}
+
+async function routeDirect(msg){
+  if(msg.source==='api'){
+    const cfg=apiConnections.find(c=>c.id===msg.provider);
+    if(!cfg) throw new Error('That API connection is not available on the desktop.');
+    return openAICompatibleChat(cfg,msg.text);
+  }
+  return routeToBrowser(msg);
+}
+
+async function routePrompt(msg){
+  const tool=msg.toolRequest;
+  if(tool?.mcp&&tool.ownerProviderId){
+    const owner=browserProviders.find(p=>p.id===tool.ownerProviderId);
+    if(!owner) throw new Error('The model that owns this MCP is not currently connected.');
+    if(msg.source!=='api'&&msg.provider===tool.ownerProviderId){
+      return routeToBrowser({...msg,toolRequest:tool});
+    }
+    const toolPrompt=[
+      'Use the already-installed MCP/connector named "'+tool.mcp+'" for the following task.',
+      'Only report results you actually obtain from that installed tool.',
+      '',
+      msg.text
+    ].join('\n');
+    const toolResult=await routeToBrowser({
+      provider:tool.ownerProviderId,
+      source:'browser',
+      text:toolPrompt,
+      toolRequest:tool
+    });
+    const augmented=[
+      'Another connected model used the installed MCP/connector "'+tool.mcp+'".',
+      'Tool result:',
+      toolResult.text||'',
+      '',
+      'Original request:',
+      msg.text,
+      '',
+      'Use the tool result above to answer the original request.'
+    ].join('\n');
+    return routeDirect({...msg,text:augmented,toolRequest:null});
+  }
+  return routeDirect(msg);
+}
+
 function startLocalBridge(){
   const wss=new WebSocketServer({host:'127.0.0.1',port:17341});
-  wss.on('connection',ws=>{
+  wss.on('connection',(ws,req)=>{
+    const origin=String(req.headers.origin||'');
+    if(origin&& !origin.startsWith('chrome-extension://')){
+      ws.close(1008,'Unsupported client origin');
+      return;
+    }
     ws.on('message',raw=>{
-      let m; try{m=JSON.parse(raw)}catch{return}
+      let m;try{m=JSON.parse(raw)}catch{return}
       if(m.type==='hello'&&m.role==='extension'){
         extensionSocket=ws;
-        providers=[];
+        browserProviders=[];
         sendExtension({type:'scanProviders'});
         sendStatus();
         return;
       }
       if(m.type==='providers'){
-        providers=Array.isArray(m.providers)?m.providers:[];
+        browserProviders=Array.isArray(m.providers)?m.providers.map(p=>({...p,source:'browser'})):[];
         sendStatus();
         return;
       }
@@ -61,61 +195,67 @@ function startLocalBridge(){
       }
     });
     ws.on('close',()=>{
-      if(ws===extensionSocket){extensionSocket=null;providers=[];}
+      if(ws===extensionSocket){
+        extensionSocket=null;
+        browserProviders=[];
+      }
       sendStatus();
     });
   });
   wss.on('error',e=>console.error('Local bridge error',e));
 }
 
+function scheduleRelayReconnect(){
+  clearTimeout(relayReconnectTimer);
+  if(relayConfig.relayUrl&&relayConfig.pairKey){
+    relayReconnectTimer=setTimeout(connectRelay,3000);
+  }
+}
+
 function connectRelay(){
-  if(relaySocket){try{relaySocket.close()}catch{}}
-  if(!relayConfig.relayUrl||!relayConfig.pairKey){sendStatus();return;}
-  relaySocket=new WebSocket(relayConfig.relayUrl);
+  clearTimeout(relayReconnectTimer);
+  if(relaySocket){
+    try{relaySocket.removeAllListeners();relaySocket.close()}catch{}
+    relaySocket=null;
+  }
+  if(!relayConfig.relayUrl||!relayConfig.pairKey){sendStatus();return}
+  if(!/^wss?:\/\//i.test(relayConfig.relayUrl)){
+    console.error('Relay URL must start with ws:// or wss://');
+    sendStatus();
+    return;
+  }
+  try{relaySocket=new WebSocket(relayConfig.relayUrl)}catch(e){
+    console.error('Relay connection failed',e);
+    scheduleRelayReconnect();
+    return;
+  }
   relaySocket.on('open',()=>{
     relaySocket.send(JSON.stringify({type:'hello',role:'desktop',key:relayConfig.pairKey}));
     sendStatus();
   });
   relaySocket.on('message',async raw=>{
-    let m; try{m=JSON.parse(raw)}catch{return}
+    let m;try{m=JSON.parse(raw)}catch{return}
     if(m.type==='getProviderStatus'){sendStatus();return}
     if(m.type==='prompt'){
       try{
-        const r=await routeToExtension(m);
-        relaySocket.send(JSON.stringify({type:'response',id:m.id,text:r.text||'',usedTool:r.usedTool||null}));
+        const r=await routePrompt(m);
+        relaySocket?.send(JSON.stringify({type:'response',id:m.id,text:r.text||'',usedTool:r.usedTool||null}));
       }catch(e){
-        relaySocket.send(JSON.stringify({type:'response',id:m.id,error:e.message}));
+        relaySocket?.send(JSON.stringify({type:'response',id:m.id,error:e.message||String(e)}));
       }
     }
   });
   relaySocket.on('close',()=>{
+    relaySocket=null;
     sendStatus();
-    setTimeout(()=>{if(relayConfig.relayUrl&&relayConfig.pairKey)connectRelay()},3000);
+    scheduleRelayReconnect();
   });
-  relaySocket.on('error',()=>sendStatus());
-}
-
-async function openAICompatibleChat(cfg,text){
-  const base=String(cfg.baseUrl||'').replace(/\/$/,'');
-  if(!base||!cfg.model) throw new Error('API endpoint and model are required.');
-  const endpoint=base.endsWith('/chat/completions')?base:base+'/chat/completions';
-  const headers={'Content-Type':'application/json'};
-  if(cfg.apiKey) headers.Authorization='Bearer '+cfg.apiKey;
-  const response=await fetch(endpoint,{
-    method:'POST',
-    headers,
-    body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:text}],stream:false})
-  });
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok) throw new Error(data?.error?.message||data?.message||('API request failed: '+response.status));
-  const out=data?.choices?.[0]?.message?.content;
-  if(typeof out!=='string') throw new Error('The API returned an unsupported response format.');
-  return {text:out};
+  relaySocket.on('error',e=>console.error('Relay socket error',e?.message||e));
 }
 
 async function captureScreens(){
   const displays=screen.getAllDisplays();
-  const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:640,height:360}});
+  const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:800,height:450}});
   return sources.map((s,i)=>({
     id:s.id,
     name:s.name||('Screen '+(i+1)),
@@ -126,29 +266,67 @@ async function captureScreens(){
 
 function createWindow(){
   win=new BrowserWindow({
-    width:1380,height:880,minWidth:980,minHeight:650,
-    backgroundColor:'#0d0d0d',
+    width:1380,
+    height:880,
+    minWidth:980,
+    minHeight:650,
+    backgroundColor:'#212121',
     titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',
-    webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false}
+    webPreferences:{
+      preload:path.join(__dirname,'preload.cjs'),
+      contextIsolation:true,
+      nodeIntegration:false,
+      sandbox:true
+    }
   });
   const dev=process.env.VITE_DEV_SERVER_URL;
-  if(dev) win.loadURL(dev); else win.loadFile(path.join(__dirname,'..','dist','index.html'));
+  if(dev) win.loadURL(dev);
+  else win.loadFile(path.join(__dirname,'..','dist','index.html'));
 }
 
 app.whenReady().then(()=>{
+  loadApiConnections();
   startLocalBridge();
   createWindow();
   app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()});
 });
+
+app.on('before-quit',()=>{
+  clearTimeout(relayReconnectTimer);
+  for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
+  pending.clear();
+});
+
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',()=>{sendExtension({type:'scanProviders'});return status()});
-ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routeToExtension(msg));
+ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{}));
 ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{
-  relayConfig={relayUrl:String(cfg?.relayUrl||''),pairKey:String(cfg?.pairKey||'')};
+  relayConfig={relayUrl:String(cfg?.relayUrl||'').trim(),pairKey:String(cfg?.pairKey||'').trim()};
   connectRelay();
   return status();
 });
-ipcMain.handle('api:chat',(_e,{connection,text})=>openAICompatibleChat(connection,text));
+ipcMain.handle('api:listConnections',()=>apiConnections.map(publicApiConnection));
+ipcMain.handle('api:addConnection',(_e,input)=>{
+  const connection={
+    id:crypto.randomUUID(),
+    name:String(input?.name||input?.model||'API model').trim(),
+    baseUrl:String(input?.baseUrl||'').trim(),
+    model:String(input?.model||'').trim(),
+    apiKey:String(input?.apiKey||'').trim()
+  };
+  if(!connection.baseUrl||!connection.model) throw new Error('Base URL and model are required.');
+  if(!/^https?:\/\//i.test(connection.baseUrl)) throw new Error('Base URL must start with http:// or https://');
+  apiConnections.push(connection);
+  saveApiConnections();
+  sendStatus();
+  return publicApiConnection(connection);
+});
+ipcMain.handle('api:removeConnection',(_e,id)=>{
+  apiConnections=apiConnections.filter(c=>c.id!==id);
+  saveApiConnections();
+  sendStatus();
+  return apiConnections.map(publicApiConnection);
+});
 ipcMain.handle('computer:captureScreens',()=>captureScreens());
