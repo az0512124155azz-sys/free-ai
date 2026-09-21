@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -299,6 +299,9 @@ function createWindow(){
     minWidth:980,
     minHeight:650,
     backgroundColor:'#212121',
+    show:false,
+    autoHideMenuBar:true,
+    title:'Free AI',
     titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',
     webPreferences:{
       preload:path.join(__dirname,'preload.cjs'),
@@ -307,6 +310,23 @@ function createWindow(){
       sandbox:true
     }
   });
+  win.setMenuBarVisibility(false);
+
+  win.once('ready-to-show',()=>{
+    if(!win.isDestroyed())win.show();
+  });
+
+  win.webContents.on('did-fail-load',(_event,errorCode,errorDescription)=>{
+    console.error('Renderer failed to load',errorCode,errorDescription);
+    const fallback='data:text/html;charset=utf-8,'+encodeURIComponent(
+      '<!doctype html><html><body style="margin:0;background:#171717;color:#fff;font-family:system-ui;display:grid;place-items:center;height:100vh">'+
+      '<div style="text-align:center;max-width:520px;padding:32px"><div style="font-size:42px;margin-bottom:16px">✦</div>'+
+      '<h1 style="margin:0 0 10px">Free AI</h1><p style="color:#aaa">The interface could not be loaded.</p>'+
+      '<p style="color:#777;font-size:13px">Please install the newest Free AI release.</p></div></body></html>'
+    );
+    win.loadURL(fallback).catch(()=>{});
+  });
+
   const dev=process.env.VITE_DEV_SERVER_URL;
   if(dev) win.loadURL(dev);
   else win.loadFile(path.join(__dirname,'..','dist','index.html'));
@@ -334,6 +354,7 @@ if(!gotSingleInstanceLock){
 }
 
 app.whenReady().then(()=>{
+  Menu.setApplicationMenu(null);
   registerAuthProtocol();
   loadApiConnections();
   startLocalBridge();
