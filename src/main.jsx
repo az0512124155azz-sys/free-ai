@@ -9,7 +9,7 @@ import {InAppBrowser} from '@capgo/capacitor-inappbrowser';
 import {SocialLogin} from '@capgo/capacitor-social-login';
 import {
   AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,
-  CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,ExternalLink,
+  CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,Download,ExternalLink,
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
   Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
@@ -800,13 +800,18 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
 
 function BrowserPane({onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
-  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false});
+  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[]});
   const surfaceRef=useRef(null);
+
   useEffect(()=>{
     if(!isDesktop)return;
-    const off=window.desktopApi.onBrowserState?.(s=>{setState(s);if(s.url)setUrl(s.url)});
+    const off=window.desktopApi.onBrowserState?.(next=>{
+      setState(next);
+      if(next.url)setUrl(next.url);
+    });
     return()=>{off?.();window.desktopApi.browserClose?.().catch(()=>{})};
   },[]);
+
   useEffect(()=>{
     if(!isDesktop||!surfaceRef.current)return;
     const el=surfaceRef.current;
@@ -814,21 +819,44 @@ function BrowserPane({onClose}){
       const r=el.getBoundingClientRect();
       window.desktopApi.browserSetBounds({x:r.x,y:r.y,width:r.width,height:r.height}).catch(()=>{});
     };
-    const ro=new ResizeObserver(sync);ro.observe(el);window.addEventListener('resize',sync);sync();
+    const ro=new ResizeObserver(sync);
+    ro.observe(el);
+    window.addEventListener('resize',sync);
+    sync();
     const r=el.getBoundingClientRect();
-    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).catch(()=>{});
+    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).then(next=>{
+      if(next){setState(next);if(next.url)setUrl(next.url)}
+    }).catch(()=>{});
     return()=>{ro.disconnect();window.removeEventListener('resize',sync)};
   },[]);
-  function navigate(){if(isDesktop)window.desktopApi.browserNavigate(url).catch(()=>{})}
+
+  function navigate(){window.desktopApi?.browserNavigate(url).catch(()=>{})}
+  function chooseTab(id){window.desktopApi?.browserSelectTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
+  function closeTab(e,id){e.stopPropagation();window.desktopApi?.browserCloseTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
+  function newTab(){window.desktopApi?.browserNewTab('https://www.google.com/').then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
+  const activeDownloads=(state.downloads||[]).filter(d=>d.state==='progressing').length;
+
   return <aside className="sidePane browserPane">
-    <div className="paneTabs"><div className="browserTab"><Globe2 size={14}/><span>{state.title||'New tab'}</span><X size={13}/></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="paneTabs browserTabsBar">
+      <div className="browserTabsScroll">
+        {(state.tabs||[]).map(tab=><button key={tab.id} className={'browserTab '+(tab.id===state.activeTabId?'active':'')} onClick={()=>chooseTab(tab.id)}>
+          <Globe2 size={13}/><span>{tab.title||'New tab'}</span>
+          <span className="tabClose" role="button" aria-label="Close tab" onClick={e=>closeTab(e,tab.id)}><X size={12}/></span>
+        </button>)}
+        <button className="newBrowserTab" onClick={newTab} title="New tab"><Plus size={15}/></button>
+      </div>
+      <button className="closePaneButton" onClick={onClose} title="Close browser"><X size={16}/></button>
+    </div>
+
     <div className="browserToolbar">
       <button disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
       <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
-      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)}><ExternalLink size={15}/></button>
+      {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
+      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
+
     <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
   </aside>
 }
