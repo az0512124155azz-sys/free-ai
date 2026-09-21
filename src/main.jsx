@@ -4,40 +4,53 @@ import {createClient} from '@supabase/supabase-js';
 import {Capacitor} from '@capacitor/core';
 import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
+import {
+  AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,
+  CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,ExternalLink,
+  File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
+  LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
+  Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
+  SquarePen,Table2,Target,TerminalSquare,UserRound,Volume2,X
+} from 'lucide-react';
 import './styles.css';
 
 const supabaseUrl=import.meta.env.VITE_SUPABASE_URL||'https://xquntkgjlmrxkwkrwsjl.supabase.co';
 const supabaseKey=import.meta.env.VITE_SUPABASE_ANON_KEY||'sb_publishable_5jLA64uA5h7NICd9sQLwUg_aQquD67t';
 const supabase=supabaseUrl&&supabaseKey
-  ? createClient(supabaseUrl,supabaseKey,{
-      auth:{
-        flowType:'pkce',
-        persistSession:true,
-        autoRefreshToken:true,
-        detectSessionInUrl:false
-      }
-    })
+  ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}})
   : null;
+
 const isDesktop=!!window.desktopApi;
 const isNative=Capacitor.isNativePlatform();
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 
-function readJSON(key,fallback){
-  try{
-    const value=JSON.parse(localStorage.getItem(key)||'null');
-    return value??fallback;
-  }catch{return fallback}
-}
+const settingsSections=[
+  ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
+  ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
+  ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
+  ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',TerminalSquare]
+];
 
+function readJSON(key,fallback){
+  try{const v=JSON.parse(localStorage.getItem(key)||'null');return v??fallback}catch{return fallback}
+}
 function randomKey(){
-  const b=new Uint8Array(32);
-  crypto.getRandomValues(b);
+  const b=new Uint8Array(32);crypto.getRandomValues(b);
   return [...b].map(x=>x.toString(16).padStart(2,'0')).join('');
 }
-
 function modelLabel(model){
-  return model?.name||providerNames[model?.id]||model?.model||'AI';
+  return model?.modelName||model?.name||providerNames[model?.id]||model?.model||'Select model';
+}
+function initials(session){
+  const value=session?.user?.user_metadata?.full_name||session?.user?.email||'Free AI';
+  return value.split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();
+}
+function humanSize(bytes){
+  if(!Number.isFinite(bytes))return '';
+  if(bytes<1024)return bytes+' B';
+  if(bytes<1024*1024)return (bytes/1024).toFixed(1)+' KB';
+  return (bytes/1024/1024).toFixed(1)+' MB';
 }
 
 function App(){
@@ -50,39 +63,30 @@ function App(){
   const [prompt,setPrompt]=useState('');
   const [busy,setBusy]=useState(false);
   const [sidebarOpen,setSidebarOpen]=useState(true);
+  const [page,setPage]=useState('chat');
+  const [mode,setMode]=useState('chat');
   const [modelMenu,setModelMenu]=useState(false);
-  const [toolsOpen,setToolsOpen]=useState(false);
+  const [effortMenu,setEffortMenu]=useState(false);
+  const [effort,setEffort]=useState('instant');
+  const [plusMenu,setPlusMenu]=useState(false);
+  const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
-  const [computerOpen,setComputerOpen]=useState(false);
+  const [settingsSection,setSettingsSection]=useState('General');
+  const [sidePanel,setSidePanel]=useState(null);
+  const [selectedFile,setSelectedFile]=useState(null);
   const [screens,setScreens]=useState([]);
-  const [screenLoading,setScreenLoading]=useState(false);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats',[]));
   const [currentChatId,setCurrentChatId]=useState(null);
-  const [settings,setSettings]=useState(()=>({
-    relayUrl:localStorage.getItem('relayUrl')||'',
-    pairKey:localStorage.getItem('pairKey')||''
-  }));
+  const [appPrefs,setAppPrefs]=useState(()=>readJSON('freeai.prefs',{fullAccess:false,defaultPermissions:true,language:'English',showBottomPanel:true}));
+  const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
   const fileRef=useRef(null);
 
   useEffect(()=>{
-    if(!supabase){
-      setSession({user:{email:'Local workspace'}});
-      setAuthReady(true);
-      return;
-    }
-    supabase.auth.getSession().then(({data})=>{
-      setSession(data.session);
-      setAuthReady(true);
-    }).catch(()=>{
-      setSession(null);
-      setAuthReady(true);
-    });
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{
-      setSession(next);
-      setAuthReady(true);
-    });
+    if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
+    supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)}).catch(()=>{setSession(null);setAuthReady(true)});
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true)});
     return()=>subscription.unsubscribe();
   },[]);
 
@@ -90,90 +94,41 @@ function App(){
     if(!isDesktop)return;
     let active=true;
     window.desktopApi.getStatus().then(s=>active&&setStatus(s)).catch(()=>{});
-    const off=window.desktopApi.onStatus(s=>active&&setStatus(s));
+    const offStatus=window.desktopApi.onStatus(s=>active&&setStatus(s));
+    const offCommand=window.desktopApi.onAppCommand?.(command=>{
+      if(command==='new-chat')newChat();
+      if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
+    });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
-    return()=>{
-      active=false;
-      off?.();
-    };
+    return()=>{active=false;offStatus?.();offCommand?.()};
   },[]);
 
   useEffect(()=>{
     if(isDesktop)return;
-    if(!settings.relayUrl||!settings.pairKey){
-      setStatus({extension:false,relay:false,providers:[]});
-      return;
-    }
-
-    let stopped=false;
-    let socket=null;
-    let retry=null;
-
+    if(!settings.relayUrl||!settings.pairKey){setStatus({extension:false,relay:false,providers:[]});return}
+    let stopped=false,socket=null,retry=null;
     const connect=()=>{
       if(stopped)return;
-      try{socket=new WebSocket(settings.relayUrl)}catch{
-        retry=setTimeout(connect,3000);
-        return;
-      }
-
-      socket.onopen=()=>{
-        socket.send(JSON.stringify({type:'hello',role:'mobile',key:settings.pairKey}));
-      };
-
+      try{socket=new WebSocket(settings.relayUrl)}catch{retry=setTimeout(connect,3000);return}
+      socket.onopen=()=>socket.send(JSON.stringify({type:'hello',role:'mobile',key:settings.pairKey}));
       socket.onmessage=event=>{
         let m;try{m=JSON.parse(event.data)}catch{return}
-
-        if(m.type==='ready'){
-          const ps=m.providerStatus;
-          if(ps){
-            setStatus({...ps,relay:true});
-          }else{
-            setStatus(s=>({...s,relay:true}));
-          }
-          socket.send(JSON.stringify({type:'getProviderStatus'}));
-          return;
-        }
-
-        if(m.type==='providerStatus'){
-          setStatus({...m,relay:true});
-        }
+        if(m.type==='ready'){setStatus(m.providerStatus?{...m.providerStatus,relay:true}:s=>({...s,relay:true}));socket.send(JSON.stringify({type:'getProviderStatus'}))}
+        if(m.type==='providerStatus')setStatus({...m,relay:true});
       };
-
-      socket.onclose=()=>{
-        setStatus({extension:false,relay:false,providers:[]});
-        if(!stopped)retry=setTimeout(connect,3000);
-      };
-
-      socket.onerror=()=>{};
+      socket.onclose=()=>{setStatus({extension:false,relay:false,providers:[]});if(!stopped)retry=setTimeout(connect,3000)};
     };
-
     connect();
-
-    return()=>{
-      stopped=true;
-      clearTimeout(retry);
-      try{socket?.close()}catch{}
-    };
+    return()=>{stopped=true;clearTimeout(retry);try{socket?.close()}catch{}};
   },[settings.relayUrl,settings.pairKey]);
 
-  const connected=useMemo(
-    ()=>Array.isArray(status.providers)?status.providers:[],
-    [status.providers]
-  );
-
+  const connected=useMemo(()=>Array.isArray(status.providers)?status.providers:[],[status.providers]);
   const mcpTools=useMemo(()=>{
     const tools=[];
     for(const p of connected){
       if(p.source!=='browser'||!Array.isArray(p.mcps))continue;
-      for(const mcp of p.mcps){
-        tools.push({
-          key:p.id+'::'+mcp,
-          mcp,
-          ownerProviderId:p.id,
-          ownerName:modelLabel(p)
-        });
-      }
+      for(const mcp of p.mcps)tools.push({key:p.id+'::'+mcp,mcp,ownerProviderId:p.id,ownerName:modelLabel(p)});
     }
     return tools;
   },[connected]);
@@ -181,710 +136,591 @@ function App(){
   useEffect(()=>{
     if(!selected)return;
     const fresh=connected.find(p=>p.id===selected.id&&p.source===selected.source);
-    if(!fresh){
-      setSelected(null);
-      setSelectedTool(null);
-    }else if(fresh!==selected){
-      setSelected(fresh);
-    }
+    if(!fresh){setSelected(null);setSelectedTool(null)}
+    else if(fresh!==selected)setSelected(fresh);
   },[connected]);
 
-  function storeChats(next){
-    const trimmed=next.slice(0,50);
-    setChats(trimmed);
-    localStorage.setItem('freeai.chats',JSON.stringify(trimmed));
-  }
-
+  function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
   function saveCurrentChat(nextMessages,model=selected){
     if(!model||!nextMessages.length)return;
-
     const firstUser=nextMessages.find(m=>m.role==='user')?.text||'New chat';
     const title=firstUser.length>46?firstUser.slice(0,46)+'…':firstUser;
     let id=currentChatId;
-
-    if(!id){
-      id=crypto.randomUUID();
-      setCurrentChatId(id);
-    }
-
+    if(!id){id=crypto.randomUUID();setCurrentChatId(id)}
     setChats(prev=>{
-      const existing=prev.find(c=>c.id===id);
-      const chat={
-        id,
-        title,
-        providerId:model.id,
-        source:model.source,
-        modelName:modelLabel(model),
-        messages:nextMessages,
-        updatedAt:Date.now()
-      };
-      const next=[chat,...prev.filter(c=>c.id!==id)];
-      localStorage.setItem('freeai.chats',JSON.stringify(next.slice(0,50)));
-      return next.slice(0,50);
+      const chat={id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,updatedAt:Date.now()};
+      const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
+      localStorage.setItem('freeai.chats',JSON.stringify(next));return next;
     });
   }
-
   function newChat(){
-    setCurrentChatId(null);
-    setMessages([]);
-    setPrompt('');
-    setSelected(null);
-    setSelectedTool(null);
-    setModelMenu(false);
-    setToolsOpen(false);
+    setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);
   }
-
   function openChat(chat){
-    setCurrentChatId(chat.id);
-    setMessages(Array.isArray(chat.messages)?chat.messages:[]);
-    const model=connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null;
-    setSelected(model);
-    setSelectedTool(null);
-    setModelMenu(false);
+    setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
+    setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
+    setSelectedTool(null);setPage('chat');
   }
-
   async function send(){
     const text=prompt.trim();
     if(!text||busy)return;
-    if(!selected){
-      setModelMenu(true);
-      return;
-    }
-
-    setBusy(true);
-    setPrompt('');
-
-    const userMessage={role:'user',text};
-    const withUser=[...messages,userMessage];
-    setMessages(withUser);
-    saveCurrentChat(withUser,selected);
-
+    if(!selected){setModelMenu(true);return}
+    setBusy(true);setPrompt('');
+    const withUser=[...messages,{role:'user',text}];setMessages(withUser);saveCurrentChat(withUser,selected);
     try{
       const payload={
-        provider:selected.id,
-        source:selected.source||'browser',
-        text,
-        toolRequest:selectedTool?{
-          mcp:selectedTool.mcp,
-          ownerProviderId:selectedTool.ownerProviderId
-        }:null
+        provider:selected.id,source:selected.source||'browser',text,effort,
+        mode,fullAccess:mode==='work'&&appPrefs.fullAccess,
+        toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
-
-      const result=isDesktop
-        ? await window.desktopApi.sendPrompt(payload)
-        : await sendRemote(settings.relayUrl,settings.pairKey,payload);
-
-      const assistantMessage={
-        role:'assistant',
-        text:result?.text||String(result||''),
-        provider:selected.id
-      };
-      const next=[...withUser,assistantMessage];
-      setMessages(next);
-      saveCurrentChat(next,selected);
+      const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
+      const next=[...withUser,{role:'assistant',text:result?.text||String(result||''),provider:selected.id}];
+      setMessages(next);saveCurrentChat(next,selected);
     }catch(e){
-      const errorMessage={role:'error',text:e?.message||String(e)};
-      const next=[...withUser,errorMessage];
-      setMessages(next);
-      saveCurrentChat(next,selected);
-    }finally{
-      setBusy(false);
-    }
+      const next=[...withUser,{role:'error',text:e?.message||String(e)}];setMessages(next);saveCurrentChat(next,selected);
+    }finally{setBusy(false)}
   }
-
   async function saveSettings(){
-    const relayUrl=settings.relayUrl.trim();
-    const pairKey=settings.pairKey.trim();
-    localStorage.setItem('relayUrl',relayUrl);
-    localStorage.setItem('pairKey',pairKey);
-    const next={relayUrl,pairKey};
-    setSettings(next);
-    if(isDesktop){
-      try{setStatus(await window.desktopApi.configureRelay(next))}catch{}
-    }
+    const next={relayUrl:settings.relayUrl.trim(),pairKey:settings.pairKey.trim()};
+    localStorage.setItem('relayUrl',next.relayUrl);localStorage.setItem('pairKey',next.pairKey);setSettings(next);
+    if(isDesktop)try{setStatus(await window.desktopApi.configureRelay(next))}catch{}
   }
-
   async function addApiConnection(){
-    if(!isDesktop)return;
-    setApiError('');
-    try{
-      await window.desktopApi.addApiConnection(apiDraft);
-      setApiDraft({name:'',baseUrl:'',model:'',apiKey:''});
-    }catch(e){
-      setApiError(e?.message||String(e));
-    }
+    if(!isDesktop)return;setApiError('');
+    try{await window.desktopApi.addApiConnection(apiDraft);setApiDraft({name:'',baseUrl:'',model:'',apiKey:''})}
+    catch(e){setApiError(e?.message||String(e))}
   }
-
-  async function removeApiConnection(id){
-    if(!isDesktop)return;
-    try{await window.desktopApi.removeApiConnection(id)}catch{}
-  }
-
-  async function openComputer(){
-    setToolsOpen(false);
-    setComputerOpen(true);
-    setScreenLoading(true);
-    setScreens([]);
-    if(!isDesktop){
-      setScreenLoading(false);
-      return;
-    }
-    try{
-      const result=await window.desktopApi.captureScreens();
-      setScreens(Array.isArray(result)?result:[]);
-    }catch{
-      setScreens([]);
-    }finally{
-      setScreenLoading(false);
-    }
-  }
+  async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
 
   async function attachFiles(event){
-    const files=[...(event.target.files||[])];
-    if(!files.length)return;
+    const files=[...(event.target.files||[])];if(!files.length)return;
+    const file=files[0];
+    const preview={name:file.name,type:file.type,size:file.size,kind:'binary',content:'',url:''};
+    const textLike=file.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
+    if(file.type.startsWith('image/')){preview.kind='image';preview.url=URL.createObjectURL(file)}
+    else if(textLike&&file.size<=2*1024*1024){preview.kind='text';try{preview.content=await file.text()}catch{}}
+    else if(/\.(zip|rar|7z|tar|gz)$/i.test(file.name))preview.kind='archive';
+    setSelectedFile(preview);setSidePanel('file');
     const chunks=[];
-
-    for(const file of files){
-      if(file.size>2*1024*1024){
-        chunks.push('[Skipped '+file.name+': file is larger than 2 MB]');
-        continue;
-      }
-      const textLike=
-        file.type.startsWith('text/')||
-        /\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
-
-      if(!textLike){
-        chunks.push('[Attached '+file.name+': binary/image upload to browser models is not enabled yet]');
-        continue;
-      }
-
-      try{
-        const body=await file.text();
-        chunks.push('[File: '+file.name+']\n'+body);
-      }catch{
-        chunks.push('[Could not read '+file.name+']');
-      }
+    for(const item of files){
+      const itemText=item.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(item.name);
+      if(itemText&&item.size<=2*1024*1024){try{chunks.push('[File: '+item.name+']\n'+await item.text())}catch{}}
+      else chunks.push('[Attached file: '+item.name+']');
     }
-
-    if(chunks.length){
-      setPrompt(p=>(p?p+'\n\n':'')+chunks.join('\n\n'));
-    }
+    if(chunks.length)setPrompt(p=>(p?p+'\n\n':'')+chunks.join('\n\n'));
     event.target.value='';
   }
 
-  if(!authReady)return <div className="splash">Free AI</div>;
+  if(!authReady)return <div className="splash"><Sparkles size={28}/>Free AI</div>;
   if(!session&&supabase)return <Auth/>;
 
-  return <div className={'app '+(!sidebarOpen?'sidebarCollapsed':'')}>
-    <aside className="sidebar">
-      <div className="sideTop">
-        <button className="iconBtn" onClick={()=>setSidebarOpen(false)} title="Hide sidebar">☰</button>
-        <button className="iconBtn" onClick={newChat} title="New chat">✎</button>
+  const sidebarName=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Free AI';
+  const heading=mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
+
+  return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')}>
+    <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
+
+    {sidebarOpen&&<aside className="gptSidebar">
+      <div className="brandRow">
+        <button className="brandButton"><Sparkles size={18}/><b>Free AI</b><ChevronDown size={14}/></button>
+        <div className="brandActions"><button title="Search"><Search size={16}/></button><button title="Notifications"><Bell size={16}/></button></div>
       </div>
-
-      <button className="newChatBtn" onClick={newChat}><span>✎</span> New chat</button>
-
-      <div className="sideSectionLabel">Chats</div>
-      <div className="chatHistory">
-        {chats.length===0
-          ? <div className="emptyHistory">Your conversations will appear here</div>
-          : chats.map(chat=>
-              <button
-                key={chat.id}
-                className={'historyItem '+(currentChatId===chat.id?'active':'')}
-                onClick={()=>openChat(chat)}
-                title={chat.title}
-              >
-                <span>{chat.title}</span>
-              </button>
-            )
-        }
+      <nav className="primaryNav">
+        <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
+        <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>setPage('images')}/>
+        <NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>setPage('scheduled')}/>
+        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>setPage('plugins')}/>
+        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>setPage('explore')}/>
+      </nav>
+      <div className="sidebarScroll">
+        <div className="sidebarGroupTitle">Projects</div>
+        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}><Folder size={15}/>Free AI Workspace</button>
+        <div className="sidebarGroupTitle">Recents</div>
+        {chats.length===0?<div className="sidebarEmpty">No chats yet</div>:chats.map(chat=>
+          <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>openChat(chat)}>{chat.title}</button>
+        )}
       </div>
-
-      <div className="sideBottom">
-        <button className="sideAction" onClick={()=>setSettingsOpen(true)}>
-          <span>⚙</span>
-          <div>
-            <b>Settings</b>
-            <small>{isDesktop
-              ? (status.extension?'Chrome connected':'Chrome not connected')
-              : (status.relay?'Desktop connected':'Desktop not connected')
-            }</small>
-          </div>
+      <div className="sidebarFooter">
+        <button className="profileButton" onClick={()=>setProfileMenu(v=>!v)}>
+          <span className="avatar">{initials(session)}</span>
+          <span className="profileName">{sidebarName}</span>
+          <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-
-        <div className="profileRow">
-          <div className="avatar">{(session?.user?.email||'L')[0].toUpperCase()}</div>
-          <div className="profileText">
-            <b>{session?.user?.email||'Local workspace'}</b>
-            <small>{supabase?'Signed in':'Authentication not configured'}</small>
-          </div>
-        </div>
+        <button className="voiceButton"><Mic2 size={15}/>Voice</button>
+        <button className="circleIcon"><HelpCircle size={16}/></button>
+        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{setProfileMenu(false);setSettingsOpen(true)}}/>}
       </div>
-    </aside>
+    </aside>}
 
-    <main className="main">
-      <header className="topbar">
-        {!sidebarOpen&&<button className="iconBtn" onClick={()=>setSidebarOpen(true)}>☰</button>}
-
-        <div className="modelWrap">
-          <button className="modelTrigger" onClick={()=>setModelMenu(v=>!v)}>
-            <span>{selected?modelLabel(selected):'Select a model'}</span>
-            <span className="chev">⌄</span>
-          </button>
-
-          {modelMenu&&<div className="modelMenu">
-            <div className="menuTitle">Available models</div>
-
-            {connected.length===0
-              ? <div className="noModels">
-                  <b>No models connected</b>
-                  <span>{isDesktop
-                    ? 'Open a supported AI in Chrome and enable the Free AI extension, or add an API connection in Settings.'
-                    : 'Pair this device with the desktop app first.'
-                  }</span>
-                  {isDesktop&&<button onClick={()=>window.desktopApi.scanProviders()}>Scan again</button>}
-                </div>
-              : connected.map(p=>
-                  <button
-                    key={(p.source||'browser')+':'+p.id}
-                    className={'modelOption '+(selected?.id===p.id&&selected?.source===p.source?'active':'')}
-                    onClick={()=>{setSelected(p);setSelectedTool(null);setModelMenu(false)}}
-                  >
-                    <div className={'providerDot '+(p.source==='api'?'api':p.id)}></div>
-                    <div>
-                      <b>{modelLabel(p)}</b>
-                      <small>{p.source==='api'?'Desktop API · '+(p.model||'model'):'Browser session'}</small>
-                    </div>
-                    {selected?.id===p.id&&selected?.source===p.source&&<span className="check">✓</span>}
-                  </button>
-                )
-            }
-          </div>}
+    <main className="workspace">
+      <header className="workspaceHeader">
+        <div>{!sidebarOpen&&<button className="headerIcon" onClick={()=>setSidebarOpen(true)}><PanelLeft size={18}/></button>}</div>
+        <div className="modeSwitch">
+          <button className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
+          <button className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
         </div>
-
-        <div className="topActions">
-          <div className={'statusPill '+((isDesktop?status.extension:status.relay)?'online':'offline')}>
-            <span></span>
-            {isDesktop
-              ? (status.extension?'Chrome connected':'Chrome offline')
-              : (status.relay?'Desktop connected':'Desktop offline')
-            }
-          </div>
-          <button className="iconBtn" onClick={()=>setSettingsOpen(true)}>⋯</button>
+        <div className="headerRight">
+          {sidePanel&&<button className="headerIcon" onClick={()=>setSidePanel(null)} title="Close side panel"><X size={17}/></button>}
+          {sidebarOpen&&<button className="headerIcon" onClick={()=>setSidebarOpen(false)} title="Hide sidebar"><PanelLeft size={17}/></button>}
         </div>
       </header>
 
-      <section className="conversation">
+      {page==='chat'&&<section className="chatStage">
         {messages.length===0
-          ? <div className="welcome">
-              <div className="orb">✦</div>
-              <h1>{selected?'How can I help?':'Choose a model to start'}</h1>
-              <p>{selected
-                ? (selected.source==='api'
-                    ? 'This conversation uses an API connection stored on your desktop.'
-                    : 'This conversation uses your existing browser session.')
-                : 'Only models that are actually connected are shown.'
-              }</p>
-              <div className="suggestions">
-                <button onClick={()=>setPrompt('Help me plan a project')}>Plan a project</button>
-                <button onClick={()=>setPrompt('Review my code and suggest improvements')}>Review code</button>
-                <button onClick={()=>setPrompt('Research this topic and compare the options')}>Research</button>
-                <button onClick={()=>setToolsOpen(true)}>Use tools</button>
-              </div>
+          ? <div className={'emptyChat '+(mode==='work'?'workEmpty':'')}>
+              <h1>{heading}</h1>
+              <Composer
+                mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
+                selected={selected} connected={connected} setSelected={setSelected}
+                modelMenu={modelMenu} setModelMenu={setModelMenu}
+                effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
+                plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
+                mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
+                fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
+                onBrowser={()=>{setPlusMenu(false);setSidePanel('browser')}}
+                onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
+                onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
+              />
             </div>
-          : <div className="messages">
-              {messages.map((m,i)=>
-                <div key={i} className={'messageRow '+m.role}>
-                  <div className="messageInner">
-                    <div className="messageLabel">{m.role==='user'?'You':m.role==='error'?'Error':modelLabel(selected)}</div>
-                    <div className="messageText">{m.text}</div>
+          : <div className="conversationView">
+              <div className="messageList">
+                {messages.map((m,i)=><div key={i} className={'chatMessage '+m.role}>
+                  {m.role!=='user'&&<div className="assistantMark"><Sparkles size={16}/></div>}
+                  <div className="messageBubble">
+                    {m.role!=='user'&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
+                    <div className="messageBody">{m.text}</div>
                   </div>
-                </div>
-              )}
+                </div>)}
+              </div>
+              <div className="conversationComposer">
+                <Composer
+                  compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
+                  selected={selected} connected={connected} setSelected={setSelected}
+                  modelMenu={modelMenu} setModelMenu={setModelMenu}
+                  effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
+                  plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
+                  mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
+                  fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
+                  onBrowser={()=>{setPlusMenu(false);setSidePanel('browser')}}
+                  onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
+                  onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
+                />
+              </div>
             </div>
         }
-      </section>
+        <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
+      </section>}
 
-      <div className="composerZone">
-        <div className="composer">
-          {selectedTool&&
-            <div className="toolChip">
-              <span>MCP: {selectedTool.mcp}</span>
-              <small>via {selectedTool.ownerName}</small>
-              <button onClick={()=>setSelectedTool(null)}>×</button>
-            </div>
-          }
-
-          <textarea
-            value={prompt}
-            onChange={e=>setPrompt(e.target.value)}
-            onKeyDown={e=>{
-              if(e.key==='Enter'&&!e.shiftKey){
-                e.preventDefault();
-                send();
-              }
-            }}
-            placeholder={selected?'Message '+modelLabel(selected):'Select a connected model first'}
-          />
-
-          <div className="composerBar">
-            <div className="composerLeft">
-              <button className="roundBtn" onClick={()=>setToolsOpen(v=>!v)}>＋</button>
-              <button className="toolBtn" onClick={()=>setToolsOpen(v=>!v)}>⌘ Tools</button>
-              <button className="toolBtn" onClick={openComputer}>▣ Computer</button>
-            </div>
-            <button
-              className={'sendBtn '+(prompt.trim()&&selected?'ready':'')}
-              disabled={!prompt.trim()||!selected||busy}
-              onClick={send}
-            >{busy?'…':'↑'}</button>
-          </div>
-
-          <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
-
-          {toolsOpen&&<div className="toolsMenu">
-            <button onClick={()=>fileRef.current?.click()}>📎 Add text/code files</button>
-            <button onClick={openComputer}>▣ View computer screens</button>
-            <div className="toolsDivider"></div>
-            <div className="toolsLabel">Installed MCP / connectors</div>
-            {mcpTools.length===0
-              ? <div className="toolsEmpty">No installed MCP tools were detected in the connected browser models.</div>
-              : mcpTools.map(tool=>
-                  <button
-                    key={tool.key}
-                    onClick={()=>{setSelectedTool(tool);setToolsOpen(false)}}
-                  >
-                    ⌘ {tool.mcp}<small>{tool.ownerName}</small>
-                  </button>
-                )
-            }
-          </div>}
-        </div>
-
-        <div className="disclaimer">Free AI can make mistakes. Check important information.</div>
-      </div>
+      {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')}/>}
+      {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
+      {page==='images'&&<PlaceholderPage title="Images" subtitle="Image generation and visual workspaces will live here." icon={Image}/>}
+      {page==='scheduled'&&<PlaceholderPage title="Scheduled" subtitle="Scheduled prompts and recurring jobs will appear here." icon={Clock3}/>}
     </main>
 
-    {settingsOpen&&
-      <div className="modalBackdrop" onMouseDown={()=>setSettingsOpen(false)}>
-        <div className="settingsModal" onMouseDown={e=>e.stopPropagation()}>
-          <div className="settingsHeader">
-            <div>
-              <h2>Settings</h2>
-              <p>Connections, APIs and remote access</p>
-            </div>
-            <button className="iconBtn" onClick={()=>setSettingsOpen(false)}>×</button>
-          </div>
+    {sidePanel==='browser'&&<BrowserPane onClose={()=>setSidePanel(null)}/>}
+    {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
+    {sidePanel==='computer'&&<ComputerPane
+      screens={screens} setScreens={setScreens} fullAccess={appPrefs.fullAccess}
+      onEnable={()=>persistPrefs({...appPrefs,fullAccess:true})}
+      onClose={()=>setSidePanel(null)}
+    />}
 
-          <div className="settingsGrid">
-            <div className="settingCard">
-              <div>
-                <b>{isDesktop?'Chrome extension':'Paired desktop'}</b>
-                <small>{isDesktop
-                  ? 'Browser models are detected automatically.'
-                  : 'Android uses the models and APIs available on your desktop.'
-                }</small>
-              </div>
-              <span className={'state '+((isDesktop?status.extension:status.relay)?'good':'bad')}>
-                {(isDesktop?status.extension:status.relay)?'Connected':'Disconnected'}
-              </span>
-            </div>
-
-            <label>
-              Relay URL
-              <input
-                value={settings.relayUrl}
-                onChange={e=>setSettings({...settings,relayUrl:e.target.value})}
-                placeholder="wss://your-relay.example.com"
-              />
-            </label>
-
-            <label>
-              Android pairing API key
-              <div className="keyRow">
-                <input
-                  value={settings.pairKey}
-                  onChange={e=>setSettings({...settings,pairKey:e.target.value})}
-                  placeholder="Generate a key on desktop"
-                />
-                {isDesktop&&<button onClick={()=>setSettings({...settings,pairKey:randomKey()})}>Generate</button>}
-              </div>
-            </label>
-
-            <button className="saveBtn" onClick={saveSettings}>Save connection</button>
-
-            <div className="settingsDivider"></div>
-
-            <div className="settingsSectionTitle">
-              <div>
-                <b>API models</b>
-                <small>{isDesktop
-                  ? 'Keys stay on this computer and are never sent to Android.'
-                  : 'Add or remove API models from the desktop app.'
-                }</small>
-              </div>
-            </div>
-
-            {connected.filter(p=>p.source==='api').map(api=>
-              <div className="apiRow" key={api.id}>
-                <div>
-                  <b>{modelLabel(api)}</b>
-                  <small>{api.model} · {api.baseUrl}</small>
-                </div>
-                {isDesktop&&<button onClick={()=>removeApiConnection(api.id)}>Remove</button>}
-              </div>
-            )}
-
-            {isDesktop&&<>
-              <div className="apiForm">
-                <input
-                  placeholder="Display name (e.g. Local Llama)"
-                  value={apiDraft.name}
-                  onChange={e=>setApiDraft({...apiDraft,name:e.target.value})}
-                />
-                <input
-                  placeholder="Base URL (e.g. http://127.0.0.1:1234/v1)"
-                  value={apiDraft.baseUrl}
-                  onChange={e=>setApiDraft({...apiDraft,baseUrl:e.target.value})}
-                />
-                <input
-                  placeholder="Model ID"
-                  value={apiDraft.model}
-                  onChange={e=>setApiDraft({...apiDraft,model:e.target.value})}
-                />
-                <input
-                  type="password"
-                  placeholder="API key (optional for local servers)"
-                  value={apiDraft.apiKey}
-                  onChange={e=>setApiDraft({...apiDraft,apiKey:e.target.value})}
-                />
-                <button className="saveBtn" onClick={addApiConnection}>Add API model</button>
-                {apiError&&<div className="formError">{apiError}</div>}
-              </div>
-            </>}
-
-            {supabase&&session&&
-              <button className="signOutBtn" onClick={()=>supabase.auth.signOut()}>Sign out</button>
-            }
-          </div>
-        </div>
-      </div>
-    }
-
-    {computerOpen&&
-      <div className="modalBackdrop" onMouseDown={()=>setComputerOpen(false)}>
-        <div className="computerModal" onMouseDown={e=>e.stopPropagation()}>
-          <div className="settingsHeader">
-            <div>
-              <h2>Computer</h2>
-              <p>Screen preview from this desktop</p>
-            </div>
-            <button className="iconBtn" onClick={()=>setComputerOpen(false)}>×</button>
-          </div>
-          <div className="screenGrid">
-            {!isDesktop&&<div className="toolsEmpty">Computer preview is available from the desktop app.</div>}
-            {screenLoading&&<div className="toolsEmpty">Loading screens…</div>}
-            {!screenLoading&&isDesktop&&screens.length===0&&<div className="toolsEmpty">No screens could be captured.</div>}
-            {screens.map(s=>
-              <div className="screenCard" key={s.id}>
-                <img src={s.thumbnail} alt={s.name}/>
-                <span>{s.name}</span>
-              </div>
-            )}
-          </div>
-          <div className="computerNote">This build can preview screens. Mouse/keyboard control is not enabled yet.</div>
-        </div>
-      </div>
-    }
+    {settingsOpen&&<SettingsView
+      section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
+      prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
+      saveSettings={saveSettings} connected={connected} apiDraft={apiDraft} setApiDraft={setApiDraft}
+      addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
+      onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
+      onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
+      onBrowser={()=>{setSettingsOpen(false);setSidePanel('browser')}}
+    />}
   </div>
 }
 
-function Auth(){
-  const [mode,setMode]=useState('signin');
-  const [email,setEmail]=useState('');
-  const [password,setPassword]=useState('');
-  const [message,setMessage]=useState('');
-  const [working,setWorking]=useState(false);
+function NavItem({icon:Icon,label,active,onClick}){
+  return <button className={'navItem '+(active?'active':'')} onClick={onClick}><Icon size={16}/><span>{label}</span></button>
+}
 
-  useEffect(()=>{
-    let desktopOff=null;
-    let nativeHandle=null;
-    let cancelled=false;
+function Composer(props){
+  const {
+    compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
+    effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
+    fullAccess,setFullAccess,onBrowser,onComputer,onPlugins
+  }=props;
+  const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
+  return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
+    {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
+    <textarea
+      value={prompt} onChange={e=>setPrompt(e.target.value)}
+      onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
+      placeholder={mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
+    />
+    <div className="composerBottom">
+      <div className="composerLeft">
+        <div className="menuAnchor">
+          <button className="plusCircle" onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
+          {plusMenu&&<PlusMenu
+            fileRef={fileRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
+            tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
+          />}
+        </div>
+        {mode==='work'&&<button className={'accessButton '+(fullAccess?'enabled':'')} onClick={()=>setFullAccess(!fullAccess)}><ShieldCheck size={15}/>Full access</button>}
+      </div>
 
-    async function finishOAuth(url){
-      if(!url||!url.startsWith('freeai://auth'))return;
-      setWorking(true);
-      setMessage('');
-      try{
-        const parsed=new URL(url);
-        const oauthError=parsed.searchParams.get('error_description')||parsed.searchParams.get('error');
-        if(oauthError)throw new Error(oauthError);
+      <div className="composerRight">
+        <div className="menuAnchor">
+          <button className="modelButton" onClick={()=>setModelMenu(v=>!v)}>
+            <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
+          </button>
+          {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
+        </div>
+        <div className="menuAnchor">
+          <button className="effortButton" onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
+          {effortMenu&&<EffortMenu effort={effort} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
+        </div>
+        <button className="micButton"><Mic2 size={18}/></button>
+        <button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
+          {busy?<RefreshCw className="spin" size={17}/>:prompt.trim()?<ArrowUp size={18}/>:<Volume2 size={18}/>}
+        </button>
+      </div>
+    </div>
+    {mode==='work'&&<div className="workActions">
+      <button><Folder size={15}/>Choose project</button>
+      <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
+      <button onClick={onBrowser}><Globe2 size={15}/>Browser</button>
+    </div>}
+  </div>
+}
 
-        const code=parsed.searchParams.get('code');
-        if(!code)throw new Error('Google did not return an authorization code.');
+function ModelMenu({connected,selected,choose}){
+  return <div className="floatingMenu modelPicker">
+    <div className="floatingTitle">Select model</div>
+    {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
+      connected.map(model=><button key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
+        <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
+        <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name}</small></span>
+        {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
+      </button>)}
+  </div>
+}
 
-        const {error}=await supabase.auth.exchangeCodeForSession(code);
-        if(error)throw error;
+function EffortMenu({effort,choose}){
+  const rows=[['instant','Instant','Fastest'],['medium','Medium','Balanced'],['high','High','Deeper reasoning'],['extra','Extra High','Maximum effort']];
+  return <div className="floatingMenu effortPicker">
+    <div className="floatingTitle">Reasoning effort</div>
+    {rows.map(([value,label,sub])=><button key={value} className="pickerRow" onClick={()=>choose(value)}>
+      <Brain size={16}/><span className="pickerText"><b>{label}</b><small>{sub}</small></span>{effort===value&&<Check size={15}/>}
+    </button>)}
+  </div>
+}
 
-        if(isNative){
-          try{await Browser.close()}catch{}
-        }
-      }catch(e){
-        if(!cancelled)setMessage(e?.message||String(e));
-      }finally{
-        if(!cancelled)setWorking(false);
-      }
-    }
+function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
+  return <div className="floatingMenu plusPicker">
+    <div className="floatingTitle">Add</div>
+    <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
+    <MenuRow icon={Chrome} label="Attach Google Chrome" onClick={onBrowser}/>
+    {mode==='work'&&<><MenuRow icon={Folder} label="Work in a project" sub="Start a chat in a project"/><MenuRow icon={Target} label="Goal" sub="Set a goal to keep pursuing"/><MenuRow icon={Sparkles} label="Plan mode" sub="Turn plan mode on"/><MenuRow icon={PenLine} label="Sketch" sub="Draw a sketch"/></>}
+    <div className="floatingTitle section">Plugins</div>
+    {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
+      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName} onClick={()=>setSelectedTool(t)}/>
+    )}
+    <MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>
+    <MenuRow icon={Monitor} label="Computer" sub="View or control your desktop" onClick={onComputer}/>
+  </div>
+}
 
-    if(isDesktop&&window.desktopApi?.onAuthCallback){
-      desktopOff=window.desktopApi.onAuthCallback(finishOAuth);
-    }
+function MenuRow({icon:Icon,label,sub,onClick}){
+  return <button className="menuRow" onClick={onClick}><Icon size={18}/><span><b>{label}</b>{sub&&<small>{sub}</small>}</span></button>
+}
 
-    if(isNative){
-      CapacitorApp.addListener('appUrlOpen',({url})=>finishOAuth(url))
-        .then(handle=>{nativeHandle=handle})
-        .catch(()=>{});
+function ProfileMenu({session,onSettings}){
+  const name=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'User';
+  return <div className="profileMenu">
+    <div className="profileMenuUser"><span className="avatar large">{initials(session)}</span><b>{name}</b></div>
+    <MenuRow icon={Briefcase} label="Workspace settings"/>
+    <MenuRow icon={RotateCcw} label="Usage remaining" sub="View limits and usage"/>
+    <MenuRow icon={Settings} label="Settings" onClick={onSettings}/>
+    <MenuRow icon={LogOut} label="Log out" onClick={()=>supabase?.auth.signOut()}/>
+  </div>
+}
 
-      CapacitorApp.getLaunchUrl()
-        .then(result=>{if(result?.url)finishOAuth(result.url)})
-        .catch(()=>{});
-    }
-
-    return()=>{
-      cancelled=true;
-      desktopOff?.();
-      nativeHandle?.remove?.();
-    };
-  },[]);
-
-  async function submit(event){
-    event.preventDefault();
-    setWorking(true);
-    setMessage('');
-    try{
-      const result=mode==='signup'
-        ? await supabase.auth.signUp({email,password})
-        : await supabase.auth.signInWithPassword({email,password});
-
-      if(result.error)throw result.error;
-      if(mode==='signup'&&!result.data.session){
-        setMessage('Account created. Check your email if confirmation is enabled.');
-      }
-    }catch(e){
-      setMessage(e?.message||String(e));
-    }finally{
-      setWorking(false);
-    }
-  }
-
-  async function google(){
-    setWorking(true);
-    setMessage('');
-    try{
-      const externalFlow=isDesktop||isNative;
-      const redirectTo=externalFlow?AUTH_CALLBACK_URL:window.location.origin;
-
-      const {data,error}=await supabase.auth.signInWithOAuth({
-        provider:'google',
-        options:{
-          redirectTo,
-          skipBrowserRedirect:externalFlow
-        }
-      });
-
-      if(error)throw error;
-
-      if(externalFlow){
-        if(!data?.url)throw new Error('Google sign-in URL was not created.');
-
-        if(isDesktop){
-          await window.desktopApi.openAuthUrl(data.url);
-        }else{
-          await Browser.open({
-            url:data.url,
-            presentationStyle:'popover'
-          });
-        }
-      }
-    }catch(e){
-      setMessage(e?.message||String(e));
-      setWorking(false);
-    }
-  }
-
-  return <div className="auth">
-    <div className="authCard">
-      <div className="authLogo">✦</div>
-      <h1>{mode==='signup'?'Create your account':'Welcome back'}</h1>
-      <p>Sign in to Free AI</p>
-
-      <button className="googleBtn" onClick={google} disabled={working}>Continue with Google</button>
-      <div className="authDivider"><span></span><small>or</small><span></span></div>
-
-      <form onSubmit={submit}>
-        <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" required/>
-        <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password" minLength="6" required/>
-        <button className="saveBtn" disabled={working}>{working?'Please wait…':(mode==='signup'?'Create account':'Sign in')}</button>
-      </form>
-
-      <button className="authSwitch" onClick={()=>{setMode(mode==='signup'?'signin':'signup');setMessage('')}}>
-        {mode==='signup'?'Already have an account? Sign in':'New to Free AI? Create account'}
-      </button>
-
-      {message&&<div className="formError">{message}</div>}
+function PluginsPage({tools,connected,onBack}){
+  const popular=[
+    ['Gmail','Read and manage Gmail',Mail],['Google Drive','Drive, Docs, Sheets or Slides',HardDrive],
+    ['GitHub','Triage PRs, issues, CI, and publish flows',GitBranch],['Calendar','Manage calendar events',CalendarDays],
+    ['Supabase','Manage and query databases',Database],['Browser','Control the in-app browser',Globe2],
+    ['Computer','Control Windows apps',Monitor],['Files','Work with local documents',FileText]
+  ];
+  return <div className="contentPage">
+    <PageTop onBack={onBack} title="Plugins" action="Add"/>
+    <div className="contentInner">
+      <h1>Plugins</h1><p className="pageLead">Work with Free AI across your favorite tools</p>
+      <div className="searchBar"><Search size={17}/><input placeholder="Search plugins"/></div>
+      <section className="pluginSection">
+        <div className="sectionHeading"><h2>Installed</h2><Settings size={16}/></div>
+        <div className="installedStrip">
+          {connected.map(p=><div key={p.id} className={'installedIcon '+p.id} title={modelLabel(p)}>{modelLabel(p).slice(0,1)}</div>)}
+          {tools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={15}/></div>)}
+          {!connected.length&&!tools.length&&<span className="muted">No browser models or MCP tools detected yet.</span>}
+        </div>
+      </section>
+      <section className="pluginSection"><h2>Available in Free AI</h2>
+        <div className="pluginGrid">{popular.map(([name,desc,Icon])=><div className="pluginCard" key={name}><span className="pluginIcon"><Icon size={20}/></span><span><b>{name}</b><small>{desc}</small></span><Plus size={18}/></div>)}</div>
+      </section>
     </div>
   </div>
 }
 
+function ExplorePage({tools,chats,onBack}){
+  return <div className="contentPage">
+    <PageTop onBack={onBack} title="Explore"/>
+    <div className="contentInner exploreInner">
+      <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
+      <h3>Apps</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/>
+      <MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/>
+      <h3>Plugins</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName}/>)}
+      <h3>Conversations</h3>{chats.slice(0,8).map(c=><MenuRow key={c.id} icon={Bot} label={c.title} sub={c.modelName}/>)}
+    </div>
+  </div>
+}
+
+function PageTop({onBack,title,action}){
+  return <div className="pageTop"><button onClick={onBack}><ArrowLeft size={16}/>Back to app</button><b>{title}</b>{action?<button className="pillAction">{action}<ChevronDown size={13}/></button>:<span/>}</div>
+}
+function PlaceholderPage({title,subtitle,icon:Icon}){
+  return <div className="placeholderPage"><Icon size={38}/><h1>{title}</h1><p>{subtitle}</p></div>
+}
+
+function BrowserPane({onClose}){
+  const [url,setUrl]=useState('https://www.google.com/');
+  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false});
+  const surfaceRef=useRef(null);
+  useEffect(()=>{
+    if(!isDesktop)return;
+    const off=window.desktopApi.onBrowserState?.(s=>{setState(s);if(s.url)setUrl(s.url)});
+    return()=>{off?.();window.desktopApi.browserClose?.().catch(()=>{})};
+  },[]);
+  useEffect(()=>{
+    if(!isDesktop||!surfaceRef.current)return;
+    const el=surfaceRef.current;
+    const sync=()=>{
+      const r=el.getBoundingClientRect();
+      window.desktopApi.browserSetBounds({x:r.x,y:r.y,width:r.width,height:r.height}).catch(()=>{});
+    };
+    const ro=new ResizeObserver(sync);ro.observe(el);window.addEventListener('resize',sync);sync();
+    const r=el.getBoundingClientRect();
+    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).catch(()=>{});
+    return()=>{ro.disconnect();window.removeEventListener('resize',sync)};
+  },[]);
+  function navigate(){if(isDesktop)window.desktopApi.browserNavigate(url).catch(()=>{})}
+  return <aside className="sidePane browserPane">
+    <div className="paneTabs"><div className="browserTab"><Globe2 size={14}/><span>{state.title||'New tab'}</span><X size={13}/></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="browserToolbar">
+      <button disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
+      <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
+      <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
+      <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
+      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)}><ExternalLink size={15}/></button>
+    </div>
+    <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
+  </aside>
+}
+
+function FilePane({file,onClose}){
+  return <aside className="sidePane filePane">
+    <div className="paneTabs"><div className="browserTab"><File size={14}/><span>{file?.name||'File'}</span></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="fileMeta"><span>{file?.name}</span><small>{file?.type||'File'} · {humanSize(file?.size)}</small></div>
+    <div className="filePreview">
+      {file?.kind==='image'&&<img src={file.url} alt={file.name}/>}
+      {file?.kind==='text'&&<pre>{file.content}</pre>}
+      {file?.kind==='archive'&&<div className="paneEmpty"><Archive size={38}/><b>Archive previews aren't supported yet</b><span>The file is attached to this chat.</span></div>}
+      {file?.kind==='binary'&&<div className="paneEmpty"><File size={38}/><b>Preview unavailable</b><span>The file is attached to this chat.</span></div>}
+    </div>
+  </aside>
+}
+
+function ComputerPane({screens,setScreens,fullAccess,onEnable,onClose}){
+  const [loading,setLoading]=useState(false);
+  const [lastPoint,setLastPoint]=useState(null);
+  const [typeText,setTypeText]=useState('');
+  async function refresh(){
+    if(!isDesktop)return;setLoading(true);
+    try{setScreens(await window.desktopApi.captureScreens())}catch{setScreens([])}finally{setLoading(false)}
+  }
+  useEffect(()=>{refresh()},[]);
+  async function clickScreen(e,screen){
+    if(!fullAccess)return;
+    const rect=e.currentTarget.getBoundingClientRect();
+    const nx=(e.clientX-rect.left)/rect.width,ny=(e.clientY-rect.top)/rect.height;
+    setLastPoint({displayId:screen.displayId,nx,ny});
+    try{
+      if(typeText)await window.desktopApi.computerClickAndType({displayId:screen.displayId,nx,ny,text:typeText});
+      else await window.desktopApi.computerClick({displayId:screen.displayId,nx,ny});
+      setTimeout(refresh,500);
+    }catch{}
+  }
+  return <aside className="sidePane computerPane">
+    <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="computerToolbar">
+      <div><b>Computer use</b><small>{fullAccess?'Full access enabled':'Preview only'}</small></div>
+      {!fullAccess?<button className="enableAccess" onClick={onEnable}><ShieldCheck size={14}/>Enable full access</button>:<button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>}
+    </div>
+    <div className="computerType"><input value={typeText} onChange={e=>setTypeText(e.target.value)} placeholder="Optional text to type after clicking"/><small>{typeText?'Click a point on the screen to click and type.':'Click the screen to control the mouse.'}</small></div>
+    <div className="computerScreens">
+      {screens.map(screen=><div className={'computerScreen '+(!fullAccess?'previewOnly':'')} key={screen.id}>
+        <img src={screen.thumbnail} alt={screen.name} onClick={e=>clickScreen(e,screen)}/><span>{screen.name}</span>
+      </div>)}
+      {!screens.length&&!loading&&<div className="paneEmpty"><Monitor size={34}/><b>No screen preview available</b></div>}
+    </div>
+    {lastPoint&&<div className="controlStatus"><MousePointer2 size={13}/>Last control point sent</div>}
+  </aside>
+}
+
+function SettingsView(props){
+  const {section,setSection,onClose,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
+  return <div className="settingsScreen">
+    <aside className="settingsNav">
+      <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
+      <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
+      {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
+        <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
+        {settingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>setSection(label)}><Icon size={15}/>{label}</button>)}
+      </div>)}
+    </aside>
+    <main className="settingsContent">
+      <div className="settingsContentTop"><h1>{section}</h1><button onClick={onClose}><X size={18}/></button></div>
+      {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Profile'&&<SimpleSettings title="Profile" rows={[['Account','Manage your Free AI identity'],['Workspace','Personal workspace']]}/>}
+      {section==='Appearance'&&<SimpleSettings title="Appearance" rows={[['Theme','Dark'],['Density','Comfortable']]}/>}
+      {section==='Voice'&&<SimpleSettings title="Voice" rows={[['Voice input','Enabled'],['Playback','System default']]}/>}
+      {section==='Configuration'&&<SimpleSettings title="Configuration" rows={[['Default mode','Chat'],['Suggested prompts','On']]}/>}
+      {section==='Keyboard shortcuts'&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Settings','Ctrl+,']]}/>}
+      {section==='Computer use'&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your Windows desktop from Work mode." status={prefs.fullAccess?'Full access':'Preview only'} action={onComputer}/>}
+      {section==='Plugins'&&<IntegrationSettings icon={Plug} title="Plugins" text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
+      {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text="Open a real browser panel beside your chat." status={isDesktop?'Available':'Desktop only'} action={onBrowser}/>}
+      {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
+      {section==='Git'&&<SimpleSettings title="Git" rows={[['Git integration','Available through installed plugins'],['Repository context','Work mode']]}/>}
+      {section==='Environments'&&<SimpleSettings title="Environments" rows={[['Desktop runtime',isDesktop?'Electron desktop':'Mobile'],['Browser bridge',status.extension?'Connected':'Disconnected']]}/>}
+    </main>
+  </div>
+}
+
+function Toggle({value,onChange}){return <button className={'toggle '+(value?'on':'')} onClick={()=>onChange(!value)}><span/></button>}
+function GeneralSettings({prefs,setPrefs}){
+  return <div className="settingsPane">
+    <h3>Permissions</h3>
+    <div className="settingBlock">
+      <SettingRow title="Default permissions" desc="Free AI can access connected tools when you select them." control={<Toggle value={prefs.defaultPermissions} onChange={v=>setPrefs({...prefs,defaultPermissions:v})}/>}/>
+      <SettingRow title="Full access" desc="Allow Work mode to control the computer without asking for each manual click." control={<Toggle value={prefs.fullAccess} onChange={v=>setPrefs({...prefs,fullAccess:v})}/>}/>
+    </div>
+    <h3>General</h3>
+    <div className="settingBlock">
+      <SettingRow title="Language" desc="Language for the app UI" control={<select value={prefs.language} onChange={e=>setPrefs({...prefs,language:e.target.value})}><option>English</option><option>עברית</option><option>Français</option></select>}/>
+      <SettingRow title="Bottom panel" desc="Show panel controls in Work mode" control={<Toggle value={prefs.showBottomPanel} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
+      <SettingRow title="Speed" desc="Default reasoning speed" control={<span className="valuePill">Standard</span>}/>
+      <SettingRow title="Suggested prompts" desc="Show starter actions in empty chats" control={<Toggle value={true} onChange={()=>{}}/>}/>
+    </div>
+  </div>
+}
+function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
+function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<ChevronRight size={16}/>}/>)}</div></div>}
+function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
+
+function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
+  return <div className="settingsPane">
+    <h3>Desktop bridge</h3>
+    <div className="settingBlock">
+      <SettingRow title="Chrome extension" desc="Browser models are detected automatically." control={<span className={'connectionStatus '+(status.extension?'good':'')}>{status.extension?'Connected':'Disconnected'}</span>}/>
+      <label className="formLabel">Relay URL<input value={settings.relayUrl} onChange={e=>setSettings({...settings,relayUrl:e.target.value})} placeholder="wss://your-relay.example.com"/></label>
+      <label className="formLabel">Android pairing API key<div className="keyLine"><input value={settings.pairKey} onChange={e=>setSettings({...settings,pairKey:e.target.value})}/>{isDesktop&&<button onClick={()=>setSettings({...settings,pairKey:randomKey()})}>Generate</button>}</div></label>
+      <button className="primaryAction" onClick={saveSettings}>Save connection</button>
+    </div>
+    <h3>API models</h3>
+    <div className="settingBlock">
+      {connected.filter(p=>p.source==='api').map(api=><div className="apiItem" key={api.id}><div><b>{modelLabel(api)}</b><small>{api.model} · {api.baseUrl}</small></div>{isDesktop&&<button onClick={()=>removeApiConnection(api.id)}>Remove</button>}</div>)}
+      {isDesktop&&<div className="apiForm">
+        <input placeholder="Display name" value={apiDraft.name} onChange={e=>setApiDraft({...apiDraft,name:e.target.value})}/>
+        <input placeholder="Base URL" value={apiDraft.baseUrl} onChange={e=>setApiDraft({...apiDraft,baseUrl:e.target.value})}/>
+        <input placeholder="Model ID" value={apiDraft.model} onChange={e=>setApiDraft({...apiDraft,model:e.target.value})}/>
+        <input type="password" placeholder="API key (optional for local servers)" value={apiDraft.apiKey} onChange={e=>setApiDraft({...apiDraft,apiKey:e.target.value})}/>
+        <button className="primaryAction" onClick={addApiConnection}>Add API model</button>{apiError&&<div className="formError">{apiError}</div>}
+      </div>}
+    </div>
+  </div>
+}
+
+function Auth(){
+  const [mode,setMode]=useState('signin'),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[message,setMessage]=useState(''),[working,setWorking]=useState(false);
+
+  useEffect(()=>{
+    let desktopOff=null,nativeHandle=null,cancelled=false;
+    async function finishOAuth(url){
+      if(!url||!url.startsWith('freeai://auth'))return;
+      setWorking(true);setMessage('');
+      try{
+        const parsed=new URL(url);
+        const oauthError=parsed.searchParams.get('error_description')||parsed.searchParams.get('error');
+        if(oauthError)throw new Error(oauthError);
+        const code=parsed.searchParams.get('code');
+        if(!code)throw new Error('Google did not return an authorization code.');
+        const {error}=await supabase.auth.exchangeCodeForSession(code);if(error)throw error;
+        if(isNative)try{await Browser.close()}catch{}
+      }catch(e){if(!cancelled)setMessage(e?.message||String(e))}
+      finally{if(!cancelled)setWorking(false)}
+    }
+    if(isDesktop&&window.desktopApi?.onAuthCallback)desktopOff=window.desktopApi.onAuthCallback(finishOAuth);
+    if(isNative){
+      CapacitorApp.addListener('appUrlOpen',({url})=>finishOAuth(url)).then(h=>nativeHandle=h).catch(()=>{});
+      CapacitorApp.getLaunchUrl().then(r=>{if(r?.url)finishOAuth(r.url)}).catch(()=>{});
+    }
+    return()=>{cancelled=true;desktopOff?.();nativeHandle?.remove?.()};
+  },[]);
+
+  async function submit(e){
+    e.preventDefault();setWorking(true);setMessage('');
+    try{
+      const result=mode==='signup'?await supabase.auth.signUp({email,password}):await supabase.auth.signInWithPassword({email,password});
+      if(result.error)throw result.error;
+      if(mode==='signup'&&!result.data.session)setMessage('Account created. Check your email if confirmation is enabled.');
+    }catch(e){setMessage(e?.message||String(e))}finally{setWorking(false)}
+  }
+  async function google(){
+    setWorking(true);setMessage('');
+    try{
+      const external=isDesktop||isNative;
+      const {data,error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:external?AUTH_CALLBACK_URL:window.location.origin,skipBrowserRedirect:external}});
+      if(error)throw error;
+      if(external){
+        if(!data?.url)throw new Error('Google sign-in URL was not created.');
+        if(isDesktop)await window.desktopApi.openAuthUrl(data.url);
+        else await Browser.open({url:data.url,presentationStyle:'popover'});
+      }
+    }catch(e){setMessage(e?.message||String(e));setWorking(false)}
+  }
+
+  return <div className="authScreen"><div className="authCard">
+    <div className="authBrand"><Sparkles size={22}/></div>
+    <h1>{mode==='signup'?'Create your account':'Welcome back'}</h1><p>Sign in to Free AI</p>
+    <button className="googleButton" onClick={google} disabled={working}>Continue with Google</button>
+    <div className="authDivider"><span/>or<span/></div>
+    <form onSubmit={submit}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" required/><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password" minLength="6" required/><button disabled={working}>{working?'Please wait…':mode==='signup'?'Create account':'Sign in'}</button></form>
+    <button className="authSwitch" onClick={()=>{setMode(mode==='signup'?'signin':'signup');setMessage('')}}>{mode==='signup'?'Already have an account? Sign in':'New to Free AI? Create account'}</button>
+    {message&&<div className="formError">{message}</div>}
+  </div></div>
+}
+
 function sendRemote(url,key,payload){
   return new Promise((resolve,reject)=>{
-    if(!url||!key){
-      reject(new Error('Set the relay URL and pairing key in Settings first.'));
-      return;
-    }
-
-    let ws;
-    try{ws=new WebSocket(url)}
-    catch{
-      reject(new Error('The relay URL is invalid.'));
-      return;
-    }
-
-    const id=crypto.randomUUID();
-    const timer=setTimeout(()=>{
-      try{ws.close()}catch{}
-      reject(new Error('Desktop did not answer in time.'));
-    },180000);
-
+    if(!url||!key)return reject(new Error('Set the relay URL and pairing key in Settings first.'));
+    let ws;try{ws=new WebSocket(url)}catch{return reject(new Error('The relay URL is invalid.'))}
+    const id=crypto.randomUUID(),timer=setTimeout(()=>{try{ws.close()}catch{};reject(new Error('Desktop did not answer in time.'))},180000);
     ws.onopen=()=>ws.send(JSON.stringify({type:'hello',role:'mobile',key}));
-
-    ws.onmessage=event=>{
-      let m;try{m=JSON.parse(event.data)}catch{return}
-
-      if(m.type==='ready'){
-        if(!m.desktopOnline){
-          clearTimeout(timer);
-          ws.close();
-          reject(new Error('Paired desktop is offline.'));
-          return;
-        }
-        ws.send(JSON.stringify({type:'prompt',id,...payload}));
-        return;
-      }
-
-      if(m.type==='response'&&m.id===id){
-        clearTimeout(timer);
-        ws.close();
-        if(m.error)reject(new Error(m.error));
-        else resolve(m);
-      }
+    ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
+      if(m.type==='ready'){if(!m.desktopOnline){clearTimeout(timer);ws.close();reject(new Error('Paired desktop is offline.'));return}ws.send(JSON.stringify({type:'prompt',id,...payload}))}
+      if(m.type==='response'&&m.id===id){clearTimeout(timer);ws.close();m.error?reject(new Error(m.error)):resolve(m)}
     };
-
-    ws.onerror=()=>{
-      clearTimeout(timer);
-      reject(new Error('Cannot connect to relay.'));
-    };
+    ws.onerror=()=>{clearTimeout(timer);reject(new Error('Cannot connect to relay.'))};
   });
 }
 
