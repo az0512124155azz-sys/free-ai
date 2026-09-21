@@ -346,7 +346,7 @@ function App(){
               <BrandMark size={20}/><span><b>Free AI</b><small>Chat and work with all connected models</small></span>{product==='free'&&<Check size={16}/>}
             </button>
             <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
-              <Code2 size={20}/><span><b>Super AI</b><small>Build, debug and run coding tasks</small></span>{product==='super'&&<Check size={16}/>}
+              <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Build, debug and run coding tasks</small></span>{product==='super'&&<Check size={16}/>}
             </button>
           </div>}
         </div>
@@ -391,10 +391,10 @@ function App(){
           <button className="headerIcon mobileNavTrigger" onClick={()=>setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={18}/></button>
           {!sidebarOpen&&<button className="headerIcon desktopSidebarTrigger" onClick={()=>setSidebarOpen(true)} aria-label="Open sidebar"><PanelLeft size={18}/></button>}
         </div>
-        <div className="modeSwitch" role="tablist" aria-label="Experience">
+        {product==='free'?<div className="modeSwitch" role="tablist" aria-label="Experience">
           <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
           <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
-        </div>
+        </div>:<div className="superHeaderLabel"><BrandMark size={16}/><span>Super AI</span></div>}
         <div className="mobileModeAnchor">
           <button className="mobileModeButton" aria-haspopup={product==='free'?'menu':undefined} aria-expanded={product==='free'?mobileModeMenu:undefined} onClick={()=>product==='free'&&setMobileModeMenu(v=>!v)}>
             <span>{product==='super'?'Super AI':mode==='work'?'Free AI · Work':'Free AI · Chat'}</span>{product==='free'&&<ChevronDown size={14}/>}
