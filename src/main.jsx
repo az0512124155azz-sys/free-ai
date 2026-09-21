@@ -166,7 +166,9 @@ function App(){
     root.dataset.theme=resolved;
     root.dataset.contrast=appPrefs.contrast||'medium';
     root.dataset.accent=appPrefs.accent||'blue';
-    root.style.setProperty('--ui-scale',String((Number(appPrefs.textSize)||100)/100));
+    const scale=(Number(appPrefs.textSize)||100)/100;
+    root.style.setProperty('--ui-scale',String(scale));
+    document.body.style.zoom=isNative?'1':String(scale);
   },[appPrefs.appearance,appPrefs.contrast,appPrefs.accent,appPrefs.textSize]);
 
   useEffect(()=>{
