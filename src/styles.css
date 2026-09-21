@@ -381,13 +381,22 @@ button:disabled{opacity:.42;cursor:default}
 .placeholderPage h1{color:var(--text);font-size:24px;font-weight:550;margin:12px 0 4px}.placeholderPage p{margin:0;font-size:13px;max-width:440px}
 
 .sidePane{min-width:0;background:var(--canvas);border-left:1px solid var(--border-soft);display:flex;flex-direction:column;position:relative;z-index:5}
-.paneTabs{height:48px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;padding:0 8px}
-.browserTab{height:32px;max-width:70%;display:flex;align-items:center;gap:7px;background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:9px;padding:0 10px;font-size:11px}
-.browserTab span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.paneTabs>button,.browserToolbar>button{width:30px;height:30px;background:transparent;border-radius:var(--r-lg);display:grid;place-items:center;color:var(--text-tertiary)}
-.paneTabs>button:hover,.browserToolbar>button:hover{background:var(--hover);color:var(--text)}
+.paneTabs{height:48px;border-bottom:1px solid var(--border-soft);display:flex;align-items:center;justify-content:space-between;padding:0 8px;gap:6px}
+.browserTabsScroll{flex:1;min-width:0;display:flex;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none}
+.browserTabsScroll::-webkit-scrollbar{display:none}
+.browserTab{height:32px;min-width:112px;max-width:190px;display:grid;grid-template-columns:14px minmax(0,1fr) 18px;align-items:center;gap:6px;background:transparent;border:1px solid transparent;border-radius:9px;padding:0 7px 0 9px;font-size:11px;color:var(--text-tertiary);text-align:left}
+.browserTab.active{background:var(--surface-secondary);border-color:var(--border-soft);color:var(--text)}
+.browserTab:hover{background:var(--hover)}
+.browserTab>span:not(.tabClose){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tabClose{width:18px;height:18px;border-radius:6px;display:grid;place-items:center;color:var(--muted)}
+.tabClose:hover{background:var(--surface-tertiary);color:var(--text)}
+.newBrowserTab,.closePaneButton,.paneTabs>button,.browserToolbar>button{width:30px;height:30px;flex:none;background:transparent;border-radius:var(--r-lg);display:grid;place-items:center;color:var(--text-tertiary)}
+.newBrowserTab:hover,.closePaneButton:hover,.paneTabs>button:hover,.browserToolbar>button:hover{background:var(--hover);color:var(--text)}
 .browserToolbar{height:48px;display:flex;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid var(--border-soft)}
-.browserToolbar form{flex:1}.browserToolbar input{width:100%;background:transparent;border:0;text-align:center;color:var(--text-tertiary);font-size:11px}
+.browserToolbar form{flex:1}.browserToolbar input{width:100%;background:var(--surface-primary);border:1px solid var(--border-soft);border-radius:999px;height:32px;padding:0 12px;text-align:center;color:var(--text-tertiary);font-size:11px}
+.browserToolbar input:focus{border-color:var(--border);color:var(--text);text-align:left}
+.downloadStatus{height:28px;min-width:28px;padding:0 7px;border-radius:var(--r-lg);display:flex;align-items:center;justify-content:center;gap:3px;color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
+.downloadStatus small{font-size:9px;font-weight:650}
 .nativeBrowserSurface{flex:1;min-height:0;background:var(--canvas);position:relative}
 .fileMeta{padding:10px 14px;border-bottom:1px solid var(--border-soft);display:flex;flex-direction:column}
 .fileMeta span{font-size:12px}.fileMeta small{font-size:10px;color:var(--muted);margin-top:3px}
