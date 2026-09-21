@@ -1,4 +1,4 @@
-import React,{useEffect,useMemo,useRef,useState} from 'react';
+import React,{useEffect,useEffectEvent,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createClient} from '@supabase/supabase-js';
 import {Capacitor} from '@capacitor/core';
@@ -614,8 +614,9 @@ function Composer(props){
       setDictationError(e?.message||'Dictation could not start.');
     }
   }
+  const startVoiceFromApp=useEffectEvent(()=>startVoice());
   useEffect(()=>{
-    const handler=()=>startVoice();
+    const handler=()=>startVoiceFromApp();
     window.addEventListener('freeai:start-voice',handler);
     return()=>{
       window.removeEventListener('freeai:start-voice',handler);
@@ -623,7 +624,7 @@ function Composer(props){
       if(isNative)SpeechRecognition.stop().catch(()=>{});
       cleanupNativeVoice();
     };
-  },[listening,prompt,permissionPrefs?.voiceLanguage,permissionPrefs?.voiceAutoSend]);
+  },[]);
 
   return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
