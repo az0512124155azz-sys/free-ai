@@ -23,6 +23,7 @@ const supabase=supabaseUrl&&supabaseKey
   : null;
 
 const isDesktop=!!window.desktopApi;
+const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
@@ -495,6 +496,7 @@ function Composer(props){
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
   const [approvalMenu,setApprovalMenu]=useState(false);
+  const textareaRef=useRef(null);
   const nativeSpeechHandles=useRef([]);
   const webRecognition=useRef(null);
   const dictationBase=useRef('');
@@ -517,8 +519,22 @@ function Composer(props){
   async function startVoice(){
     if(listening){await stopVoice();return}
     setDictationError('');
-    const language=voiceLanguage==='auto'?(navigator.language||'en-US'):voiceLanguage;
     dictationBase.current=prompt.trimEnd();
+
+    if(isDesktop){
+      if(desktopPlatform!=='win32'){
+        setDictationError('Desktop dictation is not available on this platform yet.');
+        return;
+      }
+      try{
+        textareaRef.current?.focus();
+        await new Promise(r=>setTimeout(r,60));
+        await window.desktopApi.startSystemDictation();
+      }catch(e){setDictationError(e?.message||'Windows voice typing could not start.')}
+      return;
+    }
+
+    const language=voiceLanguage==='auto'?(navigator.language||'en-US'):voiceLanguage;
     if(isNative){
       try{
         const available=await SpeechRecognition.available();
@@ -575,6 +591,7 @@ function Composer(props){
   return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     <textarea
+      ref={textareaRef}
       value={prompt} onChange={e=>setPrompt(e.target.value)}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
       placeholder={product==='super'?'Ask Super AI to build or debug':mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
@@ -607,7 +624,7 @@ function Composer(props){
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
-        <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>
+        {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
         {(busy||prompt.trim())&&<button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
           {busy?<RefreshCw className="spin" size={17}/>:<ArrowUp size={18}/>}
         </button>}
@@ -959,7 +976,7 @@ function ProfileSettings({session}){
 function VoiceSettings({prefs,setPrefs}){
   const [permission,setPermission]=useState('unknown');
   useEffect(()=>{
-    if(!isNative){setPermission('Browser/desktop permission');return}
+    if(!isNative)return;
     SpeechRecognition.checkPermissions().then(p=>setPermission(p?.speechRecognition||'unknown')).catch(()=>setPermission('unknown'));
   },[]);
   async function request(){
@@ -968,7 +985,9 @@ function VoiceSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Dictation</h3>
     <div className="settingBlock">
-      <SettingRow title="Language" desc="Language used by the microphone dictation button." control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Device language</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>
+      {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Engine" desc="Uses Windows Voice Typing. Its language follows your current Windows input language." control={<span className="valuePill">Windows + H</span>}/>}
+      {isDesktop&&desktopPlatform!=='win32'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
+      {!isDesktop&&<SettingRow title="Language" desc="Language used by the microphone dictation button." control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Device language</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
       {isNative&&<SettingRow title="Microphone permission" desc="Required for native Android dictation." control={<button className="settingsInlineButton" onClick={request}>{permission==='granted'?'Granted':'Request access'}</button>}/>}
     </div>
   </div>
