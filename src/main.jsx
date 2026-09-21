@@ -925,14 +925,16 @@ function ComputerPane({screens,setScreens,approvalMode,onSetApprovalMode,permiss
 function SettingsView(props){
   const {section,setSection,onClose,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
+  const [settingsQuery,setSettingsQuery]=useState('');
   const visibleSettingsSections=settingsSections.filter(([group,label])=>{
-    if(!isNative)return true;
-    return !['Keyboard shortcuts','Computer use','Git','Environments'].includes(label);
+    if(isNative&&['Keyboard shortcuts','Computer use','Git','Environments'].includes(label))return false;
+    const q=settingsQuery.trim().toLowerCase();
+    return !q||label.toLowerCase().includes(q)||group.toLowerCase().includes(q);
   });
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
-      <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
+      <div className="settingsSearch"><Search size={15}/><input value={settingsQuery} onChange={e=>setSettingsQuery(e.target.value)} placeholder="Search"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
         {visibleSettingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
