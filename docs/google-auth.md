@@ -4,12 +4,12 @@ The application code supports Google OAuth on Windows, macOS, Linux and Android 
 
 ## 1. Create or choose a Supabase project
 
-Copy these two public values from **Project Settings -> API**:
+The packaged app is connected to the Free AI Supabase project by default using the public Project URL and publishable key. You can still override them for another environment with:
 
-- Project URL -> `VITE_SUPABASE_URL`
-- Publishable/anon key -> `VITE_SUPABASE_ANON_KEY`
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-Add them as GitHub Actions repository secrets with the same names so packaged builds contain the authentication configuration.
+These are public client values; the Google Client Secret is never bundled into the app.
 
 Do not put the Google client secret in the app or in a `VITE_*` variable.
 
@@ -20,7 +20,7 @@ Create an OAuth 2.0 **Web application** client in Google Cloud.
 In **Authorized redirect URIs**, add the Supabase callback URL:
 
 ```text
-https://YOUR_PROJECT_REF.supabase.co/auth/v1/callback
+https://xquntkgjlmrxkwkrwsjl.supabase.co/auth/v1/callback
 ```
 
 Copy the Google Client ID and Client Secret.
