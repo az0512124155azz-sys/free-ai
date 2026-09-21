@@ -71,6 +71,7 @@
   --border-soft:rgba(0,0,0,.15);
 }
 :root[data-accent="green"]{--accent:#40b76d;--accent-strong:#289852}
+:root[data-accent="yellow"]{--accent:#d6a728;--accent-strong:#ad8010;--accent-contrast:#151515}
 :root[data-accent="orange"]{--accent:#ee7c37;--accent-strong:#d45d1b}
 :root[data-accent="purple"]{--accent:#9a77ff;--accent-strong:#7a55db}
 :root[data-accent="pink"]{--accent:#e969a6;--accent-strong:#cb4787}
