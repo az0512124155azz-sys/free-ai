@@ -466,7 +466,7 @@ function createWindow(){
     console.error('Renderer failed to load',errorCode,errorDescription);
     const fallback='data:text/html;charset=utf-8,'+encodeURIComponent(
       '<!doctype html><html><body style="margin:0;background:#171717;color:#fff;font-family:system-ui;display:grid;place-items:center;height:100vh">'+
-      '<div style="text-align:center;max-width:520px;padding:32px"><svg viewBox="0 0 512 512" width="58" height="58" aria-hidden="true"><g fill="none" stroke="#3183F7" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"><path d="M96 136 C188 136 209 256 292 256 H364"/><path d="M96 376 C188 376 209 256 292 256"/></g><circle cx="96" cy="136" r="34" fill="#3183F7"/><circle cx="96" cy="376" r="34" fill="#3183F7"/><path d="M344 196 L438 256 L344 316 Z" fill="#3183F7"/></svg>'+
+      '<div style="text-align:center;max-width:520px;padding:32px"><svg viewBox="0 0 512 512" width="58" height="58" aria-hidden="true"><path d="M154 112 A182 182 0 0 1 400 358" fill="none" stroke="#3183F7" stroke-width="76" stroke-linecap="round"/><path d="M358 400 A182 182 0 0 1 112 154" fill="none" stroke="#3183F7" stroke-width="76" stroke-linecap="round"/></svg>'+
       '<h1 style="margin:12px 0 10px">Free AI</h1><p style="color:#aaa">The interface could not be loaded.</p>'+
       '<p style="color:#777;font-size:13px">Please install the newest Free AI release.</p></div></body></html>'
     );
