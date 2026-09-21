@@ -92,6 +92,13 @@ button:disabled{opacity:.45;cursor:default}
 .floatingMenu{position:absolute;z-index:90;background:#303033;border:1px solid #4a494d;border-radius:15px;box-shadow:0 18px 55px #000b;padding:7px;overflow:auto}
 .modelPicker{right:0;bottom:41px;width:310px;max-height:360px}
 .effortPicker{right:0;bottom:41px;width:245px}
+.sliderPicker{padding:15px 16px 12px}
+.effortHead{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.effortHead>div{display:flex;flex-direction:column}.effortHead b{font-size:15px}.effortHead small{font-size:10px;color:#98979b}
+.effortSlider{width:100%;appearance:none;height:8px;border-radius:999px;background:linear-gradient(90deg,#3b82f6 0 33%,#555458 33% 100%);outline:0}
+.effortSlider::-webkit-slider-thumb{appearance:none;width:22px;height:22px;border-radius:50%;background:#f4f4f5;border:0;box-shadow:0 1px 4px #0008;cursor:pointer}
+.effortTicks{display:flex;justify-content:space-between;padding:0 4px;margin-top:-6px;pointer-events:none}.effortTicks span{width:5px;height:5px;border-radius:50%;background:#969599}
+.effortScale{display:flex;justify-content:space-between;color:#77767a;font-size:9px;margin-top:8px}
 .plusPicker{left:0;bottom:42px;width:430px;max-height:540px}
 .floatingTitle{font-size:11px;color:#a3a2a6;padding:6px 9px}
 .floatingTitle.section{margin-top:5px}
