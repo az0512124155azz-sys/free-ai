@@ -1,12 +1,26 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createClient} from '@supabase/supabase-js';
+import {Capacitor} from '@capacitor/core';
+import {App as CapacitorApp} from '@capacitor/app';
+import {Browser} from '@capacitor/browser';
 import './styles.css';
 
 const supabaseUrl=import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey=import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase=supabaseUrl&&supabaseKey?createClient(supabaseUrl,supabaseKey):null;
+const supabase=supabaseUrl&&supabaseKey
+  ? createClient(supabaseUrl,supabaseKey,{
+      auth:{
+        flowType:'pkce',
+        persistSession:true,
+        autoRefreshToken:true,
+        detectSessionInUrl:false
+      }
+    })
+  : null;
 const isDesktop=!!window.desktopApi;
+const isNative=Capacitor.isNativePlatform();
+const AUTH_CALLBACK_URL='freeai://auth/callback';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 
 function readJSON(key,fallback){
@@ -693,6 +707,57 @@ function Auth(){
   const [message,setMessage]=useState('');
   const [working,setWorking]=useState(false);
 
+  useEffect(()=>{
+    let desktopOff=null;
+    let nativeHandle=null;
+    let cancelled=false;
+
+    async function finishOAuth(url){
+      if(!url||!url.startsWith('freeai://auth'))return;
+      setWorking(true);
+      setMessage('');
+      try{
+        const parsed=new URL(url);
+        const oauthError=parsed.searchParams.get('error_description')||parsed.searchParams.get('error');
+        if(oauthError)throw new Error(oauthError);
+
+        const code=parsed.searchParams.get('code');
+        if(!code)throw new Error('Google did not return an authorization code.');
+
+        const {error}=await supabase.auth.exchangeCodeForSession(code);
+        if(error)throw error;
+
+        if(isNative){
+          try{await Browser.close()}catch{}
+        }
+      }catch(e){
+        if(!cancelled)setMessage(e?.message||String(e));
+      }finally{
+        if(!cancelled)setWorking(false);
+      }
+    }
+
+    if(isDesktop&&window.desktopApi?.onAuthCallback){
+      desktopOff=window.desktopApi.onAuthCallback(finishOAuth);
+    }
+
+    if(isNative){
+      CapacitorApp.addListener('appUrlOpen',({url})=>finishOAuth(url))
+        .then(handle=>{nativeHandle=handle})
+        .catch(()=>{});
+
+      CapacitorApp.getLaunchUrl()
+        .then(result=>{if(result?.url)finishOAuth(result.url)})
+        .catch(()=>{});
+    }
+
+    return()=>{
+      cancelled=true;
+      desktopOff?.();
+      nativeHandle?.remove?.();
+    };
+  },[]);
+
   async function submit(event){
     event.preventDefault();
     setWorking(true);
@@ -717,11 +782,31 @@ function Auth(){
     setWorking(true);
     setMessage('');
     try{
-      const {error}=await supabase.auth.signInWithOAuth({
+      const externalFlow=isDesktop||isNative;
+      const redirectTo=externalFlow?AUTH_CALLBACK_URL:window.location.origin;
+
+      const {data,error}=await supabase.auth.signInWithOAuth({
         provider:'google',
-        options:{redirectTo:window.location.href.split('#')[0]}
+        options:{
+          redirectTo,
+          skipBrowserRedirect:externalFlow
+        }
       });
+
       if(error)throw error;
+
+      if(externalFlow){
+        if(!data?.url)throw new Error('Google sign-in URL was not created.');
+
+        if(isDesktop){
+          await window.desktopApi.openAuthUrl(data.url);
+        }else{
+          await Browser.open({
+            url:data.url,
+            presentationStyle:'popover'
+          });
+        }
+      }
     }catch(e){
       setMessage(e?.message||String(e));
       setWorking(false);
