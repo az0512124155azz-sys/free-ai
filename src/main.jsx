@@ -115,6 +115,8 @@ function App(){
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
       if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
+      if(command==='open-browser')openBrowser();
+      if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
