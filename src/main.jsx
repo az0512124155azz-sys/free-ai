@@ -10,7 +10,7 @@ import {
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
   Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
-  SquarePen,Table2,Target,TerminalSquare,UserRound,Volume2,X
+  SquarePen,Table2,Target,SquareTerminal,UserRound,Volume2,X
 } from 'lucide-react';
 import './styles.css';
 
@@ -29,7 +29,7 @@ const settingsSections=[
   ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
   ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
-  ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',TerminalSquare]
+  ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',SquareTerminal]
 ];
 
 function readJSON(key,fallback){
