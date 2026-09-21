@@ -103,3 +103,17 @@ The GitHub workflow builds:
 - Chrome extension ZIP
 
 Pull requests run the full build matrix before changes are merged to `main`.
+
+## Android Google sign-in
+
+Free AI uses native Google Credential Manager on Android and exchanges the returned Google ID token directly with Supabase. This avoids sending Android users through the Supabase-hosted OAuth browser page.
+
+Google Cloud must contain both:
+
+- a **Web application** OAuth client (used as the ID-token audience), and
+- an **Android** OAuth client for package `com.freeai.mobile` with the SHA-1 of the APK signing certificate.
+
+The web client ID can be supplied at build time as `VITE_GOOGLE_WEB_CLIENT_ID`.
+
+Desktop/web continue to use the Supabase PKCE OAuth flow. To replace the raw `<project-ref>.supabase.co` name on those consent surfaces, configure Google Auth Platform **Branding/Verification**; a Supabase custom/vanity domain additionally requires a paid Supabase plan.
+

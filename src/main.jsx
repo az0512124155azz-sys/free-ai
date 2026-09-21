@@ -6,6 +6,7 @@ import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
 import {SpeechRecognition} from '@capgo/capacitor-speech-recognition';
 import {InAppBrowser} from '@capgo/capacitor-inappbrowser';
+import {SocialLogin} from '@capgo/capacitor-social-login';
 import {
   AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,
   CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,ExternalLink,
@@ -26,6 +27,7 @@ const isDesktop=!!window.desktopApi;
 const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
 const AUTH_CALLBACK_URL='freeai://auth/callback';
+const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 
 const settingsSections=[
@@ -59,13 +61,8 @@ function humanSize(bytes){
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <svg viewBox="0 0 512 512" focusable="false">
-      <g className="markFlow">
-        <path d="M96 136 C188 136 209 256 292 256 H364"/>
-        <path d="M96 376 C188 376 209 256 292 256"/>
-      </g>
-      <circle className="markSolid" cx="96" cy="136" r="34"/>
-      <circle className="markSolid" cx="96" cy="376" r="34"/>
-      <path className="markSolid" d="M344 196 L438 256 L344 316 Z"/>
+      <path className="markArc" d="M154 112 A182 182 0 0 1 400 358"/>
+      <path className="markArc" d="M358 400 A182 182 0 0 1 112 154"/>
     </svg>
   </span>;
 }
@@ -357,14 +354,24 @@ function App(){
         </div>
       </div>
       {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
-      <nav className="primaryNav">
+
+      <div className="mobileQuickStart">
+        <button className="mobileNewChat" onClick={newChat}><SquarePen size={17}/><span>New chat</span></button>
+        <div className="mobileExperienceRail" aria-label="Experiences">
+          <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>
+          <button className={page==='plugins'?'active':''} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Plugins</span></button>
+          <button className={page==='explore'?'active':''} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
+        </div>
+      </div>
+
+      <nav className="primaryNav desktopPrimaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
         <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
         <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
         <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}>
+        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}>
           {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
           {product==='super'?'Repository workspace':'Free AI Workspace'}
         </button>
@@ -1025,6 +1032,16 @@ function ConnectionsSettings({status,settings,setSettings,saveSettings,connected
 
 function Auth(){
   const [mode,setMode]=useState('signin'),[email,setEmail]=useState(''),[password,setPassword]=useState(''),[message,setMessage]=useState(''),[working,setWorking]=useState(false);
+  const nativeGoogleReady=useRef(false);
+
+  async function initNativeGoogle(){
+    if(!isNative||nativeGoogleReady.current)return;
+    if(!GOOGLE_WEB_CLIENT_ID)throw new Error('Google native sign-in is not configured.');
+    await SocialLogin.initialize({
+      google:{webClientId:GOOGLE_WEB_CLIENT_ID,mode:'online'}
+    });
+    nativeGoogleReady.current=true;
+  }
 
   useEffect(()=>{
     let desktopOff=null,nativeHandle=null,cancelled=false;
@@ -1044,6 +1061,7 @@ function Auth(){
     }
     if(isDesktop&&window.desktopApi?.onAuthCallback)desktopOff=window.desktopApi.onAuthCallback(finishOAuth);
     if(isNative){
+      initNativeGoogle().catch(()=>{});
       CapacitorApp.addListener('appUrlOpen',({url})=>finishOAuth(url)).then(h=>nativeHandle=h).catch(()=>{});
       CapacitorApp.getLaunchUrl().then(r=>{if(r?.url)finishOAuth(r.url)}).catch(()=>{});
     }
@@ -1061,21 +1079,47 @@ function Auth(){
   async function google(){
     setWorking(true);setMessage('');
     try{
-      const external=isDesktop||isNative;
-      const {data,error}=await supabase.auth.signInWithOAuth({provider:'google',options:{redirectTo:external?AUTH_CALLBACK_URL:window.location.origin,skipBrowserRedirect:external}});
+      if(isNative){
+        await initNativeGoogle();
+        const login=await SocialLogin.login({
+          provider:'google',
+          options:{
+            scopes:['openid','email','profile'],
+            style:'bottom',
+            filterByAuthorizedAccounts:false
+          }
+        });
+        const idToken=login?.result?.idToken;
+        if(!idToken)throw new Error('Google did not return an ID token.');
+        const {error}=await supabase.auth.signInWithIdToken({provider:'google',token:idToken});
+        if(error)throw error;
+        setWorking(false);
+        return;
+      }
+
+      const external=isDesktop;
+      const {data,error}=await supabase.auth.signInWithOAuth({
+        provider:'google',
+        options:{redirectTo:external?AUTH_CALLBACK_URL:window.location.origin,skipBrowserRedirect:external}
+      });
       if(error)throw error;
       if(external){
         if(!data?.url)throw new Error('Google sign-in URL was not created.');
-        if(isDesktop)await window.desktopApi.openAuthUrl(data.url);
-        else await Browser.open({url:data.url,presentationStyle:'popover'});
+        await window.desktopApi.openAuthUrl(data.url);
       }
-    }catch(e){setMessage(e?.message||String(e));setWorking(false)}
+    }catch(e){
+      const raw=e?.message||String(e);
+      const setup=/28444|developer console|configuration/i.test(raw)
+        ? 'Google sign-in needs one Android OAuth client for com.freeai.mobile with this APK signing SHA-1 in Google Cloud.'
+        : raw;
+      setMessage(setup);setWorking(false);
+    }
   }
 
   return <div className="authScreen"><div className="authCard">
     <div className="authBrand"><BrandMark size={34}/></div>
     <h1>{mode==='signup'?'Create your account':'Welcome back'}</h1><p>Sign in to Free AI</p>
-    <button className="googleButton" onClick={google} disabled={working}>Continue with Google</button>
+    <button className="googleButton" onClick={google} disabled={working}><span className="googleGlyph" aria-hidden="true">G</span><span>Continue with Google</span></button>
     <div className="authDivider"><span/>or<span/></div>
     <form onSubmit={submit}><input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" required/><input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="Password" minLength="6" required/><button disabled={working}>{working?'Please wait…':mode==='signup'?'Create account':'Sign in'}</button></form>
     <button className="authSwitch" onClick={()=>{setMode(mode==='signup'?'signin':'signup');setMessage('')}}>{mode==='signup'?'Already have an account? Sign in':'New to Free AI? Create account'}</button>
