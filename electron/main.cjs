@@ -447,7 +447,7 @@ function createWindow(){
     console.error('Renderer failed to load',errorCode,errorDescription);
     const fallback='data:text/html;charset=utf-8,'+encodeURIComponent(
       '<!doctype html><html><body style="margin:0;background:#171717;color:#fff;font-family:system-ui;display:grid;place-items:center;height:100vh">'+
-      '<div style="text-align:center;max-width:520px;padding:32px"><div style="margin:0 auto 16px;width:54px;height:54px;border-radius:16px;background:#fff;color:#181818;display:grid;place-items:center;font:700 30px system-ui">F</div>'+
+      '<div style="text-align:center;max-width:520px;padding:32px"><svg viewBox="0 0 64 64" width="54" height="54" style="display:block;margin:0 auto 16px"><circle cx="32" cy="20" r="12" fill="#2F7CF6"/><circle cx="21" cy="40" r="12" fill="#8A63F6"/><circle cx="43" cy="40" r="12" fill="#2CCF9C"/><path d="M32 26 38 32 32 38 26 32Z" fill="#fff"/></svg>'+
       '<h1 style="margin:0 0 10px">Free AI</h1><p style="color:#aaa">The interface could not be loaded.</p>'+
       '<p style="color:#777;font-size:13px">Please install the newest Free AI release.</p></div></body></html>'
     );
