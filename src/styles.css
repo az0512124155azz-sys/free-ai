@@ -386,8 +386,9 @@ button:disabled{opacity:.42;cursor:default}
 .settingsGroup button:hover{background:var(--hover)}.settingsGroup button.active{background:var(--selected);color:var(--text)}
 .settingsContent{min-width:0;overflow:auto;padding:0 clamp(24px,7vw,110px) 70px}
 .settingsContentTop{height:84px;display:flex;align-items:flex-end;justify-content:space-between;max-width:780px;margin:0 auto 20px}
-.settingsContentTop h1{font-size:22px;font-weight:500;margin:0}.settingsContentTop button{background:transparent;width:32px;height:32px;display:grid;place-items:center;border-radius:var(--r-lg)}
+.settingsContentTop h1{font-size:22px;font-weight:500;margin:0;flex:1}.settingsContentTop button{background:transparent;width:32px;height:32px;display:grid;place-items:center;border-radius:var(--r-lg);flex:none}
 .settingsContentTop button:hover{background:var(--hover)}
+.mobileSettingsBack{display:none!important}
 .settingsPane{max-width:780px;margin:0 auto}.settingsPane>h3{font-size:12px;margin:30px 0 10px;font-weight:600}
 .settingBlock{border:1px solid var(--border);background:var(--surface-primary);border-radius:var(--r-xl);overflow:hidden}
 .settingRow{min-height:57px;display:flex;align-items:center;justify-content:space-between;gap:15px;padding:10px 13px;border-bottom:1px solid var(--border-soft)}
@@ -484,10 +485,17 @@ button:disabled{opacity:.42;cursor:default}
   .paneTabs{height:52px}
 
   .settingsScreen{display:block;overflow:auto;padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
-  .settingsNav{display:none}
+  .settingsScreen.mobileSettingsList .settingsNav{display:block;min-height:calc(100vh - var(--safe-top) - var(--safe-bottom));border-right:0;padding:9px 10px 24px}
+  .settingsScreen.mobileSettingsList .settingsContent{display:none}
+  .settingsScreen.mobileSettingsDetail .settingsNav{display:none}
+  .settingsScreen.mobileSettingsDetail .settingsContent{display:block}
   .settingsContent{padding:0 14px 44px;overflow:visible}
-  .settingsContentTop{height:62px;margin-bottom:8px;align-items:center}
+  .settingsContentTop{height:62px;margin-bottom:8px;align-items:center;gap:5px}
   .settingsContentTop h1{font-size:20px}
+  .mobileSettingsBack{display:grid!important}
+  .settingsSearch{height:38px;margin:10px 0 14px}
+  .settingsGroup button{height:42px;font-size:13px}
+  .settingsGroupLabel{font-size:11px;margin-top:14px}
   .settingsPane>h3{margin-top:22px}
   .settingRow{min-height:62px;padding:11px 12px}
   .settingRow>div{max-width:65%}
