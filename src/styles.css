@@ -229,6 +229,7 @@ button:disabled{opacity:.42;cursor:default}
   transition:background 160ms var(--ease),color 160ms var(--ease)
 }
 .modeSwitch button.active{background:var(--surface-tertiary);color:var(--text);box-shadow:var(--shadow-sm)}
+.superHeaderLabel{height:34px;display:flex;align-items:center;gap:7px;padding:0 11px;border:1px solid var(--border-soft);border-radius:999px;background:var(--surface-secondary);color:var(--text);font-size:11.5px;font-weight:580}
 
 .chatStage{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
 .emptyChat{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 20px 92px}
