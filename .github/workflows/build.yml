@@ -12,7 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   issues: write
 
 jobs:
@@ -195,3 +195,59 @@ jobs:
           name: free-ai-chrome-extension
           path: free-ai-extension.zip
           if-no-files-found: error
+
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [desktop, android, extension]
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-windows
+          path: release-assets
+
+      - name: Download macOS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-macos
+          path: release-assets
+
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-linux
+          path: release-assets
+
+      - name: Download Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-android
+          path: release-assets
+
+      - name: Download Chrome extension
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-chrome-extension
+          path: release-assets
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="v$VERSION"
+          TITLE="Free AI v$VERSION"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* \
+              --target "$GITHUB_SHA" \
+              --title "$TITLE" \
+              --notes "Free AI desktop, Android and Chrome extension builds."
+          fi
