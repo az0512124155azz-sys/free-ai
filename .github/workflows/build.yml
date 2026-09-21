@@ -164,6 +164,9 @@ jobs:
       - name: Sync Capacitor
         run: npx cap sync android
 
+      - name: Configure Google OAuth deep link
+        run: npm run android:configure-deeplink
+
       - name: Build APK
         run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
 
