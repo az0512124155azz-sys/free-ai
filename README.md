@@ -2,6 +2,14 @@
 
 Free AI is a cross-platform AI workspace that can use AI services already open in Chrome, desktop-stored API connections, and a paired Android client.
 
+## Download
+
+Download the latest Chrome extension ZIP:
+
+**[Download free-ai-extension.zip](https://github.com/az0512124155azz-sys/free-ai/releases/latest/download/free-ai-extension.zip)**
+
+All installers and release files are available from the [Releases page](https://github.com/az0512124155azz-sys/free-ai/releases/latest).
+
 ## Repository layout
 
 - `src/` — shared React UI for desktop and Android
