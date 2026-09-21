@@ -53,6 +53,16 @@ function humanSize(bytes){
   return (bytes/1024/1024).toFixed(1)+' MB';
 }
 
+function BrandMark({size=22,className=''}) {
+  return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
+    <svg viewBox="0 0 24 24" focusable="false">
+      <rect x="2.25" y="2.25" width="19.5" height="19.5" rx="6.25"/>
+      <path className="markLetter" d="M7.4 6.5h8.9v2.45h-6.15v2.8h5.15v2.4h-5.15v3.95H7.4z"/>
+      <path className="markSpark" d="M17.65 4.65l.48 1.17 1.17.48-1.17.48-.48 1.17-.48-1.17L16 6.3l1.17-.48z"/>
+    </svg>
+  </span>;
+}
+
 function App(){
   const [authReady,setAuthReady]=useState(false);
   const [session,setSession]=useState(null);
@@ -63,6 +73,10 @@ function App(){
   const [prompt,setPrompt]=useState('');
   const [busy,setBusy]=useState(false);
   const [sidebarOpen,setSidebarOpen]=useState(true);
+  const [mobileNavOpen,setMobileNavOpen]=useState(false);
+  const [mobileModeMenu,setMobileModeMenu]=useState(false);
+  const [sidebarSearchOpen,setSidebarSearchOpen]=useState(false);
+  const [sidebarSearch,setSidebarSearch]=useState('');
   const [page,setPage]=useState('chat');
   const [mode,setMode]=useState('chat');
   const [modelMenu,setModelMenu]=useState(false);
@@ -77,7 +91,10 @@ function App(){
   const [screens,setScreens]=useState([]);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats',[]));
   const [currentChatId,setCurrentChatId]=useState(null);
-  const [appPrefs,setAppPrefs]=useState(()=>readJSON('freeai.prefs',{fullAccess:false,defaultPermissions:true,language:'English',showBottomPanel:true}));
+  const [appPrefs,setAppPrefs]=useState(()=>({
+    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,
+    ...readJSON('freeai.prefs',{fullAccess:false,defaultPermissions:true,language:'English',showBottomPanel:true})
+  }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
@@ -98,6 +115,8 @@ function App(){
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
       if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
+      if(command==='open-browser')openBrowser();
+      if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
@@ -140,6 +159,47 @@ function App(){
     else if(fresh!==selected)setSelected(fresh);
   },[connected]);
 
+  useEffect(()=>{
+    const root=document.documentElement;
+    let resolved=appPrefs.appearance||'dark';
+    if(resolved==='system')resolved=window.matchMedia?.('(prefers-color-scheme: light)').matches?'light':'dark';
+    root.dataset.theme=resolved;
+    root.dataset.contrast=appPrefs.contrast||'medium';
+    root.dataset.accent=appPrefs.accent||'blue';
+    const scale=(Number(appPrefs.textSize)||100)/100;
+    root.style.setProperty('--ui-scale',String(scale));
+    document.body.style.zoom=isNative?'1':String(scale);
+  },[appPrefs.appearance,appPrefs.contrast,appPrefs.accent,appPrefs.textSize]);
+
+  useEffect(()=>{
+    const onKey=e=>{
+      if(e.key!=='Escape')return;
+      if(profileMenu){setProfileMenu(false);return}
+      if(modelMenu){setModelMenu(false);return}
+      if(effortMenu){setEffortMenu(false);return}
+      if(plusMenu){setPlusMenu(false);return}
+      if(mobileModeMenu){setMobileModeMenu(false);return}
+      if(mobileNavOpen){setMobileNavOpen(false);return}
+      if(settingsOpen){setSettingsOpen(false);return}
+      if(sidePanel){setSidePanel(null)}
+    };
+    const onPointer=e=>{
+      const target=e.target;
+      if(!(target instanceof Element))return;
+      if(!target.closest('.menuAnchor')){setModelMenu(false);setEffortMenu(false);setPlusMenu(false)}
+      if(!target.closest('.profileMenu')&&!target.closest('.profileButton'))setProfileMenu(false);
+      if(!target.closest('.mobileModeAnchor'))setMobileModeMenu(false);
+    };
+    window.addEventListener('keydown',onKey);
+    document.addEventListener('pointerdown',onPointer);
+    return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
+  },[profileMenu,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+
+  const visibleChats=useMemo(()=>{
+    const q=sidebarSearch.trim().toLowerCase();
+    return q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):chats;
+  },[chats,sidebarSearch]);
+
   function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
   function saveCurrentChat(nextMessages,model=selected){
     if(!model||!nextMessages.length)return;
@@ -155,7 +215,7 @@ function App(){
   }
   function newChat(){
     setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
-    setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);
+    setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
@@ -193,6 +253,24 @@ function App(){
   }
   async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
 
+  async function openBrowser(){
+    setPlusMenu(false);
+    if(isNative){
+      try{await Browser.open({url:'https://www.google.com/',presentationStyle:'fullscreen'})}catch{}
+      return;
+    }
+    setSidePanel('browser');
+  }
+
+  async function openHelp(){
+    const url='https://github.com/az0512124155azz-sys/free-ai#readme';
+    try{
+      if(isDesktop)await window.desktopApi.openAuthUrl(url);
+      else if(isNative)await Browser.open({url,presentationStyle:'popover'});
+      else window.open(url,'_blank','noopener,noreferrer');
+    }catch{}
+  }
+
   async function attachFiles(event){
     const files=[...(event.target.files||[])];if(!files.length)return;
     const file=files[0];
@@ -212,33 +290,37 @@ function App(){
     event.target.value='';
   }
 
-  if(!authReady)return <div className="splash"><Sparkles size={28}/>Free AI</div>;
+  if(!authReady)return <div className="splash"><BrandMark size={34}/><span>Free AI</span></div>;
   if(!session&&supabase)return <Auth/>;
 
   const sidebarName=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Free AI';
   const heading=mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
-  return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')}>
+  return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
 
-    {sidebarOpen&&<aside className="gptSidebar">
+    {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
-        <button className="brandButton"><Sparkles size={18}/><b>Free AI</b><ChevronDown size={14}/></button>
-        <div className="brandActions"><button title="Search"><Search size={16}/></button><button title="Notifications"><Bell size={16}/></button></div>
+        <button className="brandButton" title="Free AI"><BrandMark size={20}/><b>Free AI</b><ChevronDown size={14}/></button>
+        <div className="brandActions">
+          <button title="Search chats" aria-label="Search chats" onClick={()=>setSidebarSearchOpen(v=>!v)}><Search size={16}/></button>
+          <button className="mobileCloseNav" title="Close navigation" onClick={()=>setMobileNavOpen(false)}><X size={17}/></button>
+        </div>
       </div>
+      {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
       <nav className="primaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
-        <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>setPage('images')}/>
-        <NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>setPage('scheduled')}/>
-        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>setPage('plugins')}/>
-        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>setPage('explore')}/>
+        <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>{setPage('images');setMobileNavOpen(false)}}/>
+        <NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>{setPage('scheduled');setMobileNavOpen(false)}}/>
+        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
+        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
         <div className="sidebarGroupTitle">Projects</div>
         <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}><Folder size={15}/>Free AI Workspace</button>
         <div className="sidebarGroupTitle">Recents</div>
-        {chats.length===0?<div className="sidebarEmpty">No chats yet</div>:chats.map(chat=>
-          <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>openChat(chat)}>{chat.title}</button>
+        {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
+          <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
         )}
       </div>
       <div className="sidebarFooter">
@@ -247,18 +329,31 @@ function App(){
           <span className="profileName">{sidebarName}</span>
           <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-        <button className="voiceButton"><Mic2 size={15}/>Voice</button>
-        <button className="circleIcon"><HelpCircle size={16}/></button>
+        <button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Voice</button>
+        <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
         {profileMenu&&<ProfileMenu session={session} onSettings={()=>{setProfileMenu(false);setSettingsOpen(true)}}/>}
       </div>
     </aside>}
+    {mobileNavOpen&&<button className="mobileNavScrim" aria-label="Close navigation" onClick={()=>setMobileNavOpen(false)}/>}
 
     <main className="workspace">
       <header className="workspaceHeader">
-        <div>{!sidebarOpen&&<button className="headerIcon" onClick={()=>setSidebarOpen(true)}><PanelLeft size={18}/></button>}</div>
-        <div className="modeSwitch">
-          <button className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
-          <button className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
+        <div className="headerLeft">
+          <button className="headerIcon mobileNavTrigger" onClick={()=>setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={18}/></button>
+          {!sidebarOpen&&<button className="headerIcon desktopSidebarTrigger" onClick={()=>setSidebarOpen(true)} aria-label="Open sidebar"><PanelLeft size={18}/></button>}
+        </div>
+        <div className="modeSwitch" role="tablist" aria-label="Experience">
+          <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
+          <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
+        </div>
+        <div className="mobileModeAnchor">
+          <button className="mobileModeButton" aria-haspopup="menu" aria-expanded={mobileModeMenu} onClick={()=>setMobileModeMenu(v=>!v)}>
+            <span>{mode==='work'?'Work':'Chat'}</span><ChevronDown size={14}/>
+          </button>
+          {mobileModeMenu&&<div className="mobileModeMenu" role="menu">
+            <button className={mode==='chat'?'active':''} onClick={()=>{setMode('chat');setMobileModeMenu(false)}}>Chat</button>
+            <button className={mode==='work'?'active':''} onClick={()=>{setMode('work');setMobileModeMenu(false)}}>Work</button>
+          </div>}
         </div>
         <div className="headerRight">
           {sidePanel&&<button className="headerIcon" onClick={()=>setSidePanel(null)} title="Close side panel"><X size={17}/></button>}
@@ -278,7 +373,7 @@ function App(){
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
-                onBrowser={()=>{setPlusMenu(false);setSidePanel('browser')}}
+                onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
               />
@@ -302,7 +397,7 @@ function App(){
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                   fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
-                  onBrowser={()=>{setPlusMenu(false);setSidePanel('browser')}}
+                  onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
                 />
@@ -312,7 +407,7 @@ function App(){
         <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
       </section>}
 
-      {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')}/>}
+      {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')} onRefresh={()=>window.desktopApi?.scanProviders?.().catch(()=>{})}/>}
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
       {page==='images'&&<PlaceholderPage title="Images" subtitle="Image generation and visual workspaces will live here." icon={Image}/>}
       {page==='scheduled'&&<PlaceholderPage title="Scheduled" subtitle="Scheduled prompts and recurring jobs will appear here." icon={Clock3}/>}
@@ -333,7 +428,7 @@ function App(){
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
       onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
-      onBrowser={()=>{setSettingsOpen(false);setSidePanel('browser')}}
+      onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
     />}
   </div>
 }
@@ -348,7 +443,31 @@ function Composer(props){
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
     fullAccess,setFullAccess,onBrowser,onComputer,onPlugins
   }=props;
+  const [listening,setListening]=useState(false);
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
+
+  function startVoice(){
+    const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!Recognition){return}
+    const recognition=new Recognition();
+    recognition.lang=document.documentElement.lang||navigator.language||'en-US';
+    recognition.interimResults=false;
+    recognition.continuous=false;
+    recognition.onstart=()=>setListening(true);
+    recognition.onend=()=>setListening(false);
+    recognition.onerror=()=>setListening(false);
+    recognition.onresult=e=>{
+      const text=[...e.results].map(r=>r[0]?.transcript||'').join(' ').trim();
+      if(text)setPrompt(p=>(p? p+' ':'')+text);
+    };
+    recognition.start();
+  }
+  useEffect(()=>{
+    const handler=()=>startVoice();
+    window.addEventListener('freeai:start-voice',handler);
+    return()=>window.removeEventListener('freeai:start-voice',handler);
+  },[]);
+
   return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     <textarea
@@ -359,7 +478,7 @@ function Composer(props){
     <div className="composerBottom">
       <div className="composerLeft">
         <div className="menuAnchor">
-          <button className="plusCircle" onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
+          <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
             fileRef={fileRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
@@ -370,23 +489,23 @@ function Composer(props){
 
       <div className="composerRight">
         <div className="menuAnchor">
-          <button className="modelButton" onClick={()=>setModelMenu(v=>!v)}>
+          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} onClick={()=>setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
         </div>
         <div className="menuAnchor">
-          <button className="effortButton" onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
+          <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>
-        <button className="micButton"><Mic2 size={18}/></button>
+        <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Listening…':'Voice input'} aria-label="Voice input"><Mic2 size={18}/></button>
         <button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
           {busy?<RefreshCw className="spin" size={17}/>:prompt.trim()?<ArrowUp size={18}/>:<Volume2 size={18}/>}
         </button>
       </div>
     </div>
     {mode==='work'&&<div className="workActions">
-      <button><Folder size={15}/>Choose project</button>
+      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       <button onClick={onBrowser}><Globe2 size={15}/>Browser</button>
     </div>}
@@ -394,10 +513,10 @@ function Composer(props){
 }
 
 function ModelMenu({connected,selected,choose}){
-  return <div className="floatingMenu modelPicker">
+  return <div className="floatingMenu modelPicker" role="listbox" aria-label="Select model">
     <div className="floatingTitle">Select model</div>
     {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
-      connected.map(model=><button key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
+      connected.map(model=><button role="option" aria-selected={selected?.id===model.id&&selected?.source===model.source} key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
         <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
         <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name}</small></span>
         {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
@@ -413,6 +532,7 @@ function EffortMenu({effort,choose}){
     <div className="effortHead"><Brain size={18}/><div><b>{labels[effort]}</b><small>Reasoning effort</small></div></div>
     <input
       className="effortSlider" type="range" min="0" max="3" step="1" value={index}
+      aria-label="Reasoning effort" aria-valuetext={labels[effort]}
       onChange={e=>choose(values[Number(e.target.value)])}
     />
     <div className="effortTicks"><span/><span/><span/><span/></div>
@@ -421,11 +541,11 @@ function EffortMenu({effort,choose}){
 }
 
 function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
-  return <div className="floatingMenu plusPicker">
+  return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
-    <MenuRow icon={Chrome} label="Attach Google Chrome" onClick={onBrowser}/>
-    {mode==='work'&&<><MenuRow icon={Folder} label="Work in a project" sub="Start a chat in a project"/><MenuRow icon={Target} label="Goal" sub="Set a goal to keep pursuing"/><MenuRow icon={Sparkles} label="Plan mode" sub="Turn plan mode on"/><MenuRow icon={PenLine} label="Sketch" sub="Draw a sketch"/></>}
+    <MenuRow icon={Chrome} label={isNative?'Open web browser':'Attach browser'} sub={isNative?'Open a site in the system browser':'Browse beside your chat'} onClick={onBrowser}/>
+    {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
       <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName} onClick={()=>setSelectedTool(t)}/>
@@ -436,42 +556,62 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
 }
 
 function MenuRow({icon:Icon,label,sub,onClick}){
-  return <button className="menuRow" onClick={onClick}><Icon size={18}/><span><b>{label}</b>{sub&&<small>{sub}</small>}</span></button>
+  const body=<><Icon size={18}/><span><b>{label}</b>{sub&&<small>{sub}</small>}</span></>;
+  if(!onClick)return <div className="menuRow staticRow">{body}</div>;
+  return <button className="menuRow" role="menuitem" onClick={onClick}>{body}</button>
 }
 
 function ProfileMenu({session,onSettings}){
   const name=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'User';
-  return <div className="profileMenu">
-    <div className="profileMenuUser"><span className="avatar large">{initials(session)}</span><b>{name}</b></div>
-    <MenuRow icon={Briefcase} label="Workspace settings"/>
-    <MenuRow icon={RotateCcw} label="Usage remaining" sub="View limits and usage"/>
+  return <div className="profileMenu" role="menu" aria-label="Account">
+    <div className="profileMenuUser"><span className="avatar large">{initials(session)}</span><span><b>{name}</b><small>{session?.user?.email||'Free AI account'}</small></span></div>
+    <MenuRow icon={Briefcase} label="Workspace settings" onClick={onSettings}/>
     <MenuRow icon={Settings} label="Settings" onClick={onSettings}/>
     <MenuRow icon={LogOut} label="Log out" onClick={()=>supabase?.auth.signOut()}/>
   </div>
 }
 
-function PluginsPage({tools,connected,onBack}){
-  const popular=[
-    ['Gmail','Read and manage Gmail',Mail],['Google Drive','Drive, Docs, Sheets or Slides',HardDrive],
-    ['GitHub','Triage PRs, issues, CI, and publish flows',GitBranch],['Calendar','Manage calendar events',CalendarDays],
-    ['Supabase','Manage and query databases',Database],['Browser','Control the in-app browser',Globe2],
-    ['Computer','Control Windows apps',Monitor],['Files','Work with local documents',FileText]
-  ];
+function PluginsPage({tools,connected,onBack,onRefresh}){
+  const [query,setQuery]=useState('');
+  const needle=query.trim().toLowerCase();
+  const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
+  const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
   return <div className="contentPage">
-    <PageTop onBack={onBack} title="Plugins" action="Add"/>
+    <PageTop onBack={onBack} title="Plugins" action={isDesktop?'Refresh':null} onAction={onRefresh}/>
     <div className="contentInner">
-      <h1>Plugins</h1><p className="pageLead">Work with Free AI across your favorite tools</p>
-      <div className="searchBar"><Search size={17}/><input placeholder="Search plugins"/></div>
+      <h1>Plugins</h1>
+      <p className="pageLead">Use MCP/connectors that are already installed and authorized in a connected AI provider.</p>
+      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search detected plugins"/></div>
+
       <section className="pluginSection">
-        <div className="sectionHeading"><h2>Installed</h2><Settings size={16}/></div>
+        <div className="sectionHeading"><h2>Installed and detected</h2><span className="pluginMeta">{visibleTools.length} tools</span></div>
         <div className="installedStrip">
-          {connected.map(p=><div key={p.id} className={'installedIcon '+p.id} title={modelLabel(p)}>{modelLabel(p).slice(0,1)}</div>)}
-          {tools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={15}/></div>)}
-          {!connected.length&&!tools.length&&<span className="muted">No browser models or MCP tools detected yet.</span>}
+          {visibleTools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
+          {!visibleTools.length&&<span className="muted">{query?'No plugin matches your search.':'No MCP tools are currently detected.'}</span>}
         </div>
       </section>
-      <section className="pluginSection"><h2>Available in Free AI</h2>
-        <div className="pluginGrid">{popular.map(([name,desc,Icon])=><div className="pluginCard" key={name}><span className="pluginIcon"><Icon size={20}/></span><span><b>{name}</b><small>{desc}</small></span><Plus size={18}/></div>)}</div>
+
+      <section className="pluginSection">
+        <h2>Connected providers</h2>
+        <div className="pluginGrid">
+          {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
+            <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
+            <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API connection':((provider.mcps?.length||0)+' MCP/connectors detected')}</small></span>
+            <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
+          </div>)}
+          {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider is connected</b><span>Open a supported AI site in Chrome with the Free AI extension, or add an API model in Settings.</span></div>}
+        </div>
+      </section>
+
+      <section className="pluginSection">
+        <h2>Tools available across models</h2>
+        <div className="toolList">
+          {visibleTools.map(t=><div className="detectedToolRow" key={t.key}>
+            <span className="pluginIcon"><Plug size={18}/></span>
+            <span><b>{t.mcp}</b><small>Installed in {t.ownerName}. Free AI can route its result to another connected model.</small></span>
+          </div>)}
+          {!visibleTools.length&&!query&&<div className="pluginHint"><Chrome size={20}/><div><b>Install or authorize the MCP in its provider first</b><span>Free AI only exposes tools that the connected provider reports as installed.</span></div></div>}
+        </div>
       </section>
     </div>
   </div>
@@ -490,8 +630,8 @@ function ExplorePage({tools,chats,onBack}){
   </div>
 }
 
-function PageTop({onBack,title,action}){
-  return <div className="pageTop"><button onClick={onBack}><ArrowLeft size={16}/>Back to app</button><b>{title}</b>{action?<button className="pillAction">{action}<ChevronDown size={13}/></button>:<span/>}</div>
+function PageTop({onBack,title,action,onAction}){
+  return <div className="pageTop"><button onClick={onBack}><ArrowLeft size={16}/>Back to app</button><b>{title}</b>{action?<button className="pillAction" onClick={onAction}>{action}{action==='Add'&&<ChevronDown size={13}/>}</button>:<span/>}</div>
 }
 function PlaceholderPage({title,subtitle,icon:Icon}){
   return <div className="placeholderPage"><Icon size={38}/><h1>{title}</h1><p>{subtitle}</p></div>
@@ -584,20 +724,25 @@ function ComputerPane({screens,setScreens,fullAccess,onEnable,onClose}){
 
 function SettingsView(props){
   const {section,setSection,onClose,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
-  return <div className="settingsScreen">
+  const [mobileList,setMobileList]=useState(true);
+  return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
       <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
-        {settingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>setSection(label)}><Icon size={15}/>{label}</button>)}
+        {settingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
       </div>)}
     </aside>
     <main className="settingsContent">
-      <div className="settingsContentTop"><h1>{section}</h1><button onClick={onClose}><X size={18}/></button></div>
+      <div className="settingsContentTop">
+        <button className="mobileSettingsBack" onClick={()=>setMobileList(true)} aria-label="Back to settings"><ArrowLeft size={18}/></button>
+        <h1>{section}</h1>
+        <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
+      </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Profile'&&<SimpleSettings title="Profile" rows={[['Account','Manage your Free AI identity'],['Workspace','Personal workspace']]}/>}
-      {section==='Appearance'&&<SimpleSettings title="Appearance" rows={[['Theme','Dark'],['Density','Comfortable']]}/>}
+      {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<SimpleSettings title="Voice" rows={[['Voice input','Enabled'],['Playback','System default']]}/>}
       {section==='Configuration'&&<SimpleSettings title="Configuration" rows={[['Default mode','Chat'],['Suggested prompts','On']]}/>}
       {section==='Keyboard shortcuts'&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Settings','Ctrl+,']]}/>}
@@ -611,7 +756,7 @@ function SettingsView(props){
   </div>
 }
 
-function Toggle({value,onChange}){return <button className={'toggle '+(value?'on':'')} onClick={()=>onChange(!value)}><span/></button>}
+function Toggle({value,onChange}){return <button role="switch" aria-checked={value} className={'toggle '+(value?'on':'')} onClick={()=>onChange(!value)}><span/></button>}
 function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
@@ -624,11 +769,22 @@ function GeneralSettings({prefs,setPrefs}){
       <SettingRow title="Language" desc="Language for the app UI" control={<select value={prefs.language} onChange={e=>setPrefs({...prefs,language:e.target.value})}><option>English</option><option>עברית</option><option>Français</option></select>}/>
       <SettingRow title="Bottom panel" desc="Show panel controls in Work mode" control={<Toggle value={prefs.showBottomPanel} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
       <SettingRow title="Speed" desc="Default reasoning speed" control={<span className="valuePill">Standard</span>}/>
-      <SettingRow title="Suggested prompts" desc="Show starter actions in empty chats" control={<Toggle value={true} onChange={()=>{}}/>}/>
+      <SettingRow title="Suggested prompts" desc="Show starter actions in empty chats" control={<Toggle value={prefs.suggestedPrompts!==false} onChange={v=>setPrefs({...prefs,suggestedPrompts:v})}/>}/>
     </div>
   </div>
 }
 function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
+function AppearanceSettings({prefs,setPrefs}){
+  return <div className="settingsPane">
+    <h3>Theme</h3>
+    <div className="settingBlock">
+      <SettingRow title="Appearance" desc="Follow the system or choose a fixed theme." control={<select value={prefs.appearance||'dark'} onChange={e=>setPrefs({...prefs,appearance:e.target.value})}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>}/>
+      {!isNative&&<SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>}
+      <SettingRow title="Accent color" desc="Used for active controls and voice actions." control={<select value={prefs.accent||'blue'} onChange={e=>setPrefs({...prefs,accent:e.target.value})}><option value="blue">Blue</option><option value="green">Green</option><option value="yellow">Yellow</option><option value="pink">Pink</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="neutral">Neutral</option></select>}/>
+      {!isNative&&<SettingRow title="Text size" desc="Scale interface text without changing window zoom." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>} 
+    </div>
+  </div>
+}
 function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<ChevronRight size={16}/>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
 
@@ -705,7 +861,7 @@ function Auth(){
   }
 
   return <div className="authScreen"><div className="authCard">
-    <div className="authBrand"><Sparkles size={22}/></div>
+    <div className="authBrand"><BrandMark size={34}/></div>
     <h1>{mode==='signup'?'Create your account':'Welcome back'}</h1><p>Sign in to Free AI</p>
     <button className="googleButton" onClick={google} disabled={working}>Continue with Google</button>
     <div className="authDivider"><span/>or<span/></div>

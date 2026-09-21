@@ -167,6 +167,9 @@ jobs:
       - name: Configure Google OAuth deep link
         run: npm run android:configure-deeplink
 
+      - name: Apply Free AI Android branding
+        run: npm run android:configure-branding
+
       - name: Build APK
         run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
 

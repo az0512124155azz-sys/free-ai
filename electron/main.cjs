@@ -56,7 +56,11 @@ function installAppMenu(){
       ]
     },
     {label:'Edit',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
-    {label:'View',submenu:[{role:'reload'},{role:'forceReload'},{type:'separator'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{type:'separator'},{role:'togglefullscreen'}]},
+    {label:'View',submenu:[
+      {label:'Toggle browser',accelerator:'CmdOrCtrl+Shift+B',click:()=>win?.webContents.send('app-command','open-browser')},
+      {label:'Toggle sidebar',accelerator:'CmdOrCtrl+Shift+S',click:()=>win?.webContents.send('app-command','toggle-sidebar')},
+      {type:'separator'},{role:'reload'},{role:'forceReload'},{type:'separator'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{type:'separator'},{role:'togglefullscreen'}
+    ]},
     {label:'Help',submenu:[{label:'About Free AI',click:()=>win?.webContents.send('app-command','about')}]}
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
@@ -421,10 +425,11 @@ function createWindow(){
     height:880,
     minWidth:980,
     minHeight:650,
-    backgroundColor:'#212121',
+    backgroundColor:'#181818',
     show:false,
-    autoHideMenuBar:true,
+    autoHideMenuBar:false,
     title:'Free AI',
+    icon:path.join(__dirname,'..','build','icon.png'),
     titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',
     webPreferences:{
       preload:path.join(__dirname,'preload.cjs'),
@@ -433,7 +438,6 @@ function createWindow(){
       sandbox:true
     }
   });
-  win.setMenuBarVisibility(false);
 
   win.once('ready-to-show',()=>{
     if(!win.isDestroyed())win.show();
@@ -443,7 +447,7 @@ function createWindow(){
     console.error('Renderer failed to load',errorCode,errorDescription);
     const fallback='data:text/html;charset=utf-8,'+encodeURIComponent(
       '<!doctype html><html><body style="margin:0;background:#171717;color:#fff;font-family:system-ui;display:grid;place-items:center;height:100vh">'+
-      '<div style="text-align:center;max-width:520px;padding:32px"><div style="font-size:42px;margin-bottom:16px">✦</div>'+
+      '<div style="text-align:center;max-width:520px;padding:32px"><div style="margin:0 auto 16px;width:54px;height:54px;border-radius:16px;background:#fff;color:#181818;display:grid;place-items:center;font:700 30px system-ui">F</div>'+
       '<h1 style="margin:0 0 10px">Free AI</h1><p style="color:#aaa">The interface could not be loaded.</p>'+
       '<p style="color:#777;font-size:13px">Please install the newest Free AI release.</p></div></body></html>'
     );
