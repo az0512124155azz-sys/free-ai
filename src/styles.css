@@ -341,12 +341,21 @@ button:disabled{opacity:.42;cursor:default}
 .installedStrip{display:flex;gap:7px;padding:15px 0;flex-wrap:wrap}
 .installedIcon{width:35px;height:35px;border:1px solid var(--border-soft);background:var(--surface-secondary);border-radius:10px;display:grid;place-items:center;font-weight:700}
 .installedIcon.tool{color:var(--text-tertiary)}
+.pluginMeta{font-size:10.5px;color:var(--muted)}
 .pluginGrid{display:grid;grid-template-columns:1fr 1fr;gap:3px 32px}
 .pluginCard{min-width:0;display:grid;grid-template-columns:36px 1fr auto;gap:10px;align-items:center;padding:10px 5px;border-radius:var(--r-xl)}
 .pluginCard:hover{background:var(--hover)}
 .pluginIcon{width:35px;height:35px;border:1px solid var(--border-soft);border-radius:9px;display:grid;place-items:center}
 .pluginCard span:nth-child(2){display:flex;flex-direction:column;min-width:0}
 .pluginCard b{font-size:13px;font-weight:580}.pluginCard small{color:var(--muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pluginEmptyCard{grid-column:1/-1;min-height:116px;border:1px dashed var(--border);border-radius:var(--r-xl);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;color:var(--text-tertiary);text-align:center;padding:18px}
+.pluginEmptyCard b{font-size:13px;color:var(--text-secondary)}.pluginEmptyCard span{font-size:11px;max-width:460px;line-height:1.45}
+.toolList{display:grid;gap:4px}
+.detectedToolRow,.pluginHint{display:grid;grid-template-columns:38px minmax(0,1fr);gap:10px;align-items:center;padding:9px 6px;border-radius:var(--r-xl)}
+.detectedToolRow:hover{background:var(--hover)}
+.detectedToolRow>span:last-child,.pluginHint>div{display:flex;min-width:0;flex-direction:column}
+.detectedToolRow b,.pluginHint b{font-size:12.5px;font-weight:580}.detectedToolRow small,.pluginHint span{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.pluginHint{border:1px solid var(--border-soft);background:var(--surface-primary);padding:13px}
 .exploreInner{max-width:850px}.exploreInner h3{color:var(--text-tertiary);font-weight:500;font-size:12px;margin:24px 8px 8px}
 .placeholderPage{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--text-tertiary);text-align:center}
 .placeholderPage h1{color:var(--text);font-size:24px;font-weight:550;margin:12px 0 4px}.placeholderPage p{margin:0;font-size:13px;max-width:440px}
