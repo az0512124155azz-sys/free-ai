@@ -94,12 +94,10 @@ button:disabled{opacity:.42;cursor:default}
 :root[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.20)}
 
 .freeAiMark{width:var(--mark-size);height:var(--mark-size);display:inline-grid;place-items:center;flex:none}
-.freeAiMark svg{width:100%;height:100%;display:block}
-.freeAiMark rect{fill:var(--text)}
-.freeAiMark .markLetter{fill:var(--canvas)}
-.freeAiMark .markSpark{fill:var(--accent)}
-.authBrand .freeAiMark rect{fill:var(--text)}
-.authBrand .freeAiMark .markLetter{fill:var(--canvas)}
+.freeAiMark svg{width:100%;height:100%;display:block;overflow:visible}
+.freeAiMark .markFlow{fill:none;stroke:var(--accent);stroke-width:46;stroke-linecap:round;stroke-linejoin:round}
+.freeAiMark .markSolid{fill:var(--accent)}
+.authBrand .freeAiMark{width:44px;height:44px}
 
 .desktopShell{
   height:100%;
@@ -141,6 +139,15 @@ button:disabled{opacity:.42;cursor:default}
 }
 .brandButton b{font-size:14px;font-weight:600;letter-spacing:-.01em}
 .brandButton:hover,.brandActions button:hover,.circleIcon:hover,.voiceButton:hover{background:var(--hover)}
+.productSwitcher{position:relative}
+.productMenu{
+  position:absolute;z-index:150;top:40px;left:0;width:292px;padding:7px;background:var(--popover);border:1px solid var(--border);
+  border-radius:18px;box-shadow:var(--shadow-lg);animation:popoverIn 140ms var(--ease)
+}
+.productMenu button{width:100%;display:grid;grid-template-columns:26px minmax(0,1fr) 18px;gap:10px;align-items:center;background:transparent;border-radius:12px;padding:10px;text-align:left;color:var(--text-secondary)}
+.productMenu button:hover,.productMenu button.active{background:var(--hover);color:var(--text)}
+.productMenu button>span{display:flex;min-width:0;flex-direction:column}
+.productMenu button b{font-size:13px;font-weight:620}.productMenu button small{font-size:10.5px;color:var(--muted);line-height:1.35;margin-top:2px}
 .brandActions{display:flex;gap:2px}
 .brandActions button,.circleIcon{
   width:32px;height:32px;display:grid;place-items:center;background:transparent;border-radius:var(--r-lg);color:var(--text-tertiary)
@@ -222,6 +229,7 @@ button:disabled{opacity:.42;cursor:default}
   transition:background 160ms var(--ease),color 160ms var(--ease)
 }
 .modeSwitch button.active{background:var(--surface-tertiary);color:var(--text);box-shadow:var(--shadow-sm)}
+.superHeaderLabel{height:34px;display:flex;align-items:center;gap:7px;padding:0 11px;border:1px solid var(--border-soft);border-radius:999px;background:var(--surface-secondary);color:var(--text);font-size:11.5px;font-weight:580}
 
 .chatStage{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
 .emptyChat{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 20px 92px}
@@ -256,6 +264,10 @@ button:disabled{opacity:.42;cursor:default}
 :root[data-theme="light"] .plusCircle{background:rgba(0,0,0,.07)}
 .micButton{background:transparent;color:var(--text-secondary)}
 .micButton.listening{background:color-mix(in srgb,var(--accent) 20%,transparent);color:var(--accent)}
+.dictationStatus,.dictationError{margin:5px 7px 0;font-size:10.5px;display:flex;align-items:center;gap:7px}
+.dictationStatus{color:var(--text-tertiary)}.dictationError{color:#ffaaa9}
+.dictationPulse{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 35%,transparent);animation:dictationPulse 1.4s ease-out infinite}
+@keyframes dictationPulse{70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 7px transparent}}
 .voiceOrb{background:var(--accent-strong);color:var(--accent-contrast);transition:transform 90ms var(--ease),background 110ms var(--ease)}
 .voiceOrb:active:not(:disabled){transform:scale(.94)}
 .voiceOrb.sendReady{background:var(--text);color:var(--canvas)}
@@ -266,8 +278,14 @@ button:disabled{opacity:.42;cursor:default}
 .modelButton:hover,.effortButton:hover{background:var(--hover);color:var(--text)}
 .modelButton span{overflow:hidden;text-overflow:ellipsis}
 .modelButton small{color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis}
-.accessButton{color:var(--work);padding-left:5px}
-.accessButton.enabled{background:color-mix(in srgb,var(--work) 13%,transparent);color:var(--work)}
+.accessButton{color:var(--text-secondary);padding-left:7px;border:1px solid transparent}
+.accessButton:hover{background:var(--hover);color:var(--text)}
+.accessButton.enabled{background:color-mix(in srgb,var(--work) 13%,transparent);color:var(--work);border-color:color-mix(in srgb,var(--work) 27%,transparent)}
+.permissionAnchor .floatingMenu{left:0;right:auto;transform-origin:bottom left}
+.permissionPicker{bottom:40px;width:330px}
+.permissionRow{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) 18px;gap:9px;align-items:center;background:transparent;border-radius:11px;padding:9px;text-align:left;color:var(--text-secondary)}
+.permissionRow:hover,.permissionRow.active{background:var(--hover);color:var(--text)}
+.permissionRow>span{display:flex;min-width:0;flex-direction:column}.permissionRow b{font-size:12px;font-weight:600}.permissionRow small{font-size:10px;color:var(--muted);line-height:1.35;margin-top:2px}
 .workActions{
   min-height:38px;border-top:1px solid var(--border-soft);margin:8px 0 -2px;padding:7px 2px 0;display:flex;gap:3px
 }
@@ -378,7 +396,12 @@ button:disabled{opacity:.42;cursor:default}
 .computerToolbar{display:flex;justify-content:space-between;align-items:center;padding:12px;border-bottom:1px solid var(--border-soft)}
 .computerToolbar>div{display:flex;flex-direction:column}.computerToolbar b{font-size:12px}.computerToolbar small{font-size:10px;color:var(--muted)}
 .computerToolbar button,.enableAccess{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:var(--r-lg);padding:7px 9px;display:flex;align-items:center;gap:6px;font-size:11px}
+.computerPermissionSelect{max-width:142px;background:var(--surface-secondary);border:1px solid var(--border);border-radius:8px;color:var(--text-secondary);padding:6px 8px;font-size:10px}
 .enableAccess{color:var(--work)}
+.approvalPrompt{display:grid;grid-template-columns:24px minmax(0,1fr) auto auto;gap:8px;align-items:center;margin:10px 12px 0;padding:10px;border:1px solid color-mix(in srgb,var(--work) 30%,var(--border));border-radius:12px;background:color-mix(in srgb,var(--work) 8%,var(--surface-primary))}
+.approvalPrompt>div{display:flex;min-width:0;flex-direction:column}.approvalPrompt b{font-size:11.5px}.approvalPrompt small{font-size:10px;color:var(--muted);margin-top:2px}
+.approvalPrompt button{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:7px;padding:6px 8px;font-size:10px}.approvalPrompt .approveAction{background:var(--text);color:var(--canvas)}
+.computerError{margin:8px 12px 0;color:#ffaaa9;font-size:10.5px}
 .computerType{padding:10px 12px;border-bottom:1px solid var(--border-soft)}.computerType input{width:100%;background:var(--surface-primary);border:1px solid var(--border);border-radius:var(--r-lg);padding:8px;color:var(--text);font-size:11px}
 .computerType small{display:block;color:var(--muted);margin-top:5px;font-size:10px}
 .computerScreens{flex:1;overflow:auto;padding:10px}.computerScreen{background:#101010;border:1px solid var(--border-soft);border-radius:10px;overflow:hidden;margin-bottom:10px}
@@ -404,6 +427,8 @@ button:disabled{opacity:.42;cursor:default}
 .settingRow{min-height:57px;display:flex;align-items:center;justify-content:space-between;gap:15px;padding:10px 13px;border-bottom:1px solid var(--border-soft)}
 .settingRow:last-child{border-bottom:0}.settingRow>div{display:flex;flex-direction:column}.settingRow b{font-size:11.5px;font-weight:600}.settingRow small{font-size:10px;color:var(--muted);margin-top:3px}
 .settingRow select{background:var(--surface-secondary);border:1px solid var(--border);border-radius:var(--r-lg);padding:6px 9px;color:var(--text-secondary);font-size:10px}
+.settingsInlineButton{background:var(--surface-secondary);border:1px solid var(--border);border-radius:8px;padding:6px 9px;color:var(--text-secondary);font-size:10px}
+.settingsInlineButton:hover{background:var(--surface-tertiary);color:var(--text)}
 .toggle{width:31px;height:19px;border-radius:999px;background:var(--surface-tertiary);padding:2px}.toggle span{width:15px;height:15px;border-radius:50%;display:block;background:var(--text-tertiary);transition:transform 180ms var(--ease),background 180ms var(--ease)}
 .toggle.on{background:var(--accent)}.toggle.on span{transform:translateX(12px);background:#fff}
 .valuePill,.connectionStatus{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:999px;padding:5px 9px;font-size:10px;color:var(--text-secondary)}
@@ -413,6 +438,9 @@ button:disabled{opacity:.42;cursor:default}
 .formLabel{display:block;padding:11px 13px;font-size:10px;color:var(--text-tertiary)}.formLabel>input,.keyLine input,.apiForm input{width:100%;margin-top:6px;background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-lg);padding:8px;color:var(--text);font-size:11px}
 .keyLine{display:flex;gap:7px}.keyLine button{margin-top:6px;background:var(--surface-secondary);border-radius:var(--r-lg);padding:0 10px;font-size:10px}
 .primaryAction{background:var(--text);color:var(--canvas);border-radius:var(--r-lg);padding:8px 12px;font-size:11px}
+.profileField{display:flex;flex-direction:column;gap:6px;padding:13px;border-bottom:1px solid var(--border-soft);font-size:10.5px;color:var(--text-tertiary)}
+.profileField input{height:36px;background:var(--canvas);border:1px solid var(--border);border-radius:8px;padding:0 10px;color:var(--text);font-size:12px}
+.profileActions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 13px}.profileActions>span{font-size:10.5px;color:var(--muted);margin-right:auto}
 .apiItem{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid var(--border-soft)}.apiItem>div{display:flex;flex-direction:column;min-width:0}.apiItem b{font-size:11px}.apiItem small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.apiItem button{background:var(--surface-secondary);border-radius:var(--r-lg);padding:6px 8px;font-size:9px}
 .apiForm{display:grid;gap:7px;padding:12px}.apiForm input{margin:0}.formError{font-size:10px;color:#ffb4b4;background:rgba(132,39,39,.30);border:1px solid rgba(255,120,120,.24);border-radius:var(--r-lg);padding:7px}
 
@@ -445,6 +473,7 @@ button:disabled{opacity:.42;cursor:default}
     box-shadow:20px 0 60px rgba(0,0,0,.34)
   }
   .gptSidebar.mobileOpen{transform:translateX(0)}
+  .productMenu{position:fixed;left:10px;right:10px;top:calc(var(--safe-top) + 50px);width:auto;border-radius:20px}
   .mobileNavScrim{display:block;position:fixed;inset:0;z-index:220;background:var(--scrim);padding:0}
   .mobileCloseNav{display:grid!important}
   .desktopSidebarTrigger{display:none}
@@ -472,7 +501,9 @@ button:disabled{opacity:.42;cursor:default}
   .plusCircle,.micButton,.voiceOrb{width:40px;height:40px}
   .modelButton{max-width:145px;padding:0 8px}.modelButton span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .effortButton{display:none}
-  .accessButton{height:38px}
+  .accessButton{height:38px;max-width:150px;overflow:hidden;text-overflow:ellipsis}
+  .permissionPicker{left:8px!important;right:8px!important;width:auto!important}
+  .dictationStatus,.dictationError{font-size:11px;margin:5px 5px 0}
   .workActions{overflow:auto;min-height:42px;padding-top:8px}
   .workActions button{white-space:nowrap}
   .floatingMenu{position:fixed;left:8px!important;right:8px!important;bottom:max(78px,calc(66px + var(--safe-bottom)))!important;width:auto!important;max-height:min(62vh,520px);border-radius:20px;transform-origin:bottom center}
@@ -509,7 +540,8 @@ button:disabled{opacity:.42;cursor:default}
   .settingsPane>h3{margin-top:22px}
   .settingRow{min-height:62px;padding:11px 12px}
   .settingRow>div{max-width:65%}
-  .settingRow select{max-width:130px}
+  .settingRow select{max-width:150px}
+  .settingsInlineButton{min-height:36px}
   .integrationHero{padding:24px 18px}
   .profileMenu{position:fixed;z-index:250;left:10px;right:10px;bottom:max(10px,var(--safe-bottom));width:auto;border-radius:22px}
 }

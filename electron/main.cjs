@@ -168,6 +168,25 @@ async function pasteWindowsText(text){
   await runPowerShell("Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')");
 }
 
+async function startWindowsVoiceTyping(){
+  const script=`
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FreeAIKeys {
+  [DllImport("user32.dll")] public static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+}
+'@
+[FreeAIKeys]::keybd_event(0x5B,0,0,[UIntPtr]::Zero)
+Start-Sleep -Milliseconds 30
+[FreeAIKeys]::keybd_event(0x48,0,0,[UIntPtr]::Zero)
+Start-Sleep -Milliseconds 30
+[FreeAIKeys]::keybd_event(0x48,0,2,[UIntPtr]::Zero)
+[FreeAIKeys]::keybd_event(0x5B,0,2,[UIntPtr]::Zero)
+`;
+  await runPowerShell(script);
+}
+
 function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
 
 function encodeSecret(value){
@@ -447,8 +466,8 @@ function createWindow(){
     console.error('Renderer failed to load',errorCode,errorDescription);
     const fallback='data:text/html;charset=utf-8,'+encodeURIComponent(
       '<!doctype html><html><body style="margin:0;background:#171717;color:#fff;font-family:system-ui;display:grid;place-items:center;height:100vh">'+
-      '<div style="text-align:center;max-width:520px;padding:32px"><div style="margin:0 auto 16px;width:54px;height:54px;border-radius:16px;background:#fff;color:#181818;display:grid;place-items:center;font:700 30px system-ui">F</div>'+
-      '<h1 style="margin:0 0 10px">Free AI</h1><p style="color:#aaa">The interface could not be loaded.</p>'+
+      '<div style="text-align:center;max-width:520px;padding:32px"><svg viewBox="0 0 512 512" width="58" height="58" aria-hidden="true"><g fill="none" stroke="#3183F7" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"><path d="M96 136 C188 136 209 256 292 256 H364"/><path d="M96 376 C188 376 209 256 292 256"/></g><circle cx="96" cy="136" r="34" fill="#3183F7"/><circle cx="96" cy="376" r="34" fill="#3183F7"/><path d="M344 196 L438 256 L344 316 Z" fill="#3183F7"/></svg>'+
+      '<h1 style="margin:12px 0 10px">Free AI</h1><p style="color:#aaa">The interface could not be loaded.</p>'+
       '<p style="color:#777;font-size:13px">Please install the newest Free AI release.</p></div></body></html>'
     );
     win.loadURL(fallback).catch(()=>{});
@@ -540,6 +559,11 @@ ipcMain.handle('api:removeConnection',(_e,id)=>{
   return apiConnections.map(publicApiConnection);
 });
 ipcMain.handle('computer:captureScreens',()=>captureScreens());
+ipcMain.handle('dictation:start',async()=>{
+  if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');
+  await startWindowsVoiceTyping();
+  return {ok:true,mode:'windows-voice-typing'};
+});
 
 
 

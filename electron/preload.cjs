@@ -1,6 +1,7 @@
 const {contextBridge,ipcRenderer}=require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi',{
+  platform:process.platform,
   getStatus:()=>ipcRenderer.invoke('bridge:getStatus'),
   scanProviders:()=>ipcRenderer.invoke('bridge:scanProviders'),
   sendPrompt:(m)=>ipcRenderer.invoke('bridge:sendPrompt',m),
@@ -9,6 +10,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
   addApiConnection:(c)=>ipcRenderer.invoke('api:addConnection',c),
   removeApiConnection:(id)=>ipcRenderer.invoke('api:removeConnection',id),
   captureScreens:()=>ipcRenderer.invoke('computer:captureScreens'),
+  startSystemDictation:()=>ipcRenderer.invoke('dictation:start'),
   computerClick:(payload)=>ipcRenderer.invoke('computer:click',payload),
   computerClickAndType:(payload)=>ipcRenderer.invoke('computer:clickAndType',payload),
   browserOpen:(payload)=>ipcRenderer.invoke('browser:open',payload),

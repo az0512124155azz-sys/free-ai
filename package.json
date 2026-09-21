@@ -1,6 +1,6 @@
 {
   "name": "free-ai",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "author": "Free AI",
   "description": "Cross-platform AI control center for browser AI models",
@@ -38,7 +38,9 @@
     "wait-on": "^8.0.4",
     "@capacitor/app": "^8.0.0",
     "@capacitor/browser": "^8.0.0",
-    "lucide-react": "^0.468.0"
+    "lucide-react": "^0.468.0",
+    "@capgo/capacitor-speech-recognition": "^8.3.2",
+    "@capgo/capacitor-inappbrowser": "^8.18.0"
   },
   "build": {
     "appId": "com.freeai.desktop",
@@ -48,7 +50,8 @@
       "dist/**/*",
       "electron/**/*",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "build/free-ai-symbol.svg"
     ],
     "directories": {
       "output": "release",
@@ -59,7 +62,7 @@
         "nsis"
       ],
       "artifactName": "Free-AI-Windows-${version}.${ext}",
-      "icon": "build/icon.png"
+      "icon": "build/free-ai-symbol.svg"
     },
     "mac": {
       "target": [
@@ -67,7 +70,7 @@
       ],
       "artifactName": "Free-AI-macOS-${version}.${ext}",
       "category": "public.app-category.productivity",
-      "icon": "build/icon.png"
+      "icon": "build/free-ai-symbol.svg"
     },
     "linux": {
       "target": [
@@ -75,7 +78,7 @@
       ],
       "artifactName": "Free-AI-Linux-${version}.${ext}",
       "category": "Utility",
-      "icon": "build/icon.png"
+      "icon": "build/free-ai-symbol.svg"
     },
     "protocols": [
       {
@@ -85,6 +88,6 @@
         ]
       }
     ],
-    "icon": "build/icon.png"
+    "icon": "build/free-ai-symbol.svg"
   }
 }
