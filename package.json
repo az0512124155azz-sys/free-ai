@@ -2,38 +2,43 @@
   "name": "free-ai",
   "version": "0.1.0",
   "private": true,
+  "author": "Free AI",
   "description": "Cross-platform AI control center for browser AI models",
   "main": "electron/main.cjs",
+  "desktopName": "com.freeai.desktop",
   "scripts": {
     "dev:web": "vite --host 0.0.0.0",
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
     "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "validate": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check relay/server.mjs && node --check extension/background.js && node --check extension/content.js",
     "build:web": "vite build",
-    "desktop:dist": "npm run build:web && electron-builder --publish never",
+    "desktop:dist": "npm run validate && npm run build:web && electron-builder --publish never",
     "relay": "node relay/server.mjs",
     "android:add": "cap add android",
     "android:sync": "npm run build:web && cap sync android"
   },
   "dependencies": {
-    "@capacitor/android": "^8.0.0",
-    "@capacitor/core": "^8.0.0",
-    "@supabase/supabase-js": "^2.57.4",
-    "react": "^19.1.1",
-    "react-dom": "^19.1.1",
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
     "@capacitor/cli": "^8.0.0",
+    "@supabase/supabase-js": "^2.57.4",
     "@vitejs/plugin-react": "^5.0.4",
     "concurrently": "^9.2.1",
     "cross-env": "^10.0.0",
     "electron": "^38.1.2",
     "electron-builder": "^26.0.12",
-    "vite": "^7.1.7"
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "vite": "^7.1.7",
+    "wait-on": "^8.0.4"
   },
   "build": {
     "appId": "com.freeai.desktop",
     "productName": "Free AI",
+    "asar": true,
     "files": [
       "dist/**/*",
       "electron/**/*",
@@ -43,27 +48,18 @@
       "output": "release"
     },
     "win": {
-      "target": [
-        "nsis"
-      ],
+      "target": ["nsis"],
       "artifactName": "Free-AI-Windows-${version}.${ext}"
     },
     "mac": {
-      "target": [
-        "dmg"
-      ],
+      "target": ["dmg"],
       "artifactName": "Free-AI-macOS-${version}.${ext}",
       "category": "public.app-category.productivity"
     },
     "linux": {
-      "target": [
-        "AppImage"
-      ],
+      "target": ["AppImage"],
       "artifactName": "Free-AI-Linux-${version}.${ext}",
-      "category": "Utility",
-      "desktopName": "Free AI",
-      "syncDesktopName": true
+      "category": "Utility"
     }
-  },
-  "author": "Free AI"
+  }
 }
