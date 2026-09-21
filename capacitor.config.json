@@ -1,0 +1,6 @@
+{
+  "appId": "com.freeai.mobile",
+  "appName": "Free AI",
+  "webDir": "dist",
+  "server": {"androidScheme": "https"}
+}
