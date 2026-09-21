@@ -437,6 +437,9 @@ button:disabled{opacity:.42;cursor:default}
 .formLabel{display:block;padding:11px 13px;font-size:10px;color:var(--text-tertiary)}.formLabel>input,.keyLine input,.apiForm input{width:100%;margin-top:6px;background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-lg);padding:8px;color:var(--text);font-size:11px}
 .keyLine{display:flex;gap:7px}.keyLine button{margin-top:6px;background:var(--surface-secondary);border-radius:var(--r-lg);padding:0 10px;font-size:10px}
 .primaryAction{background:var(--text);color:var(--canvas);border-radius:var(--r-lg);padding:8px 12px;font-size:11px}
+.profileField{display:flex;flex-direction:column;gap:6px;padding:13px;border-bottom:1px solid var(--border-soft);font-size:10.5px;color:var(--text-tertiary)}
+.profileField input{height:36px;background:var(--canvas);border:1px solid var(--border);border-radius:8px;padding:0 10px;color:var(--text);font-size:12px}
+.profileActions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 13px}.profileActions>span{font-size:10.5px;color:var(--muted);margin-right:auto}
 .apiItem{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-bottom:1px solid var(--border-soft)}.apiItem>div{display:flex;flex-direction:column;min-width:0}.apiItem b{font-size:11px}.apiItem small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.apiItem button{background:var(--surface-secondary);border-radius:var(--r-lg);padding:6px 8px;font-size:9px}
 .apiForm{display:grid;gap:7px;padding:12px}.apiForm input{margin:0}.formError{font-size:10px;color:#ffb4b4;background:rgba(132,39,39,.30);border:1px solid rgba(255,120,120,.24);border-radius:var(--r-lg);padding:7px}
 
