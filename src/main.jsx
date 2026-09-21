@@ -872,15 +872,17 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
+  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Git','Environments']);
+  const visibleSettings=settingsSections.filter(([,label])=>!isNative||!hiddenOnMobile.has(label));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
       <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
-        {settingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
+        {visibleSettings.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
       </div>)}
     </aside>
     <main className="settingsContent">
@@ -890,7 +892,7 @@ function SettingsView(props){
         <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
       </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='Profile'&&<SimpleSettings title="Profile" rows={[['Account','Manage your Free AI identity'],['Workspace','Personal workspace']]}/>}
+      {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
@@ -934,6 +936,24 @@ function AppearanceSettings({prefs,setPrefs}){
     </div>
   </div>
 }
+function ProfileSettings({session}){
+  const [name,setName]=useState(session?.user?.user_metadata?.full_name||'');
+  const [state,setState]=useState('');
+  async function save(){
+    if(!supabase)return;
+    setState('Saving…');
+    const {error}=await supabase.auth.updateUser({data:{full_name:name.trim()}});
+    setState(error?(error.message||'Could not save'):'Saved');
+  }
+  return <div className="settingsPane">
+    <h3>Account</h3>
+    <div className="settingBlock profileSettingsBlock">
+      <label className="profileField"><span>Display name</span><input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label>
+      <SettingRow title="Email" desc={session?.user?.email||'No email available'} control={<span className="valuePill">Signed in</span>}/>
+      <div className="profileActions"><span>{state}</span><button className="primaryAction" onClick={save}>Save profile</button></div>
+    </div>
+  </div>
+}
 function VoiceSettings({prefs,setPrefs}){
   const [permission,setPermission]=useState('unknown');
   useEffect(()=>{
@@ -957,7 +977,7 @@ function ConfigurationSettings({prefs,setPrefs}){
     {!isNative&&<SettingRow title="Bottom panel" desc="Show extra Work controls below the composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>}
   </div></div>
 }
-function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<ChevronRight size={16}/>}/>)}</div></div>}
+function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<span className="valuePill">{b}</span>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
 
 function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
