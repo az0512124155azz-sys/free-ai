@@ -520,6 +520,7 @@ function Composer(props){
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
+  const reasoningLevels=Array.isArray(selected?.reasoningLevels)?selected.reasoningLevels:[];
   const dictationBaseRef=useRef('');
   const dictationTextRef=useRef('');
   const nativeVoiceHandlesRef=useRef([]);
@@ -667,10 +668,10 @@ function Composer(props){
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
         </div>
-        <div className="menuAnchor">
+        {reasoningLevels.length>1&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
-          {effortMenu&&<EffortMenu effort={effort} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
-        </div>
+          {effortMenu&&<EffortMenu effort={effort} levels={reasoningLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
+        </div>}
         <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Stop dictation':'Dictation'} aria-label={listening?'Stop dictation':'Start dictation'}><Mic2 size={18}/></button>
         <button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
           {busy?<RefreshCw className="spin" size={17}/>:prompt.trim()?<ArrowUp size={18}/>:<Volume2 size={18}/>}
@@ -725,18 +726,18 @@ function PermissionControl({mode,setMode,autoReviewEnabled,fullAccessEnabled}){
   </div>
 }
 
-function EffortMenu({effort,choose}){
-  const values=['instant','medium','high','extra'];
+function EffortMenu({effort,levels,choose}){
   const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'};
+  const values=(Array.isArray(levels)&&levels.length?levels:['instant']).filter(v=>labels[v]);
   const index=Math.max(0,values.indexOf(effort));
   return <div className="floatingMenu effortPicker sliderPicker">
     <div className="effortHead"><Brain size={18}/><div><b>{labels[effort]}</b><small>Reasoning effort</small></div></div>
     <input
-      className="effortSlider" type="range" min="0" max="3" step="1" value={index}
+      className="effortSlider" type="range" min="0" max={Math.max(0,values.length-1)} step="1" value={index}
       aria-label="Reasoning effort" aria-valuetext={labels[effort]}
       onChange={e=>choose(values[Number(e.target.value)])}
     />
-    <div className="effortTicks"><span/><span/><span/><span/></div>
+    <div className="effortTicks">{values.map(v=><span key={v}/>)}</div>
     <div className="effortScale"><span>Fast</span><span>Deep</span></div>
   </div>
 }
