@@ -1,0 +1,17 @@
+const {app,BrowserWindow,ipcMain}=require('electron');
+const path=require('path');
+const {WebSocketServer,WebSocket}=require('ws');
+const crypto=require('crypto');
+let win, extensionSocket=null, relaySocket=null;
+const pending=new Map();
+let relayConfig={relayUrl:'',pairKey:''};
+function status(){return {extension:!!(extensionSocket&&extensionSocket.readyState===1),relay:!!(relaySocket&&relaySocket.readyState===1)}}
+function sendStatus(){if(win&&!win.isDestroyed())win.webContents.send('bridge-status',status())}
+function routeToExtension(msg){return new Promise((resolve,reject)=>{if(!extensionSocket||extensionSocket.readyState!==1)return reject(new Error('Chrome extension is not connected. Open Chrome with the Free AI extension enabled.'));const id=msg.id||crypto.randomUUID();const timer=setTimeout(()=>{pending.delete(id);reject(new Error('AI response timed out.'));},120000);pending.set(id,{resolve,reject,timer});extensionSocket.send(JSON.stringify({...msg,id,type:'prompt'}));});}
+function startLocalBridge(){const wss=new WebSocketServer({host:'127.0.0.1',port:17341});wss.on('connection',ws=>{ws.on('message',raw=>{let m;try{m=JSON.parse(raw)}catch{return}if(m.type==='hello'&&m.role==='extension'){extensionSocket=ws;sendStatus();return}if(m.type==='response'&&pending.has(m.id)){const p=pending.get(m.id);clearTimeout(p.timer);pending.delete(m.id);m.error?p.reject(new Error(m.error)):p.resolve(m);}});ws.on('close',()=>{if(ws===extensionSocket)extensionSocket=null;sendStatus()});});wss.on('error',e=>console.error('Local bridge error',e));}
+function connectRelay(){if(relaySocket){try{relaySocket.close()}catch{}}if(!relayConfig.relayUrl||!relayConfig.pairKey){sendStatus();return;}relaySocket=new WebSocket(relayConfig.relayUrl);relaySocket.on('open',()=>{relaySocket.send(JSON.stringify({type:'hello',role:'desktop',key:relayConfig.pairKey}));sendStatus()});relaySocket.on('message',async raw=>{let m;try{m=JSON.parse(raw)}catch{return}if(m.type==='prompt'){try{const r=await routeToExtension(m);relaySocket.send(JSON.stringify({type:'response',id:m.id,text:r.text||''}));}catch(e){relaySocket.send(JSON.stringify({type:'response',id:m.id,error:e.message}))}}});relaySocket.on('close',()=>{sendStatus();setTimeout(()=>{if(relayConfig.relayUrl&&relayConfig.pairKey)connectRelay()},3000)});relaySocket.on('error',()=>sendStatus());}
+function createWindow(){win=new BrowserWindow({width:1280,height:820,minWidth:900,minHeight:620,backgroundColor:'#0b0d10',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false}});const dev=process.env.VITE_DEV_SERVER_URL;if(dev)win.loadURL(dev);else win.loadFile(path.join(__dirname,'..','dist','index.html'));}
+app.whenReady().then(()=>{startLocalBridge();createWindow();app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()})});app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
+ipcMain.handle('bridge:getStatus',()=>status());
+ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routeToExtension(msg));
+ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{relayConfig={relayUrl:String(cfg?.relayUrl||''),pairKey:String(cfg?.pairKey||'')};connectRelay();return status()});
