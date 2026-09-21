@@ -1,36 +1,95 @@
 # Free AI
 
-Free AI is a cross-platform AI control center that lets a desktop app and Android client use AI chats already open in Chrome through a companion extension.
+Free AI is a cross-platform AI workspace that can use AI services already open in Chrome, desktop-stored API connections, and a paired Android client.
 
-## Architecture
+## Repository layout
 
-- `apps/desktop` — Electron + React desktop app (Windows/macOS/Linux)
-- `apps/mobile` — Capacitor Android wrapper using the shared web UI
-- `extension` — Chrome Manifest V3 companion extension
-- `relay` — lightweight WebSocket relay for remote Android -> desktop commands
-- `.github/workflows/build.yml` — cross-platform build pipeline
+- `src/` — shared React UI for desktop and Android
+- `electron/` — Electron main/preload processes for Windows, macOS and Linux
+- `extension/` — Chrome Manifest V3 browser bridge
+- `relay/` — WebSocket relay used by Android to reach the paired desktop
+- `scripts/` — CI/build helpers
+- `.github/workflows/build.yml` — Windows, macOS, Linux, Android and extension builds
+
+## How model connections work
+
+### Browser sessions
+
+The Chrome extension detects supported AI tabs that are actually open and reachable. The app does not assume ChatGPT or any other provider is connected.
+
+Supported browser adapters currently include:
+
+- ChatGPT
+- Claude
+- Gemini
+- DeepSeek
+- Grok
+- Manus
+
+Browser sites change frequently, so the DOM adapters in `extension/content.js` may need maintenance when providers redesign their chat UI.
+
+### API models
+
+Desktop Settings can store OpenAI-compatible API endpoints such as LM Studio, Ollama-compatible gateways, NVIDIA-compatible gateways, or other `/chat/completions` services.
+
+API keys are stored on the desktop. Android receives only sanitized model metadata through the relay, not the API key.
+
+### MCP / connectors
+
+The extension reports connectors/tools it can detect in connected browser model UIs. Free AI can route a tool request through the browser model that owns the detected connector and then pass the returned result to another connected model.
+
+Free AI does not install MCP servers into third-party AI products. Install/authorize the connector in the provider that supports it first.
 
 ## Security model
 
-The Chrome extension only connects to the desktop bridge on `127.0.0.1:17341`.
-Remote Android control uses a user-generated pairing key and an outbound desktop connection to the relay.
-Never expose the local browser bridge directly to the internet.
+- The Chrome extension connects only to the desktop bridge on `127.0.0.1:17341`.
+- The local bridge rejects normal web-page origins and accepts Chrome-extension WebSocket clients.
+- Android remote control uses an outbound desktop WebSocket connection plus a generated pairing key.
+- API keys remain on the desktop and are not sent to Android.
+- Use `wss://` for a public relay.
 
-## Setup
+## Local development
 
-1. Install dependencies: `npm install`
-2. Start desktop: `npm run dev`
-3. Load `extension/` as an unpacked Chrome extension.
-4. In desktop Settings, create/copy a pairing key.
-5. Run the relay with `npm run relay` on a reachable HTTPS/WSS host.
-6. Enter the relay URL + pairing key in Android settings.
+```bash
+npm install
+npm run dev
+```
+
+Load `extension/` as an unpacked Chrome extension from `chrome://extensions`.
+
+## Relay
+
+```bash
+npm run relay
+```
+
+Set `PORT` when required by your host.
 
 ## Authentication
 
-The UI includes email/password and Google sign-in wiring through Supabase Auth.
-Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` for production auth.
+Supabase Auth is wired for email/password and Google OAuth.
 
-## Browser providers
+Configure:
 
-Initial adapters: ChatGPT, Claude, Gemini, DeepSeek and Grok.
-Because provider DOMs change over time, adapters are isolated in `extension/providers.js`.
+```text
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+The matching values should also be configured as GitHub Actions secrets for release builds.
+
+Google OAuth additionally requires the correct redirect URLs to be allowed in the Supabase/Google provider configuration for the platform being used.
+
+If Supabase is not configured, development builds enter a local workspace instead of hanging on a login screen.
+
+## Builds
+
+The GitHub workflow builds:
+
+- Windows NSIS installer
+- macOS DMG
+- Linux AppImage
+- Android debug APK
+- Chrome extension ZIP
+
+Pull requests run the full build matrix before changes are merged to `main`.
