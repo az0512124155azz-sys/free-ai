@@ -236,6 +236,7 @@ function App(){
     setSelectedTool(null);
     setPage('chat');
     if(value==='super')setMode('work');
+    else setMode(appPrefs.defaultMode==='work'?'work':'chat');
   }
   function newChat(){
     setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setApprovalMode('ask');
