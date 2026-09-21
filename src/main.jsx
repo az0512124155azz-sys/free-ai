@@ -239,6 +239,7 @@ function App(){
   }
   function newChat(){
     setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setApprovalMode('ask');
+    if(product==='free')setMode(appPrefs.defaultMode==='work'?'work':'chat');
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
@@ -357,9 +358,9 @@ function App(){
       <nav className="primaryNav">
         <NavItem icon={SquarePen} label={product==='super'?'New task':'New chat'} active={page==='chat'&&!currentChatId} onClick={newChat}/>
         <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>{setPage('images');setMobileNavOpen(false)}}/>
-        <NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>{setPage('scheduled');setMobileNavOpen(false)}}/>
-        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
-        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
+        {!isNative&&<NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>{setPage('scheduled');setMobileNavOpen(false)}}/>}
+        {!isNative&&<NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>}
+        {!isNative&&<NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>}
       </nav>
       <div className="sidebarScroll">
         <div className="sidebarGroupTitle">Projects</div>
@@ -421,7 +422,7 @@ function App(){
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 approvalMode={approvalMode} setApprovalMode={setApprovalMode} permissionPrefs={appPrefs}
                 onBrowser={openBrowser}
-                onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
+                onComputer={isDesktop?()=>{setPlusMenu(false);setSidePanel('computer')}:null}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
               />
             </div>
@@ -445,7 +446,7 @@ function App(){
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                   approvalMode={approvalMode} setApprovalMode={setApprovalMode} permissionPrefs={appPrefs}
                   onBrowser={openBrowser}
-                  onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
+                  onComputer={isDesktop?()=>{setPlusMenu(false);setSidePanel('computer')}:null}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
                 />
               </div>
@@ -739,7 +740,7 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
       <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName} onClick={()=>setSelectedTool(t)}/>
     )}
     <MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>
-    <MenuRow icon={Monitor} label="Computer" sub="View or control your desktop" onClick={onComputer}/>
+    {onComputer&&<MenuRow icon={Monitor} label="Computer" sub="View or control your desktop" onClick={onComputer}/>} 
   </div>
 }
 
@@ -923,13 +924,17 @@ function ComputerPane({screens,setScreens,approvalMode,onSetApprovalMode,permiss
 function SettingsView(props){
   const {section,setSection,onClose,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
+  const visibleSettingsSections=settingsSections.filter(([group,label])=>{
+    if(!isNative)return true;
+    return !['Keyboard shortcuts','Computer use','Git','Environments'].includes(label);
+  });
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
       <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
-        {settingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
+        {visibleSettingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
       </div>)}
     </aside>
     <main className="settingsContent">
@@ -942,11 +947,11 @@ function SettingsView(props){
       {section==='Profile'&&<SimpleSettings title="Profile" rows={[['Account','Manage your Free AI identity'],['Workspace','Personal workspace']]}/>}
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='Configuration'&&<SimpleSettings title="Configuration" rows={[['Default mode','Chat'],['Suggested prompts','On']]}/>}
+      {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>} 
       {section==='Keyboard shortcuts'&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status="Permission-aware" action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title="Plugins" text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
-      {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text="Open a real browser panel beside your chat." status={isDesktop?'Available':'Desktop only'} action={onBrowser}/>}
+      {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text={isNative?'Open Free AI Browser in an isolated in-app WebView.':'Open the Free AI browser beside your chat with its own browsing state.'} status={isNative?'In-app WebView':isDesktop?'Available':'Unavailable'} action={onBrowser}/>} 
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
       {section==='Git'&&<SimpleSettings title="Git" rows={[['Git integration','Available through installed plugins'],['Repository context','Work mode']]}/>}
       {section==='Environments'&&<SimpleSettings title="Environments" rows={[['Desktop runtime',isDesktop?'Electron desktop':'Mobile'],['Browser bridge',status.extension?'Connected':'Disconnected']]}/>}
@@ -984,6 +989,16 @@ function AppearanceSettings({prefs,setPrefs}){
     </div>
   </div>
 }
+function ConfigurationSettings({prefs,setPrefs}){
+  return <div className="settingsPane">
+    <h3>Chat behavior</h3>
+    <div className="settingBlock">
+      <SettingRow title="Default mode" desc="Mode used when you create a new Free AI conversation." control={<select value={prefs.defaultMode||'chat'} onChange={e=>setPrefs({...prefs,defaultMode:e.target.value})}><option value="chat">Chat</option><option value="work">Work</option></select>}/>
+      <SettingRow title="Suggested prompts" desc="Show starter actions in new chats." control={<Toggle value={prefs.suggestedPrompts!==false} onChange={v=>setPrefs({...prefs,suggestedPrompts:v})}/>}/>
+    </div>
+  </div>
+}
+
 function VoiceSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Dictation</h3>
@@ -993,7 +1008,7 @@ function VoiceSettings({prefs,setPrefs}){
     </div>
   </div>
 }
-function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<ChevronRight size={16}/>}/>)}</div></div>}
+function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc="" control={<span className="valuePill">{b}</span>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
 
 function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
