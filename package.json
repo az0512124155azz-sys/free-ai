@@ -1,0 +1,43 @@
+{
+  "name": "free-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cross-platform AI control center for browser AI models",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev:web": "vite --host 0.0.0.0",
+    "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
+    "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
+    "build:web": "vite build",
+    "desktop:dist": "npm run build:web && electron-builder",
+    "relay": "node relay/server.mjs",
+    "android:add": "cap add android",
+    "android:sync": "npm run build:web && cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@supabase/supabase-js": "^2.57.4",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.0.0",
+    "electron": "^38.1.2",
+    "electron-builder": "^26.0.12",
+    "vite": "^7.1.7"
+  },
+  "build": {
+    "appId": "com.freeai.desktop",
+    "productName": "Free AI",
+    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "directories": {"output": "release"},
+    "win": {"target": ["nsis"], "artifactName": "Free-AI-Windows-${version}.${ext}"},
+    "mac": {"target": ["dmg"], "artifactName": "Free-AI-macOS-${version}.${ext}", "category": "public.app-category.productivity"},
+    "linux": {"target": ["AppImage"], "artifactName": "Free-AI-Linux-${version}.${ext}", "category": "Utility"}
+  }
+}
