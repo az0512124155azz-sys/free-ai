@@ -440,6 +440,7 @@ function App(){
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                 approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
+                permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -465,6 +466,7 @@ function App(){
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                   product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                   approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
+                  permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                   onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -507,7 +509,7 @@ function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,approvalMode,setApprovalMode,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -625,7 +627,7 @@ function Composer(props){
           <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
             <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
           </button>
-          {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
+          {approvalMenu&&<PermissionModeMenu value={approvalMode} options={permissionOptions} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
       </div>
 
@@ -685,16 +687,16 @@ function EffortMenu({effort,levels,choose}){
   </div>
 }
 
-function PermissionModeMenu({value,choose}){
+function PermissionModeMenu({value,options={},choose}){
   const rows=[
-    ['ask','Ask for approval','Review actions before they go beyond the current workspace.'],
-    ['auto','Approve for me','Automatically approve eligible low-risk actions; typed actions still ask.'],
-    ['full','Full access','Run supported computer actions without asking each time.']
+    ['ask','Ask for approval','Default workspace permissions. Ask before additional access.',true],
+    ['auto','Approve for me','Keep the workspace boundary and send additional-access requests to automatic review.',!!options.auto],
+    ['full','Full access','Allow supported disk and network actions without repeated approval prompts.',!!options.full]
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
-    {rows.map(([id,label,desc])=><button key={id} className={'permissionRow '+(value===id?'active':'')} onClick={()=>choose(id)}>
-      <ShieldCheck size={17}/><span><b>{label}</b><small>{desc}</small></span>{value===id&&<Check size={15}/>}
+    {rows.map(([id,label,desc,enabled])=><button key={id} disabled={!enabled} className={'permissionRow '+(value===id?'active ':'')+(!enabled?'disabled':'')} onClick={()=>enabled&&choose(id)}>
+      <ShieldCheck size={17}/><span><b>{label}</b><small>{enabled?desc:'Enable this mode in Settings → General first.'}</small></span>{value===id&&<Check size={15}/>}
     </button>)}
   </div>
 }
@@ -951,7 +953,11 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI handle supported computer actions." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Ask for approval</option><option value="auto">Approve for me</option><option value="full">Full access</option></select>}/>} 
+      {!isNative&&<>
+        <SettingRow title="Default permissions" desc="Free AI can read and edit files in the current workspace. Additional access asks for approval." control={<Toggle value={true} onChange={()=>{}}/>}/>
+        <SettingRow title="Auto-review" desc="Makes “Approve for me” available. The workspace boundary stays the same; additional-access requests are automatically reviewed." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
+        <SettingRow title="Full access" desc="Makes Full access available. It can edit files outside the workspace and use the network without repeated approval prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
+      </>}
     </div>
     {!isNative&&<><h3>General</h3>
     <div className="settingBlock">
