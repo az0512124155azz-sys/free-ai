@@ -6,8 +6,8 @@ import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
 import './styles.css';
 
-const supabaseUrl=import.meta.env.VITE_SUPABASE_URL;
-const supabaseKey=import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseUrl=import.meta.env.VITE_SUPABASE_URL||'https://xquntkgjlmrxkwkrwsjl.supabase.co';
+const supabaseKey=import.meta.env.VITE_SUPABASE_ANON_KEY||'sb_publishable_5jLA64uA5h7NICd9sQLwUg_aQquD67t';
 const supabase=supabaseUrl&&supabaseKey
   ? createClient(supabaseUrl,supabaseKey,{
       auth:{
