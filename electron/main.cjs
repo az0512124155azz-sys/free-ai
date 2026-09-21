@@ -14,8 +14,12 @@ let apiConnections=[];
 const pending=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
-let browserView=null;
-let browserState={url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+const browserTabs=new Map();
+let activeBrowserTabId=null;
+let browserBounds=null;
+let browserAttached=false;
+let browserDownloads=[];
+let browserDownloadHooked=false;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -66,21 +70,41 @@ function installAppMenu(){
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function browserSnapshot(){
-  if(!browserView)return {...browserState};
-  const wc=browserView.webContents;
+function activeBrowserEntry(){
+  return activeBrowserTabId?browserTabs.get(activeBrowserTabId)||null:null;
+}
+
+function browserTabMeta(id,view){
+  const wc=view.webContents;
   return {
-    url:wc.getURL()||browserState.url,
-    title:wc.getTitle()||browserState.title||'New tab',
+    id,
+    url:wc.getURL()||'',
+    title:wc.getTitle()||'New tab',
+    loading:wc.isLoading()
+  };
+}
+
+function browserSnapshot(){
+  const entry=activeBrowserEntry();
+  const tabs=[...browserTabs.entries()].map(([id,view])=>browserTabMeta(id,view));
+  if(!entry){
+    return {url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads};
+  }
+  const wc=entry.webContents;
+  return {
+    url:wc.getURL()||'',
+    title:wc.getTitle()||'New tab',
     loading:wc.isLoading(),
     canGoBack:wc.canGoBack(),
-    canGoForward:wc.canGoForward()
+    canGoForward:wc.canGoForward(),
+    tabs,
+    activeTabId:activeBrowserTabId,
+    downloads:browserDownloads
   };
 }
 
 function emitBrowserState(){
-  browserState=browserSnapshot();
-  if(win&&!win.isDestroyed())win.webContents.send('browser-state',browserState);
+  if(win&&!win.isDestroyed())win.webContents.send('browser-state',browserSnapshot());
 }
 
 function normalizeBrowserUrl(input){
@@ -92,9 +116,52 @@ function normalizeBrowserUrl(input){
   return 'https://www.google.com/search?q='+encodeURIComponent(raw);
 }
 
-function ensureBrowserView(){
-  if(browserView)return browserView;
-  browserView=new WebContentsView({
+function attachBrowserView(view){
+  if(!win||win.isDestroyed()||!view)return;
+  if(browserAttached){
+    const previous=activeBrowserEntry();
+    if(previous&&previous!==view){
+      try{win.contentView.removeChildView(previous)}catch{}
+    }
+  }
+  try{win.contentView.addChildView(view);browserAttached=true}catch{}
+  if(browserBounds)view.setBounds(browserBounds);
+}
+
+function hookBrowserDownloads(wc){
+  if(browserDownloadHooked)return;
+  browserDownloadHooked=true;
+  wc.session.on('will-download',(_event,item)=>{
+    const id=crypto.randomUUID();
+    const record={
+      id,
+      filename:item.getFilename(),
+      url:item.getURL(),
+      state:'progressing',
+      receivedBytes:0,
+      totalBytes:item.getTotalBytes()
+    };
+    browserDownloads=[record,...browserDownloads].slice(0,12);
+    emitBrowserState();
+    item.on('updated',(_e,state)=>{
+      record.state=state;
+      record.receivedBytes=item.getReceivedBytes();
+      record.totalBytes=item.getTotalBytes();
+      emitBrowserState();
+    });
+    item.once('done',(_e,state)=>{
+      record.state=state;
+      record.receivedBytes=item.getReceivedBytes();
+      record.totalBytes=item.getTotalBytes();
+      record.savePath=item.getSavePath();
+      emitBrowserState();
+    });
+  });
+}
+
+function createBrowserTab(input='https://www.google.com/',activate=true){
+  const id=crypto.randomUUID();
+  const view=new WebContentsView({
     webPreferences:{
       sandbox:true,
       contextIsolation:true,
@@ -102,31 +169,89 @@ function ensureBrowserView(){
       partition:'persist:freeai-browser'
     }
   });
-  win.contentView.addChildView(browserView);
-  const wc=browserView.webContents;
-  wc.setWindowOpenHandler(({url})=>{wc.loadURL(url).catch(()=>{});return {action:'deny'}});
+  browserTabs.set(id,view);
+  const wc=view.webContents;
+  hookBrowserDownloads(wc);
+  wc.setWindowOpenHandler(({url})=>{
+    createBrowserTab(url,true);
+    return {action:'deny'};
+  });
   for(const eventName of ['did-start-loading','did-stop-loading','did-navigate','did-navigate-in-page','page-title-updated']){
     wc.on(eventName,()=>emitBrowserState());
   }
-  return browserView;
+  wc.on('render-process-gone',()=>emitBrowserState());
+  if(activate)activateBrowserTab(id);
+  wc.loadURL(normalizeBrowserUrl(input)).catch(()=>emitBrowserState());
+  emitBrowserState();
+  return {id,view};
+}
+
+function activateBrowserTab(id){
+  const view=browserTabs.get(id);
+  if(!view)return false;
+  const previous=activeBrowserEntry();
+  if(previous&&previous!==view&&browserAttached){
+    try{win?.contentView.removeChildView(previous)}catch{}
+    browserAttached=false;
+  }
+  activeBrowserTabId=id;
+  attachBrowserView(view);
+  emitBrowserState();
+  return true;
+}
+
+function ensureBrowserView(){
+  let entry=activeBrowserEntry();
+  if(!entry){
+    entry=createBrowserTab('https://www.google.com/',true).view;
+  }else{
+    attachBrowserView(entry);
+  }
+  return entry;
 }
 
 function setBrowserBounds(bounds){
-  if(!browserView||!bounds)return;
-  const x=Math.max(0,Math.round(Number(bounds.x)||0));
-  const y=Math.max(0,Math.round(Number(bounds.y)||0));
-  const width=Math.max(1,Math.round(Number(bounds.width)||1));
-  const height=Math.max(1,Math.round(Number(bounds.height)||1));
-  browserView.setBounds({x,y,width,height});
+  if(!bounds)return;
+  browserBounds={
+    x:Math.max(0,Math.round(Number(bounds.x)||0)),
+    y:Math.max(0,Math.round(Number(bounds.y)||0)),
+    width:Math.max(1,Math.round(Number(bounds.width)||1)),
+    height:Math.max(1,Math.round(Number(bounds.height)||1))
+  };
+  const view=activeBrowserEntry();
+  if(view)view.setBounds(browserBounds);
 }
 
-function closeBrowserView(){
-  if(!browserView)return;
-  try{win?.contentView.removeChildView(browserView)}catch{}
-  try{browserView.webContents.close()}catch{}
-  browserView=null;
-  browserState={url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+function closeBrowserTab(id){
+  const view=browserTabs.get(id);
+  if(!view)return browserSnapshot();
+  const ids=[...browserTabs.keys()];
+  const index=ids.indexOf(id);
+  if(activeBrowserTabId===id&&browserAttached){
+    try{win?.contentView.removeChildView(view)}catch{}
+    browserAttached=false;
+  }
+  try{view.webContents.close()}catch{}
+  browserTabs.delete(id);
+  if(activeBrowserTabId===id){
+    activeBrowserTabId=null;
+    const nextId=ids[index+1]||ids[index-1]||[...browserTabs.keys()][0]||null;
+    if(nextId)activateBrowserTab(nextId);
+    else createBrowserTab('https://www.google.com/',true);
+  }
+  emitBrowserState();
+  return browserSnapshot();
 }
+
+function hideBrowserView(){
+  const view=activeBrowserEntry();
+  if(view&&browserAttached){
+    try{win?.contentView.removeChildView(view)}catch{}
+  }
+  browserAttached=false;
+  emitBrowserState();
+}
+
 
 function runPowerShell(script){
   return new Promise((resolve,reject)=>{
@@ -569,25 +694,33 @@ ipcMain.handle('dictation:start',async()=>{
 
 ipcMain.handle('browser:open',async(_e,payload={})=>{
   if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
-  const view=ensureBrowserView();
   if(payload.bounds)setBrowserBounds(payload.bounds);
-  const url=normalizeBrowserUrl(payload.url);
-  await view.webContents.loadURL(url);
+  let view=ensureBrowserView();
+  if(payload.newTab){
+    view=createBrowserTab(payload.url||'https://www.google.com/',true).view;
+  }else if(payload.url&&(!view.webContents.getURL()||payload.forceNavigate)){
+    await view.webContents.loadURL(normalizeBrowserUrl(payload.url));
+  }
   emitBrowserState();
   return browserSnapshot();
 });
+ipcMain.handle('browser:newTab',async(_e,input)=>{
+  createBrowserTab(input||'https://www.google.com/',true);
+  return browserSnapshot();
+});
+ipcMain.handle('browser:selectTab',(_e,id)=>{activateBrowserTab(id);return browserSnapshot()});
+ipcMain.handle('browser:closeTab',(_e,id)=>closeBrowserTab(id));
 ipcMain.handle('browser:navigate',async(_e,input)=>{
   const view=ensureBrowserView();
-  const url=normalizeBrowserUrl(input);
-  await view.webContents.loadURL(url);
+  await view.webContents.loadURL(normalizeBrowserUrl(input));
   emitBrowserState();
   return browserSnapshot();
 });
 ipcMain.handle('browser:setBounds',(_e,bounds)=>{setBrowserBounds(bounds);return true});
-ipcMain.handle('browser:back',()=>{if(browserView?.webContents.canGoBack())browserView.webContents.goBack();return browserSnapshot()});
-ipcMain.handle('browser:forward',()=>{if(browserView?.webContents.canGoForward())browserView.webContents.goForward();return browserSnapshot()});
-ipcMain.handle('browser:reload',()=>{browserView?.webContents.reload();return browserSnapshot()});
-ipcMain.handle('browser:close',()=>{closeBrowserView();return true});
+ipcMain.handle('browser:back',()=>{const view=activeBrowserEntry();if(view?.webContents.canGoBack())view.webContents.goBack();return browserSnapshot()});
+ipcMain.handle('browser:forward',()=>{const view=activeBrowserEntry();if(view?.webContents.canGoForward())view.webContents.goForward();return browserSnapshot()});
+ipcMain.handle('browser:reload',()=>{activeBrowserEntry()?.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:close',()=>{hideBrowserView();return true});
 
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
   if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows. Screen preview still works on this platform.');
