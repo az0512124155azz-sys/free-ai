@@ -50,7 +50,8 @@
       "dist/**/*",
       "electron/**/*",
       "build/icon.png",
-      "package.json"
+      "package.json",
+      "build/free-ai-symbol.svg"
     ],
     "directories": {
       "output": "release",
@@ -61,7 +62,7 @@
         "nsis"
       ],
       "artifactName": "Free-AI-Windows-${version}.${ext}",
-      "icon": "build/icon.png"
+      "icon": "build/free-ai-symbol.svg"
     },
     "mac": {
       "target": [
@@ -69,7 +70,7 @@
       ],
       "artifactName": "Free-AI-macOS-${version}.${ext}",
       "category": "public.app-category.productivity",
-      "icon": "build/icon.png"
+      "icon": "build/free-ai-symbol.svg"
     },
     "linux": {
       "target": [
@@ -77,7 +78,7 @@
       ],
       "artifactName": "Free-AI-Linux-${version}.${ext}",
       "category": "Utility",
-      "icon": "build/icon.png"
+      "icon": "build/free-ai-symbol.svg"
     },
     "protocols": [
       {
@@ -87,6 +88,6 @@
         ]
       }
     ],
-    "icon": "build/icon.png"
+    "icon": "build/free-ai-symbol.svg"
   }
 }
