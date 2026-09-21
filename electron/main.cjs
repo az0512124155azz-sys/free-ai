@@ -12,17 +12,20 @@ let browserProviders=[];
 let apiConnections=[];
 const pending=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
+let pendingAuthUrl=null;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
 
 function handleAuthCallback(url){
   if(typeof url!=='string'||!url.startsWith(AUTH_CALLBACK_PREFIX))return false;
-  if(win&&!win.isDestroyed()){
-    win.show();
-    win.focus();
-    win.webContents.send('auth-callback',url);
+  if(!win||win.isDestroyed()){
+    pendingAuthUrl=url;
+    return true;
   }
+  win.show();
+  win.focus();
+  win.webContents.send('auth-callback',url);
   return true;
 }
 
@@ -337,8 +340,13 @@ app.whenReady().then(()=>{
   createWindow();
 
   const startupAuthUrl=findAuthUrl(process.argv);
-  if(startupAuthUrl){
-    win.webContents.once('did-finish-load',()=>handleAuthCallback(startupAuthUrl));
+  if(startupAuthUrl)pendingAuthUrl=startupAuthUrl;
+  if(pendingAuthUrl){
+    win.webContents.once('did-finish-load',()=>{
+      const url=pendingAuthUrl;
+      pendingAuthUrl=null;
+      handleAuthCallback(url);
+    });
   }
 
   app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()});
