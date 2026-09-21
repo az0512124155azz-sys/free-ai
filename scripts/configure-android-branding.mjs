@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const res=path.resolve('android/app/src/main/res');
+const androidRoot=path.resolve('android');
+const res=path.join(androidRoot,'app','src','main','res');
 if(!fs.existsSync(res)){
   console.error('Android resources not found. Run "npx cap add android" first.');
   process.exit(1);
 }
 
-const ensureDir=p=>fs.mkdirSync(path.join(res,p),{recursive:true});
 const write=(rel,value)=>{
   const target=path.join(res,rel);
   fs.mkdirSync(path.dirname(target),{recursive:true});
@@ -16,7 +16,7 @@ const write=(rel,value)=>{
 
 const colors=`<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="free_ai_icon_background">#181818</color>
+    <color name="free_ai_icon_background">#171717</color>
 </resources>
 `;
 
@@ -26,15 +26,14 @@ const foreground=`<?xml version="1.0" encoding="utf-8"?>
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#F7F7F7"
-        android:pathData="M28,18 C22.5,18 18,22.5 18,28 L18,80 C18,85.5 22.5,90 28,90 L80,90 C85.5,90 90,85.5 90,80 L90,28 C90,22.5 85.5,18 80,18 Z" />
-    <path
-        android:fillColor="#181818"
-        android:pathData="M37,33 L72,33 L72,42 L48,42 L48,52 L68,52 L68,61 L48,61 L48,76 L37,76 Z" />
-    <path
-        android:fillColor="#3A83F7"
-        android:pathData="M76,27 L78.5,33 L84.5,35.5 L78.5,38 L76,44 L73.5,38 L67.5,35.5 L73.5,33 Z" />
+    <path android:fillColor="#2F7CF6"
+        android:pathData="M54,20 A19,19 0,1 1,54,58 A19,19 0,1 1,54,20" />
+    <path android:fillColor="#8A63F6"
+        android:pathData="M25,47 A19,19 0,1 1,25,85 A19,19 0,1 1,25,47" />
+    <path android:fillColor="#2CCF9C"
+        android:pathData="M83,47 A19,19 0,1 1,83,85 A19,19 0,1 1,83,47" />
+    <path android:fillColor="#F7F7F7"
+        android:pathData="M54,44 L64,54 L54,64 L44,54 Z" />
 </vector>
 `;
 
@@ -44,9 +43,12 @@ const monochrome=`<?xml version="1.0" encoding="utf-8"?>
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M31,22 C26,22 22,26 22,31 L22,77 C22,82 26,86 31,86 L77,86 C82,86 86,82 86,77 L86,31 C86,26 82,22 77,22 Z M37,33 L72,33 L72,42 L48,42 L48,52 L68,52 L68,61 L48,61 L48,76 L37,76 Z" />
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M54,20 A19,19 0,1 1,54,58 A19,19 0,1 1,54,20
+                          M25,47 A19,19 0,1 1,25,85 A19,19 0,1 1,25,47
+                          M83,47 A19,19 0,1 1,83,85 A19,19 0,1 1,83,47" />
+    <path android:fillColor="#00000000"
+        android:pathData="M54,44 L64,54 L54,64 L44,54 Z" />
 </vector>
 `;
 
@@ -64,10 +66,11 @@ const legacy=`<?xml version="1.0" encoding="utf-8"?>
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path android:fillColor="#181818" android:pathData="M0,0 H108 V108 H0 Z" />
-    <path android:fillColor="#F7F7F7" android:pathData="M28,18 C22.5,18 18,22.5 18,28 L18,80 C18,85.5 22.5,90 28,90 L80,90 C85.5,90 90,85.5 90,80 L90,28 C90,22.5 85.5,18 80,18 Z" />
-    <path android:fillColor="#181818" android:pathData="M37,33 L72,33 L72,42 L48,42 L48,52 L68,52 L68,61 L48,61 L48,76 L37,76 Z" />
-    <path android:fillColor="#3A83F7" android:pathData="M76,27 L78.5,33 L84.5,35.5 L78.5,38 L76,44 L73.5,38 L67.5,35.5 L73.5,33 Z" />
+    <path android:fillColor="#171717" android:pathData="M0,0 H108 V108 H0 Z" />
+    <path android:fillColor="#2F7CF6" android:pathData="M54,20 A19,19 0,1 1,54,58 A19,19 0,1 1,54,20" />
+    <path android:fillColor="#8A63F6" android:pathData="M25,47 A19,19 0,1 1,25,85 A19,19 0,1 1,25,47" />
+    <path android:fillColor="#2CCF9C" android:pathData="M83,47 A19,19 0,1 1,83,85 A19,19 0,1 1,83,47" />
+    <path android:fillColor="#F7F7F7" android:pathData="M54,44 L64,54 L54,64 L44,54 Z" />
 </vector>
 `;
 
@@ -78,7 +81,6 @@ const splash=`<?xml version="1.0" encoding="utf-8"?>
 </layer-list>
 `;
 
-ensureDir('values');
 write('values/free_ai_colors.xml',colors);
 write('drawable/ic_launcher_foreground.xml',foreground);
 write('drawable/ic_launcher_monochrome.xml',monochrome);
@@ -98,6 +100,15 @@ for(const dirent of fs.readdirSync(res,{withFileTypes:true})){
   }
 }
 
+const variablesPath=path.join(androidRoot,'variables.gradle');
+if(fs.existsSync(variablesPath)){
+  let gradle=fs.readFileSync(variablesPath,'utf8');
+  if(/minSdkVersion\s*=\s*\d+/.test(gradle)){
+    gradle=gradle.replace(/minSdkVersion\s*=\s*\d+/,'minSdkVersion = 26');
+  }
+  fs.writeFileSync(variablesPath,gradle,'utf8');
+}
+
 const stylesPath=path.join(res,'values','styles.xml');
 if(fs.existsSync(stylesPath)){
   let xml=fs.readFileSync(stylesPath,'utf8');
@@ -115,7 +126,7 @@ if(fs.existsSync(stylesPath)){
       let next=body;
       for(const [key,value] of items){
         const itemRe=new RegExp('<item\\s+name="'+key.replaceAll(':','\\:')+'"[^>]*>[^<]*</item>');
-        const item='\\n        <item name="'+key+'">'+value+'</item>';
+        const item='\n        <item name="'+key+'">'+value+'</item>';
         next=itemRe.test(next)?next.replace(itemRe,item.trim()):next+item;
       }
       if(name==='AppTheme.NoActionBarLaunch'){
@@ -123,7 +134,7 @@ if(fs.existsSync(stylesPath)){
         const win=/<item\s+name="android:windowBackground"[^>]*>[^<]*<\/item>/;
         if(bg.test(next))next=next.replace(bg,'<item name="android:background">@drawable/splash</item>');
         else if(win.test(next))next=next.replace(win,'<item name="android:windowBackground">@drawable/splash</item>');
-        else next+='\\n        <item name="android:windowBackground">@drawable/splash</item>';
+        else next+='\n        <item name="android:windowBackground">@drawable/splash</item>';
       }
       return open+next+close;
     });
@@ -131,4 +142,4 @@ if(fs.existsSync(stylesPath)){
   fs.writeFileSync(stylesPath,xml,'utf8');
 }
 
-console.log('Applied Free AI adaptive icon, splash and edge-to-edge Android branding.');
+console.log('Applied Free AI symbol, adaptive icon, splash, edge-to-edge branding and minSdk 26.');

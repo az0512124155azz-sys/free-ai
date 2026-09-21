@@ -94,12 +94,15 @@ button:disabled{opacity:.42;cursor:default}
 :root[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.20)}
 
 .freeAiMark{width:var(--mark-size);height:var(--mark-size);display:inline-grid;place-items:center;flex:none}
-.freeAiMark svg{width:100%;height:100%;display:block}
-.freeAiMark rect{fill:var(--text)}
-.freeAiMark .markLetter{fill:var(--canvas)}
-.freeAiMark .markSpark{fill:var(--accent)}
-.authBrand .freeAiMark rect{fill:var(--text)}
-.authBrand .freeAiMark .markLetter{fill:var(--canvas)}
+.freeAiMark svg{width:100%;height:100%;display:block;overflow:visible}
+.freeAiMark .markLobe{fill:var(--text);transform-box:fill-box;transform-origin:center}
+.freeAiMark .markTop{opacity:1}
+.freeAiMark .markLeft{opacity:.86}
+.freeAiMark .markRight{opacity:.68}
+.freeAiMark .markCore{fill:var(--accent)}
+:root[data-theme="light"] .freeAiMark .markLobe{fill:#111}
+.authBrand .freeAiMark .markLobe{fill:var(--text)}
+.authBrand .freeAiMark .markCore{fill:var(--accent)}
 
 .desktopShell{
   height:100%;
@@ -141,6 +144,17 @@ button:disabled{opacity:.42;cursor:default}
 }
 .brandButton b{font-size:14px;font-weight:600;letter-spacing:-.01em}
 .brandButton:hover,.brandActions button:hover,.circleIcon:hover,.voiceButton:hover{background:var(--hover)}
+.productAnchor{position:relative;min-width:0}
+.productMenu{
+  position:absolute;z-index:130;left:0;top:40px;width:310px;padding:7px;background:var(--popover);
+  border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow-lg);animation:popoverIn 140ms var(--ease)
+}
+.productMenu button{width:100%;display:grid;grid-template-columns:32px minmax(0,1fr) 18px;gap:10px;align-items:center;text-align:left;background:transparent;border-radius:12px;padding:10px;color:var(--text-secondary)}
+.productMenu button:hover,.productMenu button.active{background:var(--hover);color:var(--text)}
+.productMenu button>span:nth-child(2){display:flex;min-width:0;flex-direction:column}
+.productMenu b{font-size:13px;font-weight:600}.productMenu small{font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.superGlyph{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 80%,#fff),#7c58ff);color:#fff}
+.superHeaderLabel{justify-self:center;font-size:12px;font-weight:600;color:var(--text-secondary);padding:7px 11px;border-radius:999px;background:var(--surface-secondary);border:1px solid var(--border-soft)}
 .brandActions{display:flex;gap:2px}
 .brandActions button,.circleIcon{
   width:32px;height:32px;display:grid;place-items:center;background:transparent;border-radius:var(--r-lg);color:var(--text-tertiary)
@@ -229,6 +243,9 @@ button:disabled{opacity:.42;cursor:default}
   font-size:24px;line-height:30px;font-weight:450;letter-spacing:-.022em;margin:0 0 17px;color:var(--text);text-align:center
 }
 .workEmpty h1{font-size:27px;line-height:34px;margin-bottom:20px}
+.starterPrompts{width:min(768px,calc(100vw - 330px));display:flex;gap:7px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+.starterPrompts button{background:transparent;border:1px solid var(--border-soft);border-radius:999px;padding:7px 11px;color:var(--text-tertiary);font-size:10.5px;transition:background 110ms var(--ease),color 110ms var(--ease),border-color 110ms var(--ease)}
+.starterPrompts button:hover{background:var(--hover);border-color:var(--border);color:var(--text)}
 .gptComposer{
   width:min(768px,calc(100vw - 330px));
   min-width:420px;
@@ -266,8 +283,20 @@ button:disabled{opacity:.42;cursor:default}
 .modelButton:hover,.effortButton:hover{background:var(--hover);color:var(--text)}
 .modelButton span{overflow:hidden;text-overflow:ellipsis}
 .modelButton small{color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis}
-.accessButton{color:var(--work);padding-left:5px}
+.accessButton{color:var(--text-secondary);padding-left:7px}
 .accessButton.enabled{background:color-mix(in srgb,var(--work) 13%,transparent);color:var(--work)}
+.permissionButton.ask{color:var(--text-secondary)}
+.permissionButton.auto{color:#d6a728;background:color-mix(in srgb,#d6a728 10%,transparent)}
+.permissionButton.full{color:var(--work);background:color-mix(in srgb,var(--work) 12%,transparent)}
+.permissionAnchor{position:relative}
+.permissionPicker{left:0;bottom:40px;width:330px;max-height:330px;transform-origin:bottom left}
+.permissionRow{width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) 18px;gap:9px;align-items:center;text-align:left;background:transparent;border-radius:12px;padding:9px}
+.permissionRow:hover:not(:disabled),.permissionRow.selected{background:var(--hover)}
+.permissionRow:disabled{opacity:.46}
+.permissionRow>span:nth-child(2){display:flex;min-width:0;flex-direction:column}
+.permissionRow b{font-size:12.5px;font-weight:600}.permissionRow small{font-size:10.5px;line-height:1.35;color:var(--muted);margin-top:2px}
+.permissionIcon{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:var(--surface-secondary);color:var(--text-secondary)}
+.permissionIcon.auto{color:#d6a728}.permissionIcon.full{color:var(--work)}
 .workActions{
   min-height:38px;border-top:1px solid var(--border-soft);margin:8px 0 -2px;padding:7px 2px 0;display:flex;gap:3px
 }
@@ -280,6 +309,11 @@ button:disabled{opacity:.42;cursor:default}
   border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px;font-size:11px;box-shadow:var(--shadow-md)
 }
 .attachedTool small{color:var(--muted)}.attachedTool button{background:transparent;display:grid;place-items:center}
+.dictationError,.dictationState{position:absolute;left:14px;bottom:calc(100% + 7px);max-width:calc(100% - 28px);border-radius:10px;padding:7px 9px;font-size:10.5px;box-shadow:var(--shadow-md)}
+.dictationError{background:color-mix(in srgb,var(--danger) 16%,var(--popover));border:1px solid color-mix(in srgb,var(--danger) 42%,transparent);color:#ffc8c8}
+.dictationState{background:var(--popover);border:1px solid var(--border);color:var(--text-secondary);display:flex;align-items:center;gap:6px}
+.liveDot{width:7px;height:7px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 4px color-mix(in srgb,var(--danger) 15%,transparent);animation:pulseLive 1.15s ease-in-out infinite}
+@keyframes pulseLive{50%{transform:scale(.72);opacity:.65}}
 .menuAnchor{position:relative}
 
 .floatingMenu{
@@ -384,6 +418,9 @@ button:disabled{opacity:.42;cursor:default}
 .computerScreens{flex:1;overflow:auto;padding:10px}.computerScreen{background:#101010;border:1px solid var(--border-soft);border-radius:10px;overflow:hidden;margin-bottom:10px}
 .computerScreen img{width:100%;display:block;cursor:crosshair}.computerScreen.previewOnly img{cursor:default;opacity:.9}.computerScreen span{display:block;padding:7px 9px;font-size:10px;color:#999}
 .controlStatus{padding:8px 12px;border-top:1px solid var(--border-soft);color:var(--muted);font-size:10px;display:flex;gap:5px;align-items:center}
+.approvalCard{margin:10px;border:1px solid var(--border);background:var(--surface-primary);border-radius:14px;padding:11px;box-shadow:var(--shadow-md)}
+.approvalCard>div:first-child{display:flex;gap:9px;align-items:flex-start}.approvalCard>div:first-child>span{display:flex;flex-direction:column}.approvalCard b{font-size:12px}.approvalCard small{font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.4}
+.approvalActions{display:flex;justify-content:flex-end;gap:7px;margin-top:10px}.approvalActions button{border-radius:8px;background:var(--surface-secondary);padding:7px 10px;font-size:10.5px}
 
 .settingsScreen{position:fixed;inset:0;background:var(--canvas);z-index:200;display:grid;grid-template-columns:300px minmax(0,1fr)}
 .settingsNav{background:var(--sidebar);border-right:1px solid var(--border-soft);padding:9px;overflow:auto}
@@ -465,6 +502,8 @@ button:disabled{opacity:.42;cursor:default}
   .gptComposer,.gptComposer.workComposer,.gptComposer.compact{
     width:calc(100vw - 16px);min-width:0;max-width:none;border-radius:27px;padding:8px 9px;
   }
+  .starterPrompts{width:calc(100vw - 20px);overflow:auto;justify-content:flex-start;flex-wrap:nowrap;padding:0 2px 4px}
+  .starterPrompts button{white-space:nowrap;min-height:36px}
   .gptComposer.workComposer{padding-top:9px}
   .gptComposer textarea{font-size:16px;line-height:23px;height:39px;padding-left:7px;padding-right:7px}
   .gptComposer.workComposer textarea{height:58px}
@@ -473,6 +512,7 @@ button:disabled{opacity:.42;cursor:default}
   .modelButton{max-width:145px;padding:0 8px}.modelButton span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .effortButton{display:none}
   .accessButton{height:38px}
+  .permissionPicker{left:8px!important;right:8px!important;width:auto!important}
   .workActions{overflow:auto;min-height:42px;padding-top:8px}
   .workActions button{white-space:nowrap}
   .floatingMenu{position:fixed;left:8px!important;right:8px!important;bottom:max(78px,calc(66px + var(--safe-bottom)))!important;width:auto!important;max-height:min(62vh,520px);border-radius:20px;transform-origin:bottom center}
