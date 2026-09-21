@@ -354,14 +354,24 @@ function App(){
         </div>
       </div>
       {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
-      <nav className="primaryNav">
+
+      <div className="mobileQuickStart">
+        <button className="mobileNewChat" onClick={newChat}><SquarePen size={17}/><span>New chat</span></button>
+        <div className="mobileExperienceRail" aria-label="Experiences">
+          <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>
+          <button className={page==='plugins'?'active':''} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Plugins</span></button>
+          <button className={page==='explore'?'active':''} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
+        </div>
+      </div>
+
+      <nav className="primaryNav desktopPrimaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
         <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
         <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
         <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}>
+        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}>
           {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
           {product==='super'?'Repository workspace':'Free AI Workspace'}
         </button>
