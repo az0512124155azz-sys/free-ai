@@ -466,7 +466,7 @@ function createWindow(){
     console.error('Renderer failed to load',errorCode,errorDescription);
     const fallback='data:text/html;charset=utf-8,'+encodeURIComponent(
       '<!doctype html><html><body style="margin:0;background:#171717;color:#fff;font-family:system-ui;display:grid;place-items:center;height:100vh">'+
-      '<div style="text-align:center;max-width:520px;padding:32px"><svg viewBox="0 0 512 512" width="58" height="58" aria-hidden="true"><g fill="none" stroke="#3183F7" stroke-width="46" stroke-linecap="round" stroke-linejoin="round"><path d="M96 136 C188 136 209 256 292 256 H364"/><path d="M96 376 C188 376 209 256 292 256"/></g><circle cx="96" cy="136" r="34" fill="#3183F7"/><circle cx="96" cy="376" r="34" fill="#3183F7"/><path d="M344 196 L438 256 L344 316 Z" fill="#3183F7"/></svg>'+
+      '<div style="text-align:center;max-width:520px;padding:32px"><svg viewBox="0 0 512 512" width="58" height="58" aria-hidden="true"><g fill="none" stroke="#3183F7" stroke-width="34" stroke-linecap="round" stroke-linejoin="round"><path d="M112 128 C215 128 235 220 336 256"/><path d="M112 256 C220 256 270 256 340 256"/><path d="M112 384 C215 384 235 292 336 256"/></g><circle cx="112" cy="128" r="31" fill="#3183F7"/><circle cx="112" cy="256" r="31" fill="#3183F7"/><circle cx="112" cy="384" r="31" fill="#3183F7"/><circle cx="390" cy="256" r="50" fill="#3183F7"/></svg>'+
       '<h1 style="margin:12px 0 10px">Free AI</h1><p style="color:#aaa">The interface could not be loaded.</p>'+
       '<p style="color:#777;font-size:13px">Please install the newest Free AI release.</p></div></body></html>'
     );
