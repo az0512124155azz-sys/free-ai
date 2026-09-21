@@ -9,6 +9,12 @@ contextBridge.exposeInMainWorld('desktopApi',{
   addApiConnection:(c)=>ipcRenderer.invoke('api:addConnection',c),
   removeApiConnection:(id)=>ipcRenderer.invoke('api:removeConnection',id),
   captureScreens:()=>ipcRenderer.invoke('computer:captureScreens'),
+  openAuthUrl:(url)=>ipcRenderer.invoke('auth:openExternal',url),
+  onAuthCallback:(cb)=>{
+    const h=(_e,url)=>cb(url);
+    ipcRenderer.on('auth-callback',h);
+    return()=>ipcRenderer.removeListener('auth-callback',h);
+  },
   onStatus:(cb)=>{
     const h=(_e,s)=>cb(s);
     ipcRenderer.on('bridge-status',h);

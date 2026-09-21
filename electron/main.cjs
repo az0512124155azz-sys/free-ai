@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -12,6 +12,34 @@ let browserProviders=[];
 let apiConnections=[];
 const pending=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
+let pendingAuthUrl=null;
+
+const AUTH_SCHEME='freeai';
+const AUTH_CALLBACK_PREFIX='freeai://auth';
+
+function handleAuthCallback(url){
+  if(typeof url!=='string'||!url.startsWith(AUTH_CALLBACK_PREFIX))return false;
+  if(!win||win.isDestroyed()){
+    pendingAuthUrl=url;
+    return true;
+  }
+  win.show();
+  win.focus();
+  win.webContents.send('auth-callback',url);
+  return true;
+}
+
+function findAuthUrl(argv){
+  return (Array.isArray(argv)?argv:[]).find(arg=>typeof arg==='string'&&arg.startsWith(AUTH_CALLBACK_PREFIX))||null;
+}
+
+function registerAuthProtocol(){
+  if(process.defaultApp&&process.argv.length>=2){
+    app.setAsDefaultProtocolClient(AUTH_SCHEME,process.execPath,[path.resolve(process.argv[1])]);
+  }else{
+    app.setAsDefaultProtocolClient(AUTH_SCHEME);
+  }
+}
 
 function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
 
@@ -284,10 +312,43 @@ function createWindow(){
   else win.loadFile(path.join(__dirname,'..','dist','index.html'));
 }
 
+const gotSingleInstanceLock=app.requestSingleInstanceLock();
+
+if(!gotSingleInstanceLock){
+  app.quit();
+}else{
+  app.on('second-instance',(_event,argv)=>{
+    const url=findAuthUrl(argv);
+    if(url)handleAuthCallback(url);
+    if(win&&!win.isDestroyed()){
+      if(win.isMinimized())win.restore();
+      win.show();
+      win.focus();
+    }
+  });
+
+  app.on('open-url',(event,url)=>{
+    event.preventDefault();
+    handleAuthCallback(url);
+  });
+}
+
 app.whenReady().then(()=>{
+  registerAuthProtocol();
   loadApiConnections();
   startLocalBridge();
   createWindow();
+
+  const startupAuthUrl=findAuthUrl(process.argv);
+  if(startupAuthUrl)pendingAuthUrl=startupAuthUrl;
+  if(pendingAuthUrl){
+    win.webContents.once('did-finish-load',()=>{
+      const url=pendingAuthUrl;
+      pendingAuthUrl=null;
+      handleAuthCallback(url);
+    });
+  }
+
   app.on('activate',()=>{if(BrowserWindow.getAllWindows().length===0)createWindow()});
 });
 
@@ -330,3 +391,13 @@ ipcMain.handle('api:removeConnection',(_e,id)=>{
   return apiConnections.map(publicApiConnection);
 });
 ipcMain.handle('computer:captureScreens',()=>captureScreens());
+
+
+ipcMain.handle('auth:openExternal',async(_e,url)=>{
+  const parsed=new URL(String(url||''));
+  if(parsed.protocol!=='https:'&&parsed.protocol!=='http:'){
+    throw new Error('Only http/https authentication URLs can be opened.');
+  }
+  await shell.openExternal(parsed.toString());
+  return true;
+});

@@ -15,7 +15,8 @@
     "desktop:dist": "npm run validate && npm run build:web && electron-builder --publish never",
     "relay": "node relay/server.mjs",
     "android:add": "cap add android",
-    "android:sync": "npm run build:web && cap sync android"
+    "android:sync": "npm run build:web && cap sync android && npm run android:configure-deeplink",
+    "android:configure-deeplink": "node scripts/configure-android-deeplink.mjs"
   },
   "dependencies": {
     "ws": "^8.18.3"
@@ -33,7 +34,9 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "vite": "^7.1.7",
-    "wait-on": "^8.0.4"
+    "wait-on": "^8.0.4",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/browser": "^8.0.0"
   },
   "build": {
     "appId": "com.freeai.desktop",
@@ -48,18 +51,32 @@
       "output": "release"
     },
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "artifactName": "Free-AI-Windows-${version}.${ext}"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "artifactName": "Free-AI-macOS-${version}.${ext}",
       "category": "public.app-category.productivity"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "artifactName": "Free-AI-Linux-${version}.${ext}",
       "category": "Utility"
-    }
+    },
+    "protocols": [
+      {
+        "name": "Free AI Authentication",
+        "schemes": [
+          "freeai"
+        ]
+      }
+    ]
   }
 }
