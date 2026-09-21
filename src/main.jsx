@@ -479,7 +479,7 @@ function Composer(props){
       </div>
     </div>
     {mode==='work'&&<div className="workActions">
-      <button><Folder size={15}/>Choose project</button>
+      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       <button onClick={onBrowser}><Globe2 size={15}/>Browser</button>
     </div>}
@@ -518,7 +518,7 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
     <div className="floatingTitle">Add</div>
     <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
     <MenuRow icon={Chrome} label={isNative?'Open web browser':'Attach browser'} sub={isNative?'Open a site in the system browser':'Browse beside your chat'} onClick={onBrowser}/>
-    {mode==='work'&&<MenuRow icon={Folder} label="Work in a project" sub="Use the current Free AI workspace"/>}
+    {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
       <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName} onClick={()=>setSelectedTool(t)}/>
@@ -536,8 +536,7 @@ function ProfileMenu({session,onSettings}){
   const name=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'User';
   return <div className="profileMenu">
     <div className="profileMenuUser"><span className="avatar large">{initials(session)}</span><span><b>{name}</b><small>{session?.user?.email||'Free AI account'}</small></span></div>
-    <MenuRow icon={Briefcase} label="Workspace settings"/>
-    <MenuRow icon={RotateCcw} label="Usage remaining" sub="View limits and usage"/>
+    <MenuRow icon={Briefcase} label="Workspace settings" onClick={onSettings}/>
     <MenuRow icon={Settings} label="Settings" onClick={onSettings}/>
     <MenuRow icon={LogOut} label="Log out" onClick={()=>supabase?.auth.signOut()}/>
   </div>
