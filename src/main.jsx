@@ -588,7 +588,7 @@ function Composer(props){
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
-        {mode==='work'&&<div className="menuAnchor permissionAnchor">
+        {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
           <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
             <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
           </button>
