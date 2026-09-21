@@ -282,10 +282,10 @@ function App(){
       {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
       <nav className="primaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
-        <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>setPage('images')}/>
-        <NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>setPage('scheduled')}/>
-        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>setPage('plugins')}/>
-        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>setPage('explore')}/>
+        <NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>{setPage('images');setMobileNavOpen(false)}}/>
+        <NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>{setPage('scheduled');setMobileNavOpen(false)}}/>
+        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
+        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
         <div className="sidebarGroupTitle">Projects</div>
@@ -675,17 +675,22 @@ function ComputerPane({screens,setScreens,fullAccess,onEnable,onClose}){
 
 function SettingsView(props){
   const {section,setSection,onClose,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
-  return <div className="settingsScreen">
+  const [mobileList,setMobileList]=useState(true);
+  return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')}>
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
       <div className="settingsSearch"><Search size={15}/><input placeholder="Search"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
-        {settingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>setSection(label)}><Icon size={15}/>{label}</button>)}
+        {settingsSections.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
       </div>)}
     </aside>
     <main className="settingsContent">
-      <div className="settingsContentTop"><h1>{section}</h1><button onClick={onClose}><X size={18}/></button></div>
+      <div className="settingsContentTop">
+        <button className="mobileSettingsBack" onClick={()=>setMobileList(true)} aria-label="Back to settings"><ArrowLeft size={18}/></button>
+        <h1>{section}</h1>
+        <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
+      </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Profile'&&<SimpleSettings title="Profile" rows={[['Account','Manage your Free AI identity'],['Workspace','Personal workspace']]}/>}
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
