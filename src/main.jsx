@@ -57,12 +57,14 @@ function humanSize(bytes){
 
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
-    <svg viewBox="0 0 24 24" focusable="false">
-      <path className="markStroke" d="M4.25 6.75C8.2 6.75 8.15 12 12 12H18.2"/>
-      <path className="markStroke" d="M4.25 17.25C8.2 17.25 8.15 12 12 12"/>
-      <circle className="markNode" cx="4.25" cy="6.75" r="1.55"/>
-      <circle className="markNode" cx="4.25" cy="17.25" r="1.55"/>
-      <circle className="markAccent" cx="19.8" cy="12" r="2"/>
+    <svg viewBox="0 0 512 512" focusable="false">
+      <g className="markFlow">
+        <path d="M96 136 C188 136 209 256 292 256 H364"/>
+        <path d="M96 376 C188 376 209 256 292 256"/>
+      </g>
+      <circle className="markSolid" cx="96" cy="136" r="34"/>
+      <circle className="markSolid" cx="96" cy="376" r="34"/>
+      <path className="markSolid" d="M344 196 L438 256 L344 316 Z"/>
     </svg>
   </span>;
 }
