@@ -9,7 +9,7 @@
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
     "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "build:web": "vite build",
-    "desktop:dist": "npm run build:web && electron-builder",
+    "desktop:dist": "npm run build:web && electron-builder --publish never",
     "relay": "node relay/server.mjs",
     "android:add": "cap add android",
     "android:sync": "npm run build:web && cap sync android"
@@ -34,10 +34,36 @@
   "build": {
     "appId": "com.freeai.desktop",
     "productName": "Free AI",
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
-    "directories": {"output": "release"},
-    "win": {"target": ["nsis"], "artifactName": "Free-AI-Windows-${version}.${ext}"},
-    "mac": {"target": ["dmg"], "artifactName": "Free-AI-macOS-${version}.${ext}", "category": "public.app-category.productivity"},
-    "linux": {"target": ["AppImage"], "artifactName": "Free-AI-Linux-${version}.${ext}", "category": "Utility"}
-  }
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Free-AI-Windows-${version}.${ext}"
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "Free-AI-macOS-${version}.${ext}",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "artifactName": "Free-AI-Linux-${version}.${ext}",
+      "category": "Utility",
+      "desktopName": "Free AI",
+      "syncDesktopName": true
+    }
+  },
+  "author": "Free AI"
 }
