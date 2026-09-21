@@ -1,11 +1,31 @@
 {
   "manifest_version":3,
   "name":"Free AI Browser Bridge",
-  "version":"0.1.0",
+  "version":"0.2.0",
   "description":"Connects AI chats already open in Chrome to the Free AI desktop app.",
   "permissions":["tabs","scripting","storage"],
-  "host_permissions":["https://chatgpt.com/*","https://claude.ai/*","https://gemini.google.com/*","https://chat.deepseek.com/*","https://grok.com/*"],
+  "host_permissions":[
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*",
+    "https://chat.deepseek.com/*",
+    "https://grok.com/*",
+    "https://manus.im/*",
+    "https://www.manus.im/*"
+  ],
   "background":{"service_worker":"background.js"},
-  "content_scripts":[{"matches":["https://chatgpt.com/*","https://claude.ai/*","https://gemini.google.com/*","https://chat.deepseek.com/*","https://grok.com/*"],"js":["content.js"],"run_at":"document_idle"}],
+  "content_scripts":[{
+    "matches":[
+      "https://chatgpt.com/*",
+      "https://claude.ai/*",
+      "https://gemini.google.com/*",
+      "https://chat.deepseek.com/*",
+      "https://grok.com/*",
+      "https://manus.im/*",
+      "https://www.manus.im/*"
+    ],
+    "js":["content.js"],
+    "run_at":"document_idle"
+  }],
   "action":{"default_title":"Free AI Browser Bridge"}
 }
