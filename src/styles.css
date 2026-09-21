@@ -306,6 +306,11 @@ button:disabled{opacity:.42;cursor:default}
   border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px;font-size:11px;box-shadow:var(--shadow-md)
 }
 .attachedTool small{color:var(--muted)}.attachedTool button{background:transparent;display:grid;place-items:center}
+.dictationError,.dictationState{position:absolute;left:14px;bottom:calc(100% + 7px);max-width:calc(100% - 28px);border-radius:10px;padding:7px 9px;font-size:10.5px;box-shadow:var(--shadow-md)}
+.dictationError{background:color-mix(in srgb,var(--danger) 16%,var(--popover));border:1px solid color-mix(in srgb,var(--danger) 42%,transparent);color:#ffc8c8}
+.dictationState{background:var(--popover);border:1px solid var(--border);color:var(--text-secondary);display:flex;align-items:center;gap:6px}
+.liveDot{width:7px;height:7px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 4px color-mix(in srgb,var(--danger) 15%,transparent);animation:pulseLive 1.15s ease-in-out infinite}
+@keyframes pulseLive{50%{transform:scale(.72);opacity:.65}}
 .menuAnchor{position:relative}
 
 .floatingMenu{
