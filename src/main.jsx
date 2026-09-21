@@ -1,4 +1,4 @@
-import React,{useEffect,useEffectEvent,useMemo,useRef,useState} from 'react';
+import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createClient} from '@supabase/supabase-js';
 import {Capacitor} from '@capacitor/core';
@@ -525,6 +525,7 @@ function Composer(props){
   const dictationTextRef=useRef('');
   const nativeVoiceHandlesRef=useRef([]);
   const webRecognitionRef=useRef(null);
+  const startVoiceRef=useRef(null);
 
   function voiceLanguage(){
     const configured=permissionPrefs?.voiceLanguage;
@@ -625,9 +626,9 @@ function Composer(props){
       setDictationError(e?.message||'Dictation could not start.');
     }
   }
-  const startVoiceFromApp=useEffectEvent(()=>startVoice());
+  useEffect(()=>{startVoiceRef.current=startVoice});
   useEffect(()=>{
-    const handler=()=>startVoiceFromApp();
+    const handler=()=>startVoiceRef.current?.();
     window.addEventListener('freeai:start-voice',handler);
     return()=>{
       window.removeEventListener('freeai:start-voice',handler);
