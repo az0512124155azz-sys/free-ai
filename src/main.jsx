@@ -572,41 +572,45 @@ function ProfileMenu({session,onSettings}){
 }
 
 function PluginsPage({tools,connected,onBack,onRefresh}){
+  const [query,setQuery]=useState('');
+  const needle=query.trim().toLowerCase();
+  const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
+  const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
   return <div className="contentPage">
     <PageTop onBack={onBack} title="Plugins" action={isDesktop?'Refresh':null} onAction={onRefresh}/>
     <div className="contentInner">
       <h1>Plugins</h1>
       <p className="pageLead">Use MCP/connectors that are already installed and authorized in a connected AI provider.</p>
-      <div className="searchBar"><Search size={17}/><input placeholder="Search detected plugins"/></div>
+      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search detected plugins"/></div>
 
       <section className="pluginSection">
-        <div className="sectionHeading"><h2>Installed and detected</h2><span className="pluginMeta">{tools.length} tools</span></div>
+        <div className="sectionHeading"><h2>Installed and detected</h2><span className="pluginMeta">{visibleTools.length} tools</span></div>
         <div className="installedStrip">
-          {tools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
-          {!tools.length&&<span className="muted">No MCP tools are currently detected.</span>}
+          {visibleTools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
+          {!visibleTools.length&&<span className="muted">{query?'No plugin matches your search.':'No MCP tools are currently detected.'}</span>}
         </div>
       </section>
 
       <section className="pluginSection">
         <h2>Connected providers</h2>
         <div className="pluginGrid">
-          {connected.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
+          {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
             <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
             <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API connection':((provider.mcps?.length||0)+' MCP/connectors detected')}</small></span>
             <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
           </div>)}
-          {!connected.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider is connected</b><span>Open a supported AI site in Chrome with the Free AI extension, or add an API model in Settings.</span></div>}
+          {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider is connected</b><span>Open a supported AI site in Chrome with the Free AI extension, or add an API model in Settings.</span></div>}
         </div>
       </section>
 
       <section className="pluginSection">
         <h2>Tools available across models</h2>
         <div className="toolList">
-          {tools.map(t=><div className="detectedToolRow" key={t.key}>
+          {visibleTools.map(t=><div className="detectedToolRow" key={t.key}>
             <span className="pluginIcon"><Plug size={18}/></span>
             <span><b>{t.mcp}</b><small>Installed in {t.ownerName}. Free AI can route its result to another connected model.</small></span>
           </div>)}
-          {!tools.length&&<div className="pluginHint"><Chrome size={20}/><div><b>Install or authorize the MCP in its provider first</b><span>Free AI only exposes tools that the connected provider reports as installed.</span></div></div>}
+          {!visibleTools.length&&!query&&<div className="pluginHint"><Chrome size={20}/><div><b>Install or authorize the MCP in its provider first</b><span>Free AI only exposes tools that the connected provider reports as installed.</span></div></div>}
         </div>
       </section>
     </div>
