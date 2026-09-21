@@ -326,14 +326,28 @@ function App(){
   if(!session&&supabase)return <Auth/>;
 
   const sidebarName=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Free AI';
-  const heading=mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
+  const heading=product==='super'
+    ? 'What should we build?'
+    : mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
   return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
 
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
-        <button className="brandButton" title="Free AI"><BrandMark size={20}/><b>Free AI</b><ChevronDown size={14}/></button>
+        <div className="productSwitcher">
+          <button className="brandButton" title="Switch product" aria-haspopup="menu" aria-expanded={productMenu} onClick={()=>setProductMenu(v=>!v)}>
+            <BrandMark size={20}/><b>{product==='super'?'Super AI':'Free AI'}</b><ChevronDown size={14}/>
+          </button>
+          {productMenu&&<div className="productMenu" role="menu">
+            <button className={product==='free'?'active':''} onClick={()=>{setProduct('free');setProductMenu(false);setMode('chat')}}>
+              <BrandMark size={20}/><span><b>Free AI</b><small>Chat and work with all connected models</small></span>{product==='free'&&<Check size={16}/>}
+            </button>
+            <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
+              <Code2 size={20}/><span><b>Super AI</b><small>Build, debug and run coding tasks</small></span>{product==='super'&&<Check size={16}/>}
+            </button>
+          </div>}
+        </div>
         <div className="brandActions">
           <button title="Search chats" aria-label="Search chats" onClick={()=>setSidebarSearchOpen(v=>!v)}><Search size={16}/></button>
           <button className="mobileCloseNav" title="Close navigation" onClick={()=>setMobileNavOpen(false)}><X size={17}/></button>
@@ -348,8 +362,11 @@ function App(){
         <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
-        <div className="sidebarGroupTitle">Projects</div>
-        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}><Folder size={15}/>Free AI Workspace</button>
+        <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
+        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat')}}>
+          {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
+          {product==='super'?'Repository workspace':'Free AI Workspace'}
+        </button>
         <div className="sidebarGroupTitle">Recents</div>
         {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
           <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
@@ -404,7 +421,8 @@ function App(){
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
-                fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
+                product={product}
+                approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -428,7 +446,8 @@ function App(){
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
-                  fullAccess={appPrefs.fullAccess} setFullAccess={v=>persistPrefs({...appPrefs,fullAccess:v})}
+                  product={product}
+                  approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                   onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -448,8 +467,8 @@ function App(){
     {sidePanel==='browser'&&<BrowserPane onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='computer'&&<ComputerPane
-      screens={screens} setScreens={setScreens} fullAccess={appPrefs.fullAccess}
-      onEnable={()=>persistPrefs({...appPrefs,fullAccess:true})}
+      screens={screens} setScreens={setScreens} approvalMode={appPrefs.approvalMode||'ask'}
+      setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
       onClose={()=>setSidePanel(null)}
     />}
 
@@ -473,39 +492,92 @@ function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
-    fullAccess,setFullAccess,onBrowser,onComputer,onPlugins
+    product,approvalMode,setApprovalMode,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
+  const [dictationError,setDictationError]=useState('');
+  const [approvalMenu,setApprovalMenu]=useState(false);
+  const nativeSpeechHandles=useRef([]);
+  const webRecognition=useRef(null);
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
 
-  function startVoice(){
+  async function stopVoice(){
+    setDictationError('');
+    try{
+      if(isNative){
+        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:700}));
+        for(const handle of nativeSpeechHandles.current.splice(0))await handle?.remove?.().catch(()=>{});
+      }else if(webRecognition.current){
+        webRecognition.current.stop();
+        webRecognition.current=null;
+      }
+    }catch(e){setDictationError(e?.message||'Could not stop dictation.')}
+    setListening(false);
+  }
+
+  async function startVoice(){
+    if(listening){await stopVoice();return}
+    setDictationError('');
+    const language=document.documentElement.lang||navigator.language||'en-US';
+    if(isNative){
+      try{
+        const available=await SpeechRecognition.available();
+        if(!available?.available)throw new Error('Speech recognition is not available on this device.');
+        let permission=await SpeechRecognition.checkPermissions();
+        if(permission?.speechRecognition!=='granted')permission=await SpeechRecognition.requestPermissions();
+        if(permission?.speechRecognition!=='granted')throw new Error('Microphone permission is required for dictation.');
+
+        const partial=await SpeechRecognition.addListener('partialResults',event=>{
+          const text=event?.matches?.[0]?.trim();
+          if(text)setPrompt(text);
+        });
+        const stateHandle=await SpeechRecognition.addListener('listeningState',event=>setListening(event?.status==='started'));
+        const errorHandle=await SpeechRecognition.addListener('error',event=>{
+          setListening(false);
+          if(event?.message)setDictationError(event.message);
+        });
+        nativeSpeechHandles.current=[partial,stateHandle,errorHandle];
+        setListening(true);
+        await SpeechRecognition.start({language,maxResults:3,partialResults:true,popup:false,addPunctuation:true});
+      }catch(e){
+        setListening(false);
+        setDictationError(e?.message||'Dictation could not start.');
+      }
+      return;
+    }
+
     const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
-    if(!Recognition){return}
+    if(!Recognition){setDictationError('Dictation is not supported by this desktop runtime.');return}
     const recognition=new Recognition();
-    recognition.lang=document.documentElement.lang||navigator.language||'en-US';
-    recognition.interimResults=false;
+    webRecognition.current=recognition;
+    recognition.lang=language;
+    recognition.interimResults=true;
     recognition.continuous=false;
     recognition.onstart=()=>setListening(true);
-    recognition.onend=()=>setListening(false);
-    recognition.onerror=()=>setListening(false);
+    recognition.onend=()=>{setListening(false);webRecognition.current=null};
+    recognition.onerror=e=>{setListening(false);setDictationError(e?.error||'Dictation failed.');webRecognition.current=null};
     recognition.onresult=e=>{
       const text=[...e.results].map(r=>r[0]?.transcript||'').join(' ').trim();
-      if(text)setPrompt(p=>(p? p+' ':'')+text);
+      if(text)setPrompt(text);
     };
     recognition.start();
   }
   useEffect(()=>{
     const handler=()=>startVoice();
     window.addEventListener('freeai:start-voice',handler);
-    return()=>window.removeEventListener('freeai:start-voice',handler);
-  },[]);
+    return()=>{
+      window.removeEventListener('freeai:start-voice',handler);
+      if(isNative)SpeechRecognition.removeAllListeners().catch(()=>{});
+      else webRecognition.current?.abort?.();
+    };
+  },[listening]);
 
   return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     <textarea
       value={prompt} onChange={e=>setPrompt(e.target.value)}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
-      placeholder={mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
+      placeholder={product==='super'?'Ask Super AI to build or debug':mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
     />
     <div className="composerBottom">
       <div className="composerLeft">
@@ -516,7 +588,12 @@ function Composer(props){
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
-        {mode==='work'&&<button className={'accessButton '+(fullAccess?'enabled':'')} onClick={()=>setFullAccess(!fullAccess)}><ShieldCheck size={15}/>Full access</button>}
+        {mode==='work'&&<div className="menuAnchor permissionAnchor">
+          <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
+            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
+          </button>
+          {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
+        </div>}
       </div>
 
       <div className="composerRight">
@@ -530,16 +607,18 @@ function Composer(props){
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>
-        <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Listening…':'Voice input'} aria-label="Voice input"><Mic2 size={18}/></button>
+        <button className={'micButton '+(listening?'listening':'')} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>
         <button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
           {busy?<RefreshCw className="spin" size={17}/>:prompt.trim()?<ArrowUp size={18}/>:<Volume2 size={18}/>}
         </button>
       </div>
     </div>
+    {dictationError&&<div className="dictationError">{dictationError}</div>}
+    {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&<div className="workActions">
-      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>
+      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
-      <button onClick={onBrowser}><Globe2 size={15}/>Browser</button>
+      {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
   </div>
 }
