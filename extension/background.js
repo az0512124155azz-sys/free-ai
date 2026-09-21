@@ -64,6 +64,7 @@ async function scanProviders(){
       tabId:chosen.id,
       title:chosen.title||p.name,
       source:'browser',
+      modelName:typeof capabilities?.modelName==='string'?capabilities.modelName:'',
       mcps:Array.isArray(capabilities?.mcps)?capabilities.mcps:[]
     });
   }
@@ -87,7 +88,8 @@ async function handlePrompt(m){
         type:'freeai:prompt',
         provider:m.provider,
         text:m.text,
-        toolRequest:m.toolRequest||null
+        toolRequest:m.toolRequest||null,
+        effort:m.effort||'default'
       });
       if(result?.error)throw new Error(result.error);
       return result||{};
