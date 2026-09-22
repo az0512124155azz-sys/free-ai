@@ -1408,7 +1408,7 @@ function Composer(props){
           <button className="teamButton" aria-haspopup="menu" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
             <Bot size={14}/>Team {1+superTeamKeys.length}<ChevronDown size={12}/>
           </button>
-          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>{setSuperTeamKeys?.(keys);setTeamMenu(false)}}/>}
+          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>setSuperTeamKeys?.(keys)} onClose={()=>setTeamMenu(false)}/>}
         </div>}
         {!isNative&&<div className="menuAnchor">
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
@@ -1484,6 +1484,31 @@ function ModelMenu({connected,selected,choose}){
   </div>
 }
 
+function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
+  const primary=modelKey(selected);
+  const eligible=connected.filter(model=>modelKey(model)!==primary);
+  const toggle=key=>{
+    const current=Array.isArray(selectedKeys)?selectedKeys:[];
+    if(current.includes(key)){choose(current.filter(item=>item!==key));return}
+    if(current.length>=3)return;
+    choose([...current,key]);
+  };
+  return <div className="floatingMenu teamPicker" role="menu" aria-label="Super AI team">
+    <div className="teamPickerHead"><span><b>Super AI team</b><small>Controller + up to 3 specialist/reviewer models</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
+    {selected&&<div className="teamControllerRow"><span className={'providerBadge '+(selected.source==='api'?'api':selected.id)}>{modelLabel(selected).slice(0,1)}</span><span><b>{modelLabel(selected)}</b><small>Primary controller</small></span><Check size={14}/></div>}
+    <div className="floatingTitle section">Specialists / reviewers</div>
+    {eligible.length===0?<div className="menuEmpty compact">Connect another model to build a multi-agent team.</div>:eligible.map(model=>{
+      const key=modelKey(model),checked=selectedKeys.includes(key),limitReached=!checked&&selectedKeys.length>=3;
+      return <button key={key} className={'teamModelRow '+(checked?'active ':'')+(limitReached?'disabled':'')} disabled={limitReached} onClick={()=>toggle(key)}>
+        <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
+        <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API model':'Connected browser model'}</small></span>
+        <span className={'teamCheck '+(checked?'checked':'')}>{checked?<Check size={13}/>:null}</span>
+      </button>;
+    })}
+    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' additional agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
+  </div>
+}
+
 function EffortMenu({effort,levels,choose}){
   const values=Array.isArray(levels)?levels.filter(Boolean):[];
   const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'};
@@ -1517,11 +1542,16 @@ function PermissionModeMenu({value,choose}){
 function WorkTaskStatus({task,onApproval}){
   const labels={running:'Running',waiting_approval:'Waiting for approval',completed:'Completed',failed:'Failed',stopped:'Stopped'};
   const active=task.status==='running'||task.status==='waiting_approval';
+  const agents=Array.isArray(task.agents)?task.agents:[];
   return <div className={'workTaskStatus '+task.status} role="status" aria-live="polite">
     <div className="workTaskHead">
       <span className="workTaskStateIcon">{task.status==='completed'?<Check size={15}/>:task.status==='failed'?<X size={15}/>:task.status==='stopped'?<Square size={13}/>:<RefreshCw className={active?'spin':''} size={14}/>}</span>
-      <span><b>{labels[task.status]||task.status}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
+      <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
     </div>
+    {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
+    {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
+      <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
+    </div>)}</div>}
     {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-4).map(item=><span key={item.id}>{item.text}</span>)}</div>}
     {task.status==='waiting_approval'&&task.approval&&<div className="workApprovalCard">
       <ShieldCheck size={18}/>
