@@ -174,6 +174,27 @@ function WindowsTitlebar({onNewChat,onSettings,onToggleSidebar,onBrowser,onHelp}
   </div>;
 }
 
+function QuickChatWindow({selected,connected,setSelected,prompt,setPrompt,send,busy,messages,onNew,onClose}){
+  const last=messages.filter(message=>message.role==='assistant'||message.role==='error').at(-1);
+  return <div className="quickChatWindow">
+    <div className="quickChatHeader">
+      <span><BrandMark size={17}/><b>Free AI</b></span>
+      <div><button title="New chat" onClick={onNew}><SquarePen size={15}/></button><button title="Close" onClick={onClose}><X size={15}/></button></div>
+    </div>
+    {last&&<div className={'quickChatResult '+(last.role==='error'?'error':'')}><span>{last.role==='error'?'Error':modelLabel(selected)}</span><p>{last.text}</p></div>}
+    <div className="quickChatComposer">
+      <textarea autoFocus value={prompt} onChange={e=>setPrompt(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}} placeholder="Ask Free AI"/>
+      <div className="quickChatBottom">
+        <select value={selected?(selected.source||'browser')+'::'+selected.id:''} onChange={e=>{const [source,id]=e.target.value.split('::');setSelected(connected.find(p=>(p.source||'browser')===source&&p.id===id)||null)}}>
+          <option value="">Select model</option>
+          {connected.map(p=><option key={(p.source||'browser')+'::'+p.id} value={(p.source||'browser')+'::'+p.id}>{modelLabel(p)}</option>)}
+        </select>
+        <button className={'quickSend '+(prompt.trim()&&selected?'ready':'')} disabled={busy||!prompt.trim()||!selected} onClick={send}>{busy?<RefreshCw className="spin" size={15}/>:<ArrowUp size={16}/>}</button>
+      </div>
+    </div>
+  </div>
+}
+
 function GoalDialog({initial,onClose,onSave}){
   const [outcome,setOutcome]=useState(initial?.outcome||'');
   const [criteria,setCriteria]=useState(initial?.criteria||'');
@@ -1817,6 +1838,16 @@ function ProfileSettings({session}){
     </div>
   </div>
 }
+function PetsSettings({prefs,setPrefs}){
+  return <div className="settingsPane">
+    <h3>Quick Chat</h3>
+    <div className="settingBlock">
+      <SettingRow title="Mini controls" desc="Open a lightweight floating Free AI composer without opening the main window." control={<Toggle value={prefs.quickChatEnabled!==false} onChange={v=>setPrefs({...prefs,quickChatEnabled:v})}/>}/>
+      <SettingRow title="Shortcut" desc="Open Quick Chat from anywhere in Windows." control={<span className="valuePill">Windows + Alt + P</span>}/>
+    </div>
+  </div>
+}
+
 function VoiceSettings({prefs,setPrefs}){
   const [permission,setPermission]=useState('unknown');
   useEffect(()=>{
