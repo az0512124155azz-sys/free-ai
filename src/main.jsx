@@ -540,6 +540,7 @@ function App(){
   const projectChats=useMemo(()=>activeProjectId
     ? chats.filter(chat=>chat.projectId===activeProjectId).sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0))
     : [],[chats,activeProjectId]);
+  const visibleProjects=useMemo(()=>projects.filter(project=>(project.product||'free')===product),[projects,product]);
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
@@ -1420,7 +1421,7 @@ function App(){
           <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
             <Plus size={15}/><span>New project</span>
           </button>
-          {projects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:projects.map(project=>
+          {visibleProjects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:visibleProjects.map(project=>
             <button key={project.id} className={'projectItem projectNavItem '+(activeProjectId===project.id?'active':'')} onClick={()=>openProject(project)}>
               <ProjectMark project={project} size={18}/><span>{project.name}</span>
             </button>
@@ -1467,6 +1468,18 @@ function App(){
             </div>
           )}
         </>:<>
+          {isWindowsDesktop&&product==='super'&&<>
+            <div className="sidebarGroupTitle">Projects</div>
+            <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'sparkles',color:'purple'});setProjectDialogOpen(true)}}>
+              <Plus size={15}/><span>New project</span>
+            </button>
+            {visibleProjects.length===0
+              ? <div className="sidebarEmpty projectEmpty">Multi-agent tasks create projects automatically</div>
+              : visibleProjects.map(project=><button key={project.id} className={'projectItem projectNavItem '+(activeProjectId===project.id?'active':'')} onClick={()=>openProject(project)}>
+                  <ProjectMark project={project} size={18}/><span>{project.name}</span>
+                </button>)
+            }
+          </>}
           <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
           <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
             {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
@@ -1682,22 +1695,64 @@ function NewProjectDialog({draft,setDraft,onCreate,onClose}){
 function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
   const [draft,setDraft]=useState({name:project.name,icon:project.icon||'folder',color:project.color||'blue',instructions:project.instructions||''});
   const [saved,setSaved]=useState(false);
+  const orchestration=project.kind==='orchestration'||project.product==='super';
+  const masterChats=orchestration?chats.filter(chat=>chat.isMasterThread||(!chat.isAgentThread&&chat.mode==='work')):[];
+  const agentChats=orchestration?chats.filter(chat=>chat.isAgentThread):[];
+  const otherChats=orchestration?chats.filter(chat=>!chat.isMasterThread&&!chat.isAgentThread&&chat.mode!=='work'):chats;
   useEffect(()=>{setDraft({name:project.name,icon:project.icon||'folder',color:project.color||'blue',instructions:project.instructions||''});setSaved(false)},[project.id,project.name,project.icon,project.color,project.instructions]);
   const save=()=>{const name=String(draft.name||'').trim();if(!name)return;onSave({name,icon:draft.icon||'folder',color:draft.color||'blue',instructions:String(draft.instructions||'')});setSaved(true);setTimeout(()=>setSaved(false),1400)};
   const preview={...project,...draft,name:String(draft.name||'').trim()||project.name};
+  const conversationRow=(chat,label)=><button key={chat.id} className={chat.isAgentThread?'agentConversationRow':''} onClick={()=>onOpenChat(chat)}>
+    {chat.isAgentThread
+      ? <span className="projectAgentIdentity"><span className="projectAgentBadge">{String(chat.modelName||chat.title||'A').slice(0,1).toUpperCase()}</span><span><b>{chat.modelName||chat.title}</b><small>{chat.agentRole||'Agent'}{chat.agentStatus?' · '+chat.agentStatus:''}{chat.agentDetail?' · '+chat.agentDetail:''}</small></span></span>
+      : <><span className="projectConversationMode">{label||((chat.mode==='work')?'Work':'Chat')}</span><span>{chat.title}</span></>}
+    <ChevronRight size={14}/>
+  </button>;
   return <div className="contentPage projectPage">
     <PageTop onBack={onBack} title={project.name}/>
     <div className="contentInner projectInner">
-      <div className="projectHero"><ProjectMark project={project} size={42}/><div><h1>{project.name}</h1><p className="pageLead">A local Free AI project. Project instructions apply only to conversations started here.</p></div><div className="projectStartActions"><button onClick={()=>onStart('chat')}><SquarePen size={15}/>Chat</button><button onClick={()=>onStart('work')}><Briefcase size={15}/>Work</button></div></div>
-      <section className="projectSection"><div className="sectionHeading"><h2>Project conversations</h2><span className="pluginMeta">{chats.length}</span></div><div className="projectConversationList">
-        {chats.map(chat=><button key={chat.id} onClick={()=>onOpenChat(chat)}><span className="projectConversationMode">{chat.mode==='work'?'Work':'Chat'}</span><span>{chat.title}</span><ChevronRight size={14}/></button>)}
-        {!chats.length&&<div className="projectEmptyState"><Folder size={20}/><b>No conversations yet</b><span>Start a Chat or Work conversation to add it to this project.</span></div>}
-      </div></section>
+      <div className="projectHero">
+        <ProjectMark project={project} size={42}/>
+        <div><h1>{project.name}</h1><p className="pageLead">{orchestration?'A Super AI Master project. The Master delegates work to isolated agent chats and combines their results.':'A local Free AI project. Project instructions apply only to conversations started here.'}</p></div>
+        <div className="projectStartActions">
+          {orchestration
+            ? <button onClick={()=>onStart('work')}><Sparkles size={15}/>New Master task</button>
+            : <><button onClick={()=>onStart('chat')}><SquarePen size={15}/>Chat</button><button onClick={()=>onStart('work')}><Briefcase size={15}/>Work</button></>}
+        </div>
+      </div>
+
+      {orchestration?<>
+        <section className="projectSection">
+          <div className="sectionHeading"><h2>Master</h2><span className="pluginMeta">{masterChats.length}</span></div>
+          <div className="projectConversationList masterConversationList">
+            {masterChats.map(chat=>conversationRow(chat,'Master'))}
+            {!masterChats.length&&<div className="projectEmptyState"><Sparkles size={20}/><b>No Master thread yet</b><span>Start a Master task and Super AI will coordinate the selected models here.</span></div>}
+          </div>
+        </section>
+        <section className="projectSection">
+          <div className="sectionHeading"><h2>Agents</h2><span className="pluginMeta">{agentChats.length}</span></div>
+          <div className="projectConversationList agentConversationList">
+            {agentChats.map(chat=>conversationRow(chat))}
+            {!agentChats.length&&<div className="projectEmptyState"><Bot size={20}/><b>No agent chats yet</b><span>Agent threads appear here as soon as the Master delegates work.</span></div>}
+          </div>
+        </section>
+        {otherChats.length>0&&<section className="projectSection">
+          <div className="sectionHeading"><h2>Other conversations</h2><span className="pluginMeta">{otherChats.length}</span></div>
+          <div className="projectConversationList">{otherChats.map(chat=>conversationRow(chat))}</div>
+        </section>}
+      </>:<section className="projectSection">
+        <div className="sectionHeading"><h2>Project conversations</h2><span className="pluginMeta">{chats.length}</span></div>
+        <div className="projectConversationList">
+          {chats.map(chat=>conversationRow(chat))}
+          {!chats.length&&<div className="projectEmptyState"><Folder size={20}/><b>No conversations yet</b><span>Start a Chat or Work conversation to add it to this project.</span></div>}
+        </div>
+      </section>}
+
       <section className="projectSection projectSettingsCard"><div className="sectionHeading"><h2>Project settings</h2>{saved&&<span className="projectSaved"><Check size={13}/>Saved</span>}</div>
         <label className="projectNameField"><span>Name</span><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} maxLength={80}/></label>
         <div className="projectChoiceBlock"><span>Icon</span><div className="projectIconGrid">{projectIconOptions.map(([key,label,Icon])=><button type="button" key={key} className={draft.icon===key?'active':''} onClick={()=>setDraft({...draft,icon:key})} aria-label={label} title={label}><Icon size={17}/></button>)}</div></div>
         <div className="projectChoiceBlock"><span>Color</span><div className="projectColorGrid">{projectColorOptions.map(color=><button type="button" key={color} className={draft.color===color?'active':''} data-color={color} onClick={()=>setDraft({...draft,color})} aria-label={color+' color'}><span/></button>)}</div></div>
-        <label className="projectInstructionsField"><span>Project instructions</span><small>These instructions override your global custom instructions while you are in this project.</small><textarea value={draft.instructions} onChange={e=>setDraft({...draft,instructions:e.target.value})} placeholder="Add instructions for this project"/></label>
+        <label className="projectInstructionsField"><span>Project instructions</span><small>{orchestration?'Shared instructions for the Master and delegated agents in this project.':'These instructions override your global custom instructions while you are in this project.'}</small><textarea value={draft.instructions} onChange={e=>setDraft({...draft,instructions:e.target.value})} placeholder="Add instructions for this project"/></label>
         <div className="projectSettingsActions"><div className="projectSettingsPreview"><ProjectMark project={preview} size={22}/><span>{preview.name}</span></div><button onClick={save} disabled={!String(draft.name||'').trim()}>Save</button></div>
       </section>
     </div>
@@ -1878,7 +1933,7 @@ function Composer(props){
       </div>
 
       <div className="composerRight">
-        {product==='super'&&windowsDesktop&&<div className="menuAnchor">
+        {product==='super'&&windowsDesktop&&mode==='work'&&<div className="menuAnchor">
           <button className="teamButton" aria-haspopup="menu" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
             <Bot size={14}/>Team {1+superTeamKeys.length}<ChevronDown size={12}/>
           </button>
