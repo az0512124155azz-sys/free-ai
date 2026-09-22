@@ -2487,6 +2487,8 @@ ipcMain.handle('bridge:cancelPrompt',(_e,id)=>cancelPrompt(id));
 ipcMain.handle('work:start',(_e,input)=>startWorkTask(input||{}));
 ipcMain.handle('work:stop',(_e,id)=>stopWorkTask(id));
 ipcMain.handle('work:resolveApproval',(_e,{taskId,allow}={})=>resolveWorkApproval(taskId,!!allow));
+ipcMain.handle('repository:choose',()=>chooseRepository());
+ipcMain.handle('repository:summary',(_e,root)=>repositorySummary(root));
 ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{
   relayConfig={relayUrl:String(cfg?.relayUrl||'').trim(),pairKey:String(cfg?.pairKey||'').trim()};
   connectRelay();
