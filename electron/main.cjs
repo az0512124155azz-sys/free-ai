@@ -2510,6 +2510,22 @@ function workObservationAttachments(result){
   return attachments.slice(0,1);
 }
 
+function workMcpDescription(task){
+  const selected=Array.isArray(task?.mcpConnections)?task.mcpConnections:[];
+  if(!selected.length)return 'mcp: unavailable because no direct MCP app was selected for this task.';
+  const rows=[];
+  for(const connection of selected){
+    const session=mcpSessions.get(connection.id);
+    const names=(Array.isArray(session?.tools)?session.tools:[]).slice(0,40).map(tool=>tool.name).filter(Boolean);
+    rows.push('- '+connection.name+' | connectionId='+connection.id+' | tools: '+(names.length?names.join(', '):'(none)'));
+  }
+  return [
+    'mcp: direct MCP '+MCP_PROTOCOL_VERSION+' apps selected by the user. Actions: list, describe(connectionId,name), call(connectionId,name,arguments).',
+    'Use list/describe to inspect exact tool metadata and inputSchema before call. Never invent a connection ID, tool name, or arguments.',
+    ...rows
+  ].join('\n');
+}
+
 function workToolDescription(task){
   const computerAvailable=process.platform==='win32'&&workCanSeeImages(task);
   const tools=[
@@ -2522,7 +2538,8 @@ function workToolDescription(task){
       : 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.',
     task.product==='super'&&task.workspace?.root
       ? 'repository: selected local Git repository "'+task.workspace.name+'". Actions: status, list, read(path,startLine optional,endLine optional), diff(path optional), write(path,content). Read all line ranges of an existing file before writing. Writes require user approval and cannot access .git or escape the selected repository.'
-      : 'repository: unavailable because no local Git repository is attached to this task.'
+      : 'repository: unavailable because no local Git repository is attached to this task.',
+    workMcpDescription(task)
   ];
   return tools.join('\n');
 }
