@@ -307,7 +307,7 @@
     send.click();
 
     const answer=await waitForAnswer(c,before,requestId);
-    return {text:answer,usedTool:toolRequest?.mcp||null};
+    return {text:answer,requestedTool:toolRequest?.mcp||null};
   }
 
   chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
