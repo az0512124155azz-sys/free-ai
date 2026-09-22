@@ -407,6 +407,115 @@ function hideBrowserView(){
 }
 
 
+async function foregroundWindowInfo(){
+  const script=\`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -TypeDefinition @'
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class FreeAIWindow {
+  [StructLayout(LayoutKind.Sequential)] public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT rect);
+  [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int count);
+}
+'@
+$h=[FreeAIWindow]::GetForegroundWindow()
+$r=New-Object FreeAIWindow+RECT
+[FreeAIWindow]::GetWindowRect($h,[ref]$r) | Out-Null
+$b=New-Object System.Text.StringBuilder 1024
+[FreeAIWindow]::GetWindowText($h,$b,$b.Capacity) | Out-Null
+$title=$b.ToString()
+$text=@()
+try {
+  Add-Type -AssemblyName UIAutomationClient
+  $root=[System.Windows.Automation.AutomationElement]::FromHandle($h)
+  if($root){
+    $all=$root.FindAll([System.Windows.Automation.TreeScope]::Descendants,[System.Windows.Automation.Condition]::TrueCondition)
+    for($i=0;$i -lt $all.Count -and $text.Count -lt 120;$i++){
+      $name=$all.Item($i).Current.Name
+      if($name -and $name.Trim().Length -gt 0){$text += $name.Trim()}
+    }
+  }
+}catch{}
+[PSCustomObject]@{
+  x=$r.Left;y=$r.Top;width=($r.Right-$r.Left);height=($r.Bottom-$r.Top);title=$title;text=($text | Select-Object -Unique)
+} | ConvertTo-Json -Compress
+\`;
+  const raw=await runPowerShell(script);
+  return JSON.parse(raw);
+}
+
+async function captureForegroundAppshot(){
+  if(process.platform!=='win32')throw new Error('Appshots are currently available on Windows.');
+  const info=await foregroundWindowInfo();
+  if(!info||info.width<2||info.height<2)throw new Error('Could not capture the foreground window.');
+  const rect={x:Number(info.x)||0,y:Number(info.y)||0,width:Number(info.width)||1,height:Number(info.height)||1};
+  const display=screen.getDisplayMatching(rect);
+  const width=Math.max(1,Math.round(display.bounds.width));
+  const height=Math.max(1,Math.round(display.bounds.height));
+  const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width,height},fetchWindowIcons:false});
+  const source=sources.find(src=>String(src.display_id)===String(display.id))||sources[0];
+  if(!source)throw new Error('No display capture is available.');
+  const crop={
+    x:Math.max(0,Math.round(rect.x-display.bounds.x)),
+    y:Math.max(0,Math.round(rect.y-display.bounds.y)),
+    width:Math.min(width,Math.max(1,Math.round(rect.width))),
+    height:Math.min(height,Math.max(1,Math.round(rect.height)))
+  };
+  if(crop.x+crop.width>width)crop.width=Math.max(1,width-crop.x);
+  if(crop.y+crop.height>height)crop.height=Math.max(1,height-crop.y);
+  const image=source.thumbnail.crop(crop);
+  return {
+    title:info.title||'Appshot',
+    text:Array.isArray(info.text)?info.text.join('\\n'):String(info.text||''),
+    image:image.toDataURL(),
+    capturedAt:Date.now()
+  };
+}
+
+function stopAppshotWatcher(){
+  if(appshotWatcher){try{appshotWatcher.kill()}catch{};appshotWatcher=null}
+}
+
+function startAppshotWatcher(){
+  if(process.platform!=='win32'||appshotWatcher)return;
+  const script=\`
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FreeAIAltKeys {
+  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
+}
+'@
+$armed=$true
+while($true){
+  $left=(([FreeAIAltKeys]::GetAsyncKeyState(0xA4) -band 0x8000) -ne 0)
+  $right=(([FreeAIAltKeys]::GetAsyncKeyState(0xA5) -band 0x8000) -ne 0)
+  if($left -and $right -and $armed){ Write-Output 'TRIGGER'; [Console]::Out.Flush(); $armed=$false }
+  if(-not ($left -and $right)){ $armed=$true }
+  Start-Sleep -Milliseconds 45
+}
+\`;
+  appshotWatcher=spawn('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{windowsHide:true});
+  let buffer='';
+  appshotWatcher.stdout.on('data',chunk=>{
+    buffer+=String(chunk);
+    const lines=buffer.split(/\\r?\\n/);buffer=lines.pop()||'';
+    if(lines.some(line=>line.trim()==='TRIGGER')){
+      captureForegroundAppshot().then(data=>{
+        if(win&&!win.isDestroyed()){
+          if(win.isMinimized())win.restore();
+          win.show();win.focus();
+          win.webContents.send('appshot-captured',data);
+        }
+      }).catch(()=>{});
+    }
+  });
+  appshotWatcher.on('exit',()=>{appshotWatcher=null});
+}
+
 function runPowerShell(script){
   return new Promise((resolve,reject)=>{
     execFile('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',script],{windowsHide:true},(error,stdout,stderr)=>{
