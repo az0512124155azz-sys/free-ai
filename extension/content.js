@@ -144,6 +144,7 @@
     if(!input) throw new Error('Could not find the chat input. Open the chat page and wait for it to finish loading.');
 
     const prefixes=[];
+    if(effort&&effort!=='default') prefixes.push('Reasoning preference: '+effort+'.');
     if(toolRequest?.mcp){
       prefixes.push('Use the already-installed MCP/connector "'+toolRequest.mcp+'" for this request if it is available in this account. Do not claim to use it if it is unavailable.');
     }
