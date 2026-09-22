@@ -21,6 +21,7 @@ let browserAttached=false;
 let browserDownloads=[];
 let browserDownloadHooked=false;
 const browserSiteTools=new Map();
+let siteToolsEnabled=true;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -131,6 +132,11 @@ function attachBrowserView(view){
 }
 
 async function refreshBrowserSiteTools(id){
+  if(!siteToolsEnabled){
+    browserSiteTools.set(id,[]);
+    emitBrowserState();
+    return [];
+  }
   const view=browserTabs.get(id);
   if(!view||view.webContents.isDestroyed())return [];
   try{
@@ -160,6 +166,7 @@ async function refreshBrowserSiteTools(id){
 }
 
 async function executeBrowserSiteTool(id,name,input){
+  if(!siteToolsEnabled)throw new Error('Site tools are disabled in Browser settings.');
   const view=browserTabs.get(id);
   if(!view||view.webContents.isDestroyed())throw new Error('That browser tab is no longer available.');
   const safeName=JSON.stringify(String(name||''));
@@ -773,6 +780,27 @@ ipcMain.handle('browser:newTab',async(_e,input)=>{
 });
 ipcMain.handle('browser:selectTab',(_e,id)=>{activateBrowserTab(id);return browserSnapshot()});
 ipcMain.handle('browser:closeTab',(_e,id)=>closeBrowserTab(id));
+ipcMain.handle('browser:setSiteToolsEnabled',(_e,value)=>{
+  siteToolsEnabled=!!value;
+  if(!siteToolsEnabled){
+    for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
+    emitBrowserState();
+  }else if(activeBrowserTabId){
+    refreshBrowserSiteTools(activeBrowserTabId);
+  }
+  return siteToolsEnabled;
+});
+ipcMain.handle('browser:clearData',async()=>{
+  const sessions=new Set([...browserTabs.values()].map(view=>view.webContents.session));
+  for(const ses of sessions){
+    await ses.clearStorageData();
+    await ses.clearCache();
+  }
+  browserDownloads=[];
+  for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
+  emitBrowserState();
+  return {ok:true};
+});
 ipcMain.handle('browser:refreshSiteTools',()=>activeBrowserTabId?refreshBrowserSiteTools(activeBrowserTabId):[]);
 ipcMain.handle('browser:executeSiteTool',async(_e,{tabId,name,input}={})=>{
   const id=tabId||activeBrowserTabId;
