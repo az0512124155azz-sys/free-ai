@@ -526,11 +526,11 @@ function App(){
       return next;
     });
   }
-  function openProject(project){stopActiveWorkTask();setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openProject(project){stopActiveWorkTask();setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
   function openPluginsPage(){stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false)}
   function startProjectConversation(projectId,nextMode){
     stopActiveWorkTask();
-    setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setLocalFolderWorkspace(null);
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function saveCurrentChat(nextMessages,model=selected){
@@ -546,6 +546,7 @@ function App(){
         mode:product==='super'?'work':mode,pinned:!!existing?.pinned,
         projectId:existing?.projectId||activeProjectId||null,
         workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:null,
+        localFolder:mode==='work'&&localFolderWorkspace?localFolderWorkspace:null,
         superTeamKeys:product==='super'?superTeamKeys:[],
         updatedAt:Date.now()
       };
@@ -564,6 +565,7 @@ function App(){
   function selectProduct(nextProduct){
     stopActiveWorkTask();
     setSelectedMcpIds([]);
+    setLocalFolderWorkspace(null);
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -573,12 +575,12 @@ function App(){
     if(product!=='free'||nextMode===mode)return;
     stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
-    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
     stopActiveWorkTask();
-    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);
+    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -592,6 +594,7 @@ function App(){
       setRepositoryWorkspace(chat.workspace||null);
       setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
     }
+    setLocalFolderWorkspace((chat.mode==='work'||product==='super')?(chat.localFolder||null):null);
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
