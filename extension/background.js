@@ -2,7 +2,10 @@ let ws=null;
 let reconnectTimer=null;
 let scanTimer=null;
 let browserStateTimer=null;
+let heartbeatTimer=null;
 let lastProviders=[];
+
+const HEARTBEAT_MS=20000;
 
 const PROVIDERS={
   chatgpt:{name:'ChatGPT',matches:['https://chatgpt.com/*']},
@@ -59,43 +62,43 @@ async function ensureContentScript(tabId){
 
 async function scanProviders(){
   const connected=[];
-  for(const [id,p] of Object.entries(PROVIDERS)){
+  for(const [providerId,p] of Object.entries(PROVIDERS)){
     const tabs=await chrome.tabs.query({url:p.matches});
-    if(!tabs.length)continue;
-
-    let chosen=null;
-    let capabilities={mcps:[]};
-
     for(const tab of tabs){
       if(!tab.id)continue;
       try{
         const ok=await ensureContentScript(tab.id);
         if(!ok)continue;
-        const result=await chrome.tabs.sendMessage(tab.id,{type:'freeai:scanCapabilities'}).catch(()=>({mcps:[]}));
-        chosen=tab;
-        capabilities=result||{mcps:[]};
-        if(tab.active)break;
+        const capabilities=await sendToTab(tab.id,{type:'freeai:scanCapabilities',provider:providerId}).catch(()=>({mcps:[],modelOptions:[]}));
+        connected.push({
+          id:providerId+':'+tab.id,
+          providerId,
+          name:p.name,
+          tabId:tab.id,
+          windowId:tab.windowId,
+          title:tab.title||p.name,
+          url:tab.url||'',
+          favIconUrl:tab.favIconUrl||'',
+          source:'browser',
+          modelName:typeof capabilities?.modelName==='string'&&capabilities.modelName.trim()?capabilities.modelName.trim():p.name,
+          modelOptions:Array.isArray(capabilities?.modelOptions)?capabilities.modelOptions:[],
+          effortLevels:[],
+          effortControl:null,
+          activeEffort:'default',
+          fileUpload:!!capabilities?.fileUpload,
+          mcps:Array.isArray(capabilities?.mcps)?capabilities.mcps:[]
+        });
       }catch{}
     }
-
-    if(!chosen)continue;
-
-    connected.push({
-      id,
-      name:p.name,
-      tabId:chosen.id,
-      title:chosen.title||p.name,
-      source:'browser',
-      modelName:typeof capabilities?.modelName==='string'?capabilities.modelName:'',
-      effortLevels:[],
-      effortControl:null,
-      activeEffort:'default',
-      fileUpload:!!capabilities?.fileUpload,
-      mcps:Array.isArray(capabilities?.mcps)?capabilities.mcps:[]
-    });
   }
 
+  connected.sort((a,b)=>{
+    const provider=String(a.providerId).localeCompare(String(b.providerId));
+    if(provider)return provider;
+    return Number(a.tabId)-Number(b.tabId);
+  });
   lastProviders=connected;
+  chrome.storage.local.set({freeAiProviders:connected,freeAiProvidersUpdatedAt:Date.now()}).catch(()=>{});
   safeSend({type:'providers',providers:connected});
   return connected;
 }
@@ -204,7 +207,7 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
   if(m?.type==='freeai:getStatus'){
     sendResponse({
       bridgeConnected:!!(ws&&ws.readyState===WebSocket.OPEN),
-      providers:lastProviders.map(p=>({id:p.id,name:p.name,title:p.title,tabId:p.tabId})),
+      providers:lastProviders.map(p=>({id:p.id,providerId:p.providerId,name:p.name,modelName:p.modelName,title:p.title,tabId:p.tabId,favIconUrl:p.favIconUrl})),
       providerCount:lastProviders.length
     });
     return;
@@ -221,14 +224,19 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
 });
 
 async function cancelPrompt(m){
-  const provider=PROVIDERS[m.provider];
+  const entry=lastProviders.find(item=>item.id===m.provider);
+  const providerId=String(m.providerId||entry?.providerId||String(m.provider||'').split(':')[0]);
+  const provider=PROVIDERS[providerId];
   if(!provider)return false;
-  const tabs=await chrome.tabs.query({url:provider.matches});
+  const targetTabId=Number(m.tabId||entry?.tabId);
+  const tabs=Number.isFinite(targetTabId)
+    ? [await chrome.tabs.get(targetTabId).catch(()=>null)].filter(Boolean)
+    : await chrome.tabs.query({url:provider.matches});
   let stopped=false;
   for(const tab of tabs){
     if(!tab.id)continue;
     try{
-      const result=await sendToTab(tab.id,{type:'freeai:cancel',id:m.id,provider:m.provider});
+      const result=await sendToTab(tab.id,{type:'freeai:cancel',id:m.id,provider:providerId});
       stopped=stopped||!!result?.ok;
     }catch{}
   }
@@ -236,10 +244,18 @@ async function cancelPrompt(m){
 }
 
 async function handlePrompt(m){
-  const provider=PROVIDERS[m.provider];
-  if(!provider)throw new Error('Unsupported provider: '+m.provider);
+  const entry=lastProviders.find(item=>item.id===m.provider);
+  const providerId=String(m.providerId||entry?.providerId||String(m.provider||'').split(':')[0]);
+  const provider=PROVIDERS[providerId];
+  if(!provider)throw new Error('Unsupported provider: '+providerId);
 
-  const tabs=await chrome.tabs.query({url:provider.matches});
+  const preferredTabId=Number(m.tabId||entry?.tabId);
+  let tabs=[];
+  if(Number.isFinite(preferredTabId)){
+    const tab=await chrome.tabs.get(preferredTabId).catch(()=>null);
+    if(tab)tabs=[tab];
+  }
+  if(!tabs.length)tabs=await chrome.tabs.query({url:provider.matches});
   if(!tabs.length)throw new Error(provider.name+' is not open in this browser.');
 
   let lastError=null;
@@ -249,18 +265,33 @@ async function handlePrompt(m){
       const result=await sendToTab(tab.id,{
         type:'freeai:prompt',
         id:m.id,
-        provider:m.provider,
+        provider:providerId,
         text:m.text,
         toolRequest:m.toolRequest||null,
         effort:m.effort||'default',
         attachments:Array.isArray(m.attachments)?m.attachments:[]
       });
       if(result?.error)throw new Error(result.error);
-      return result||{};
+      return {...(result||{}),tabId:tab.id,providerId};
     }catch(e){lastError=e}
   }
 
   throw lastError||new Error('Could not communicate with '+provider.name+'.');
+}
+
+function stopHeartbeat(){
+  clearInterval(heartbeatTimer);
+  heartbeatTimer=null;
+}
+
+function startHeartbeat(){
+  stopHeartbeat();
+  heartbeatTimer=setInterval(()=>{
+    if(ws&&ws.readyState===WebSocket.OPEN){
+      safeSend({type:'keepalive',at:Date.now()});
+      scanProviders().catch(()=>{});
+    }
+  },HEARTBEAT_MS);
 }
 
 function scheduleReconnect(){
@@ -281,7 +312,8 @@ function connect(){
   }
 
   ws.onopen=async()=>{
-    safeSend({type:'hello',role:'extension',browserUseVersion:1});
+    startHeartbeat();
+    safeSend({type:'hello',role:'extension',browserUseVersion:2});
     await Promise.allSettled([scanProviders(),emitBrowserState()]);
   };
 
@@ -327,6 +359,7 @@ function connect(){
   };
 
   ws.onclose=()=>{
+    stopHeartbeat();
     ws=null;
     scheduleReconnect();
   };
@@ -352,4 +385,6 @@ chrome.windows.onFocusChanged.addListener(()=>scheduleBrowserState(50));
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);
 
-connect();
+chrome.storage.local.get(['freeAiProviders']).then(state=>{
+  if(Array.isArray(state?.freeAiProviders))lastProviders=state.freeAiProviders;
+}).catch(()=>{}).finally(connect);

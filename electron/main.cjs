@@ -2038,8 +2038,8 @@ function status(){
       actions:[]
     },
     providers:[
-      ...browserProviders.map(p=>({...p,source:'browser'})),
-      ...apiConnections.map(publicApiConnection)
+      ...browserProviders.map(p=>({...p,source:'browser',connected:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN)})),
+      ...apiConnections.map(p=>({...publicApiConnection(p),connected:true}))
     ]
   };
 }
@@ -2254,11 +2254,12 @@ function startLocalBridge(){
       let m;try{m=JSON.parse(raw)}catch{return}
       if(m.type==='hello'&&m.role==='extension'){
         extensionSocket=ws;
-        browserProviders=[];
-        extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
         sendExtension({type:'scanProviders'});
         sendExtension({type:'scanBrowser'});
         sendStatus();
+        return;
+      }
+      if(m.type==='keepalive'){
         return;
       }
       if(m.type==='providers'){
@@ -2292,8 +2293,6 @@ function startLocalBridge(){
     ws.on('close',()=>{
       if(ws===extensionSocket){
         extensionSocket=null;
-        browserProviders=[];
-        extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
         for(const [id,request] of extensionBrowserPending){
           clearTimeout(request.timer);
           request.reject(new Error('Browser extension disconnected.'));
@@ -2791,9 +2790,8 @@ function normalizeSuperTeam(input,primary){
     if(!model)continue;
     seen.add(key);
     out.push(model);
-    if(out.length>=3)break;
   }
-  return out;
+  return out.slice(0,16);
 }
 
 function updateTaskAgent(task,id,patch){

@@ -21,8 +21,8 @@ function render(status){
       row.className='provider';
       const name=document.createElement('span');
       const title=document.createElement('span');
-      name.textContent=item.name||item.id||'AI tab';
-      title.textContent=item.title||'Connected';
+      name.textContent=item.modelName||item.name||item.id||'AI tab';
+      title.textContent=(item.name||item.providerId||'Browser')+(item.tabId?' · Tab '+item.tabId:'');
       row.append(name,title);
       providers.appendChild(row);
     }

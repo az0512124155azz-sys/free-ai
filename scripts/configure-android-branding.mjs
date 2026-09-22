@@ -3,13 +3,13 @@ import path from 'node:path';
 import sharp from 'sharp';
 
 const res=path.resolve('android/app/src/main/res');
-const source=path.resolve('public/free-ai-logo.png');
+const source=path.resolve('build/free-ai-symbol.svg');
 if(!fs.existsSync(res)){
   console.error('Android resources not found. Run "npx cap add android" first.');
   process.exit(1);
 }
 if(!fs.existsSync(source)){
-  console.error('Missing public/free-ai-logo.png');
+  console.error('Missing build/free-ai-symbol.svg');
   process.exit(1);
 }
 

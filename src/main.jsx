@@ -31,7 +31,7 @@ const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
-const BRAND_LOGO_SRC='/free-ai-logo.png';
+const BRAND_LOGO_SRC='/free-ai-logo.svg';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 const projectIconOptions=[
   ['folder','Folder',Folder],['briefcase','Briefcase',Briefcase],['code','Code',Code2],
@@ -117,11 +117,27 @@ function randomKey(){
   const b=new Uint8Array(32);crypto.getRandomValues(b);
   return [...b].map(x=>x.toString(16).padStart(2,'0')).join('');
 }
+function modelProviderId(model){
+  return String(model?.providerId||model?.id||'').split(':')[0];
+}
 function modelLabel(model){
-  return model?.modelName||model?.name||providerNames[model?.id]||model?.model||'Select model';
+  return model?.modelName||model?.model||model?.name||providerNames[modelProviderId(model)]||'Select model';
 }
 function modelKey(model){
   return model?(String(model.source||'browser')+'::'+String(model.id||'')):'';
+}
+function modelGroupKey(model){
+  return model?[
+    String(model.source||'browser'),
+    modelProviderId(model),
+    String(modelLabel(model)||'').trim().toLowerCase()
+  ].join('::'):'';
+}
+function modelInstanceLabel(model){
+  if(model?.source==='api')return 'API · '+String(model?.model||modelLabel(model));
+  const title=String(model?.title||'').trim();
+  const provider=model?.name||providerNames[modelProviderId(model)]||'Browser';
+  return 'Browser · '+provider+(Number.isFinite(Number(model?.tabId))?' · Tab '+model.tabId:'')+(title&&title!==provider?' · '+title:'');
 }
 function initials(session){
   const value=session?.user?.user_metadata?.full_name||session?.user?.email||'Free AI';
@@ -148,6 +164,14 @@ function attachmentMeta(item){
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
+  </span>;
+}
+
+function ProviderBadge({model,small=false}){
+  const providerId=modelProviderId(model);
+  const icon=model?.source==='browser'?String(model?.favIconUrl||''):'';
+  return <span className={'providerBadge '+(small?'small ':'')+(model?.source==='api'?'api':providerId)} aria-hidden="true">
+    {icon?<img src={icon} alt="" referrerPolicy="no-referrer"/>:<span>{model?modelLabel(model).slice(0,1).toUpperCase():'+'}</span>}
   </span>;
 }
 
@@ -205,6 +229,7 @@ function App(){
   const [session,setSession]=useState(null);
   const [status,setStatus]=useState({extension:false,relay:false,providers:[]});
   const [selected,setSelected]=useState(null);
+  const [parallelCount,setParallelCount]=useState(1);
   const [selectedTool,setSelectedTool]=useState(null);
   const [messages,setMessages]=useState([]);
   const [prompt,setPrompt]=useState('');
@@ -268,6 +293,8 @@ function App(){
   const cameraRef=useRef(null);
   const messageEndRef=useRef(null);
   const activeRequestRef=useRef(null);
+  const activeParallelRequestIdsRef=useRef([]);
+  const parallelCancelledRef=useRef(false);
   const streamedTextRef=useRef('');
   const cancelledRequestRef=useRef(null);
   const activeWorkTaskIdRef=useRef(null);
@@ -334,9 +361,15 @@ function App(){
   useEffect(()=>{
     if(!selected)return;
     const fresh=connected.find(p=>p.id===selected.id&&p.source===selected.source);
-    if(!fresh){setSelected(null);setSelectedTool(null)}
+    if(!fresh){setSelected(null);setSelectedTool(null);setParallelCount(1)}
     else if(fresh!==selected)setSelected(fresh);
   },[connected]);
+
+  useEffect(()=>{
+    if(!selected||selected.source!=='browser'){setParallelCount(1);return}
+    const count=connected.filter(model=>model.connected!==false&&modelGroupKey(model)===modelGroupKey(selected)).length;
+    setParallelCount(current=>Math.max(1,Math.min(Number(current)||1,Math.max(1,count))));
+  },[connected,selected?.id,selected?.source,selected?.modelName]);
 
   useEffect(()=>{
     setSuperTeamKeys(current=>{
@@ -690,7 +723,7 @@ function App(){
         setLocalFolderWorkspace(localFolder);
       }
       const team=product==='super'
-        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>modelKey(model)!==modelKey(selected)).slice(0,3).map(model=>({
+        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>model.connected!==false&&modelKey(model)!==modelKey(selected)).map(model=>({
             id:model.id,source:model.source||'browser',name:modelLabel(model)
           }))
         : [];
@@ -721,6 +754,91 @@ function App(){
       setWorkTask(null);
       const failed=[...next,{role:'error',text:e?.message||String(e)}];
       setMessages(failed);saveCurrentChat(failed,selected);
+    }
+  }
+
+  async function runParallelGeneration(text){
+    const userText=String(text||'').trim();
+    if(!isWindowsDesktop||!isDesktop||busy||!selected||!userText)return runGeneration(text,messages,selected);
+    const groupKey=modelGroupKey(selected);
+    const siblings=connected.filter(model=>model.connected!==false&&model.source==='browser'&&modelGroupKey(model)===groupKey);
+    const ordered=[selected,...siblings.filter(model=>model.id!==selected.id)];
+    const targets=ordered.slice(0,Math.max(1,Math.min(Number(parallelCount)||1,ordered.length)));
+    if(targets.length<=1)return runGeneration(text,messages,selected);
+
+    const activeAttachments=attachments;
+    const allCanUpload=targets.every(model=>model.fileUpload===true);
+    const inlineTextParts=[];
+    if(!allCanUpload){
+      for(const item of activeAttachments){
+        if(item.kind==='text'&&item.content)inlineTextParts.push('[File: '+item.name+']\n'+item.content);
+        else{
+          setAttachmentError('Parallel model mode requires every selected browser tab to expose file upload for binary attachments. Use text files, reduce the instance count, or open file upload in every matching tab.');
+          return;
+        }
+      }
+    }
+
+    setAttachmentError('');
+    setBusy(true);setPrompt('');setResponseMenuIndex(null);
+    parallelCancelledRef.current=false;
+    const userAttachmentMeta=activeAttachments.map(attachmentMeta);
+    const attachmentContext=inlineTextParts.join('\n\n');
+    const withUser=[...messages,{role:'user',text:userText,attachments:userAttachmentMeta,attachmentContext}];
+    setMessages(withUser);saveCurrentChat(withUser,selected);
+
+    try{
+      const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
+      const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      const instructions=projectInstructions||globalInstructions;
+      const instructionsLabel=projectInstructions?'Free AI project instructions for this request:':'Free AI user preferences for this request:';
+      const userRequestText=attachmentContext?[userText,'',attachmentContext].join('\n'):userText;
+      const routedText=instructions
+        ? [instructionsLabel,instructions,'','User request:',userRequestText].join('\n')
+        : userRequestText;
+      const historyMessages=withUser.filter(message=>message.role==='user'||message.role==='assistant');
+      const lastUserIndex=historyMessages.map(message=>message.role).lastIndexOf('user');
+      const history=historyMessages.map((message,index)=>{
+        const priorAttachmentContext=message.role==='user'?String(message.attachmentContext||''):'';
+        const priorText=priorAttachmentContext?[String(message.text||''),'',priorAttachmentContext].join('\n'):String(message.text||'');
+        return {role:message.role,content:index===lastUserIndex?routedText:priorText};
+      });
+      const outboundAttachments=allCanUpload
+        ? await Promise.all(activeAttachments.map(async item=>({
+            name:item.name,type:item.type,size:item.size,dataUrl:await readFileDataUrl(item.file)
+          })))
+        : [];
+      const requestIds=targets.map(()=>crypto.randomUUID());
+      activeParallelRequestIdsRef.current=requestIds;
+      const settled=await Promise.allSettled(targets.map((model,index)=>{
+        const effortLevels=Array.isArray(model.effortLevels)?model.effortLevels.filter(Boolean):[];
+        const routedEffort=model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default';
+        return window.desktopApi.sendPrompt({
+          requestId:requestIds[index],
+          provider:model.id,
+          source:model.source||'browser',
+          text:routedText,
+          history,
+          effort:routedEffort,
+          attachments:outboundAttachments,
+          mode,product,approvalMode:'ask',
+          toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
+        });
+      }));
+      if(parallelCancelledRef.current)return;
+      const responses=settled.map((result,index)=>{
+        const model=targets[index];
+        const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
+        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),...meta};
+        return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
+      });
+      const next=[...withUser,...responses];
+      setMessages(next);saveCurrentChat(next,selected);
+      for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
+      setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
+    }finally{
+      activeParallelRequestIdsRef.current=[];
+      setBusy(false);
     }
   }
 
@@ -813,11 +931,20 @@ function App(){
   }
   async function send(){
     if(isWindowsDesktop&&mode==='work')return runWorkGeneration(prompt);
+    if(isWindowsDesktop&&selected?.source==='browser'&&parallelCount>1)return runParallelGeneration(prompt);
     return runGeneration(prompt,messages,selected);
   }
   async function stopGeneration(){
     if(isWindowsDesktop&&mode==='work'&&workTask&&['running','waiting_approval'].includes(workTask.status)){
       try{await window.desktopApi.stopWorkTask(workTask.id)}catch{}
+      return;
+    }
+    const parallelIds=[...activeParallelRequestIdsRef.current];
+    if(parallelIds.length&&isWindowsDesktop&&isDesktop){
+      parallelCancelledRef.current=true;
+      activeParallelRequestIdsRef.current=[];
+      await Promise.allSettled(parallelIds.map(id=>window.desktopApi.cancelPrompt(id)));
+      setBusy(false);
       return;
     }
     const requestId=activeRequestRef.current;
@@ -1213,6 +1340,7 @@ function App(){
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
+                parallelCount={parallelCount} setParallelCount={setParallelCount}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
@@ -1223,7 +1351,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
-                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
@@ -1236,6 +1364,7 @@ function App(){
                   {m.role!=='user'&&!isWindowsDesktop&&<div className="assistantMark"><Sparkles size={16}/></div>}
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
+                    {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody">{m.streaming&&!m.text?<RefreshCw className="spin" size={16}/>:m.text}</div>
                     {isWindowsDesktop&&m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
                       {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
@@ -1262,6 +1391,7 @@ function App(){
                   compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
+                  parallelCount={parallelCount} setParallelCount={setParallelCount}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
@@ -1272,7 +1402,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
-                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
@@ -1385,7 +1515,7 @@ function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
 function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
-    effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
+    parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
     mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
@@ -1566,7 +1696,7 @@ function Composer(props){
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
-          {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
+          {modelMenu&&<ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/>}
         </div>}
         {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
@@ -1601,7 +1731,7 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
   const currentEffort=labels[effort]||effort||'Instant';
   return <div className="mobileConversationPicker menuAnchor">
     <button className="mobileModelTrigger" aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>
-      <span className={'providerBadge small '+(selected?.source==='api'?'api':selected?.id||'')}>{selected?modelLabel(selected).slice(0,1):'+'}</span>
+      <ProviderBadge model={selected} small/>
       <span className="mobileModelTriggerText"><b>{selected?modelLabel(selected):'Select model'}</b>{levels.length>1&&<small>{currentEffort}</small>}</span>
       <ChevronDown size={14}/>
     </button>
@@ -1609,8 +1739,8 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
       <div className="mobilePickerSectionTitle">Models</div>
       <div className="mobileModelList">
         {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Connect your desktop or add an API model first.</span></div>:connected.map(model=><button key={(model.source||'browser')+model.id} className={(selected?.id===model.id&&selected?.source===model.source)?'active':''} onClick={()=>choose(model)}>
-          <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
-          <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Desktop · '+model.name}</small></span>
+          <ProviderBadge model={model}/>
+          <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
           {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
         </button>)}
       </div>
@@ -1625,40 +1755,70 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
   </div>
 }
 
-function ModelMenu({connected,selected,choose}){
+function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount}){
+  const selectedGroupKey=modelGroupKey(selected);
+  const matchingInstances=selectedGroupKey
+    ? connected.filter(model=>model.connected!==false&&modelGroupKey(model)===selectedGroupKey)
+    : [];
+  const maxParallel=Math.max(1,matchingInstances.length);
+  const parallel=Math.max(1,Math.min(Number(parallelCount)||1,maxParallel));
   return <div className="floatingMenu modelPicker" role="listbox" aria-label="Select model">
     <div className="floatingTitle">Select model</div>
     {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
-      connected.map(model=><button role="option" aria-selected={selected?.id===model.id&&selected?.source===model.source} key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
-        <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
-        <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name+' · current tab'}</small></span>
-        {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
-      </button>)}
+      connected.map(model=>{
+        const active=selected?.id===model.id&&selected?.source===model.source;
+        const siblings=connected.filter(item=>item.connected!==false&&modelGroupKey(item)===modelGroupKey(model)).length;
+        return <button
+          role="option"
+          aria-selected={active}
+          aria-disabled={model.connected===false}
+          disabled={model.connected===false}
+          key={(model.source||'browser')+model.id}
+          className={'pickerRow '+(model.connected===false?'disconnected':'')}
+          onClick={()=>choose(model)}
+        >
+          <ProviderBadge model={model}/>
+          <span className="pickerText">
+            <b>{modelLabel(model)}</b>
+            <small>{modelInstanceLabel(model)}{siblings>1?' · '+siblings+' matching tabs':''}{model.connected===false?' · reconnecting…':''}</small>
+          </span>
+          {active&&<Check size={16}/>}
+        </button>;
+      })}
+    {selected?.source==='browser'&&maxParallel>1&&<div className="parallelPicker">
+      <span><b>Parallel instances</b><small>Send this prompt to multiple open tabs of the same model.</small></span>
+      <select value={parallel} onChange={e=>setParallelCount?.(Number(e.target.value))} aria-label="Parallel model instances">
+        {matchingInstances.map((_,index)=><option value={index+1} key={index+1}>{index+1===maxParallel?'All '+maxParallel:index+1}</option>)}
+      </select>
+    </div>}
   </div>
 }
 
 function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
   const primary=modelKey(selected);
-  const eligible=connected.filter(model=>modelKey(model)!==primary);
+  const eligible=connected.filter(model=>model.connected!==false&&modelKey(model)!==primary);
+  const eligibleKeys=eligible.map(modelKey);
   const toggle=key=>{
     const current=Array.isArray(selectedKeys)?selectedKeys:[];
     if(current.includes(key)){choose(current.filter(item=>item!==key));return}
-    if(current.length>=3)return;
     choose([...current,key]);
   };
+  const allSelected=eligible.length>0&&eligibleKeys.every(key=>selectedKeys.includes(key));
+  const useAll=()=>choose(allSelected?[]:eligibleKeys);
   return <div className="floatingMenu teamPicker" role="menu" aria-label="Super AI team">
-    <div className="teamPickerHead"><span><b>Super AI team</b><small>Controller + up to 3 specialist/reviewer models</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
-    {selected&&<div className="teamControllerRow"><span className={'providerBadge '+(selected.source==='api'?'api':selected.id)}>{modelLabel(selected).slice(0,1)}</span><span><b>{modelLabel(selected)}</b><small>Primary controller</small></span><Check size={14}/></div>}
+    <div className="teamPickerHead"><span><b>Super AI team</b><small>One controller with parallel specialist/reviewer agents</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
+    {selected&&<div className="teamControllerRow"><ProviderBadge model={selected}/><span><b>{modelLabel(selected)}</b><small>Primary controller · {modelInstanceLabel(selected)}</small></span><Check size={14}/></div>}
+    {eligible.length>0&&<button className={'teamUseAll '+(allSelected?'active':'')} onClick={useAll}><Bot size={14}/><span>{allSelected?'Use controller only':'Use all '+eligible.length+' connected agents'}</span>{allSelected&&<Check size={13}/>}</button>}
     <div className="floatingTitle section">Specialists / reviewers</div>
     {eligible.length===0?<div className="menuEmpty compact">Connect another model to build a multi-agent team.</div>:eligible.map(model=>{
-      const key=modelKey(model),checked=selectedKeys.includes(key),limitReached=!checked&&selectedKeys.length>=3;
-      return <button key={key} className={'teamModelRow '+(checked?'active ':'')+(limitReached?'disabled':'')} disabled={limitReached} onClick={()=>toggle(key)}>
-        <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
-        <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API model':'Connected browser model'}</small></span>
+      const key=modelKey(model),checked=selectedKeys.includes(key);
+      return <button key={key} className={'teamModelRow '+(checked?'active ':'')} onClick={()=>toggle(key)}>
+        <ProviderBadge model={model}/>
+        <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
         <span className={'teamCheck '+(checked?'checked':'')}>{checked?<Check size={13}/>:null}</span>
       </button>;
     })}
-    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' additional agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
+    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' parallel agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
   </div>
 }
 
