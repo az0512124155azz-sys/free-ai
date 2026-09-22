@@ -2186,6 +2186,12 @@ app.on('before-quit',()=>{
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
   pending.clear();
+  for(const task of workTasks.values()){
+    task.cancelled=true;
+    if(task.approval?.resolve){task.approval.resolve(false);task.approval=null}
+    if(task.activeRequestId)cancelPrompt(task.activeRequestId);
+  }
+  workTasks.clear();
   for(const active of activePrompts.values())active.controller.abort();
   activePrompts.clear();
 });
