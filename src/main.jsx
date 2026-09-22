@@ -40,7 +40,7 @@ const projectIconOptions=[
 const projectColorOptions=['blue','green','orange','purple','pink','neutral'];
 
 const settingsSections=[
-  ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
+  ['personal','General',Settings],['personal','App',AppWindow],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
   ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
   ['integrations','Computer use',Monitor],['integrations','Files',Folder],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
@@ -2505,6 +2505,7 @@ function SettingsView(props){
   const visibleSettings=settingsSections.filter(([,label])=>
     (!isNative||!hiddenOnMobile.has(label))&&
     (label!=='Files'||isWindowsDesktop)&&
+    (label!=='App'||isWindowsDesktop)&&
     (!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase()))
   );
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
@@ -2563,6 +2564,44 @@ function GeneralSettings({prefs,setPrefs}){
   </div>
 }
 function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
+function WindowsAppSettings(){
+  const [info,setInfo]=useState(null);
+  const [update,setUpdate]=useState(null);
+  const [checking,setChecking]=useState(false);
+  const [error,setError]=useState('');
+  useEffect(()=>{
+    let cancelled=false;
+    window.desktopApi?.getAppInfo?.().then(value=>{if(!cancelled)setInfo(value)}).catch(()=>{});
+    return()=>{cancelled=true};
+  },[]);
+  async function check(){
+    setChecking(true);setError('');
+    try{setUpdate(await window.desktopApi.checkForUpdates())}
+    catch(e){setUpdate(null);setError(e?.message||'Could not check for updates.')}
+    finally{setChecking(false)}
+  }
+  async function openRelease(){
+    if(update?.url)await window.desktopApi?.openExternal?.(update.url);
+  }
+  return <div className="settingsPane">
+    <h3>Windows app</h3>
+    <div className="settingBlock">
+      <SettingRow title="Version" desc="The installed Free AI desktop version." control={<span className="valuePill">{info?.version||'Loading…'}</span>}/>
+      <SettingRow title="Authentication link handler" desc="Free AI uses the freeai:// protocol to return securely from desktop sign-in." control={<span className={'connectionStatus '+(info?.authProtocolRegistered?'good':'')}>{info?.authProtocolRegistered?'Registered':'Not registered'}</span>}/>
+      <SettingRow title="Updates" desc="Check the official Free AI GitHub Releases feed. Free AI does not silently install an update." control={<button className="settingsInlineButton" disabled={checking} onClick={check}>{checking?'Checking…':'Check for updates'}</button>}/>
+    </div>
+    {update&&<div className="settingsStatus">
+      {update.updateAvailable
+        ? <span>Version {update.latestVersion} is available. <button className="textLinkButton" onClick={openRelease}><ExternalLink size={13}/>Open release</button></span>
+        : <span>Free AI {update.currentVersion} is up to date with the latest published release ({update.latestVersion}).</span>}
+    </div>}
+    {error&&<div className="settingsStatus">{error}</div>}
+    <h3>Install</h3>
+    <div className="settingBlock">
+      <SettingRow title="Installer" desc="Windows builds use the NSIS installer produced by the Free AI release workflow." control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
+    </div>
+  </div>
+}
 function AppearanceSettings({prefs,setPrefs}){
   const textSizes=[90,100,110,125];
   const currentTextSize=Number(prefs.textSize)||100;
