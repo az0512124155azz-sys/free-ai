@@ -1846,6 +1846,7 @@ function workActionIsReadOnly(tool,type){
   if(tool==='computer')return type==='screenshot'||type==='wait';
   if(tool==='browser_builtin')return type==='snapshot'||type==='wait';
   if(tool==='browser_extension')return type==='snapshot'||type==='list_tabs';
+  if(tool==='repository')return ['status','list','read','diff'].includes(type);
   return false;
 }
 
@@ -1853,6 +1854,7 @@ function workActionIsSensitive(tool,type){
   if(tool==='computer')return ['click','double_click','type','keypress','drag'].includes(type);
   if(tool==='browser_builtin')return ['click','double_click','type','keypress','close_tab'].includes(type);
   if(tool==='browser_extension')return ['click','type','select','close_tab'].includes(type);
+  if(tool==='repository')return type==='write';
   return true;
 }
 
@@ -1897,11 +1899,19 @@ function workApprovalFor(task,decision){
     : Number.isFinite(Number(action.x))&&Number.isFinite(Number(action.y))
       ? 'Target coordinates: '+Math.round(Number(action.x))+', '+Math.round(Number(action.y))+'.'
       : '';
+  const repositoryTarget=tool==='repository'&&action.path
+    ? 'Repository file: '+String(action.path).slice(0,500)+'.'
+    : '';
+  const repositoryWrite=tool==='repository'&&type==='write'
+    ? 'New content size: '+Buffer.byteLength(String(action.content??''),'utf8')+' bytes.'
+    : '';
   const detail=[
     scopeDetail,
     needsActionApproval?'Proposed action: '+label+'. Tool: '+tool+'. Type: '+type+'.':'',
     url?'URL: '+url+'.':'',
     target,
+    repositoryTarget,
+    repositoryWrite,
     typedText?'Text to enter: "'+typedText+(String(action.text).length>160?'…':'')+'"':'',
     keys?'Keys: '+keys+'.':''
   ].filter(Boolean).join(' ');
@@ -1978,7 +1988,7 @@ function parseWorkDecision(raw){
   if(parsed.kind==='ask'){
     return {kind:'complete',message:String(parsed.message||'I need more information before I can continue.')};
   }
-  if(parsed.kind!=='tool'||!['browser_builtin','browser_extension','computer'].includes(parsed.tool)||!parsed.action||typeof parsed.action!=='object'){
+  if(parsed.kind!=='tool'||!['browser_builtin','browser_extension','computer','repository'].includes(parsed.tool)||!parsed.action||typeof parsed.action!=='object'){
     throw new Error('The selected model returned an unsupported Work action.');
   }
   return {
@@ -2035,7 +2045,10 @@ function workToolDescription(task){
       : 'browser_extension: unavailable because the browser extension is not connected.',
     computerAvailable
       ? 'computer: Windows desktop. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata.'
-      : 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.'
+      : 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.',
+    task.product==='super'&&task.workspace?.root
+      ? 'repository: selected local Git repository "'+task.workspace.name+'". Actions: status, list, read(path), diff(path optional), write(path,content). Read before writing. Writes require user approval and cannot access .git or escape the selected repository.'
+      : 'repository: unavailable because no local Git repository is attached to this task.'
   ];
   return tools.join('\n');
 }
@@ -2074,13 +2087,14 @@ function workModelPrompt(task,observation){
     observationText,
     '',
     'Allowed response forms:',
-    '{"kind":"tool","tool":"browser_builtin|browser_extension|computer","summary":"short user-visible description","action":{"type":"..."}}',
+    '{"kind":"tool","tool":"browser_builtin|browser_extension|computer|repository","summary":"short user-visible description","action":{"type":"..."}}',
     '{"kind":"complete","message":"concise final result or explanation"}',
     '{"kind":"ask","message":"one concise question if the task cannot continue without user input"}',
     '',
     'For browser_extension page actions, first request snapshot(tabId), then use an elementId from that latest snapshot.',
     'For browser_builtin, use the latest page.elements rect and page.viewport CSS coordinates for clicks and typing. Treat the screenshot as visual context, not as the coordinate system.',
     'For computer actions, first request screenshot and use the returned displayId plus the exact screenshot width/height as viewport dimensions. Do not guess coordinates without a screenshot. A computer type action must include x and y for the target input; Free AI will click that point immediately before typing.',
+    'For repository work, inspect status/list/read/diff before proposing a write. Never invent file contents. Do not use repository write for binary files or secrets.',
     'Keep the task specific and stop when the requested outcome is complete.'
   ].join('\n');
 }
@@ -2150,6 +2164,15 @@ async function executeWorkTool(task,decision){
       },
       settleMs:action.settleMs
     },20000);
+  }
+  if(decision.tool==='repository'){
+    if(task.product!=='super'||!task.workspace?.root)throw new Error('No local repository is attached to this Super AI task.');
+    if(type==='status')return repositorySummary(task.workspace.root);
+    if(type==='list')return repositoryList(task.workspace.root);
+    if(type==='read')return repositoryRead(task.workspace.root,action.path);
+    if(type==='diff')return repositoryDiff(task.workspace.root,action.path||'');
+    if(type==='write')return repositoryWrite(task.workspace.root,action.path,action.content);
+    throw new Error('Unsupported repository action: '+String(action.type||'unknown'));
   }
   if(decision.tool==='computer'){
     if(type!=='screenshot'&&type!=='wait'&&!task.computerSnapshotReady){
@@ -2297,7 +2320,7 @@ async function runWorkTask(task){
   }
 }
 
-function startWorkTask(input={}){
+async function startWorkTask(input={}){
   if(process.platform!=='win32')throw new Error('The local Work task loop is currently available on Windows.');
   const provider=String(input.provider||'');
   const source=String(input.source||'browser');
@@ -2309,6 +2332,9 @@ function startWorkTask(input={}){
     throw new Error('The selected API model is not currently connected.');
   }
   const id=String(input.id||crypto.randomUUID());
+  const workspace=String(input.product||'free')==='super'&&input.workspace?.root
+    ? await repositorySummary(input.workspace.root)
+    : null;
   const task={
     id,
     provider,
@@ -2331,6 +2357,7 @@ function startWorkTask(input={}){
     computerSnapshotReady:false,
     finalMessage:'',
     error:'',
+    workspace,
     instructions:String(input.instructions||'').slice(0,8000),
     history:Array.isArray(input.history)?input.history.slice(-12).map(item=>({
       role:item?.role==='assistant'?'assistant':'user',
