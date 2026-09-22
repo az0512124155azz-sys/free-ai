@@ -1557,6 +1557,7 @@ function connectRelay(){
 
 async function captureScreens(){
   const displays=screen.getAllDisplays();
+  const primaryDisplay=screen.getPrimaryDisplay();
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:800,height:450}});
   return sources.map((source,index)=>{
     const reliableWindowsDisplay=process.platform==='win32'&&source.display_id
@@ -1572,6 +1573,7 @@ async function captureScreens(){
       width:Number(size?.width)||800,
       height:Number(size?.height)||450,
       displayId:display?.id??null,
+      primary:!!display&&String(display.id)===String(primaryDisplay?.id),
       interactive:process.platform==='win32'?!!reliableWindowsDisplay:process.platform==='darwin'?!!display:false,
       scaleFactor:Number(display?.scaleFactor)||1,
       rotation:Number(display?.rotation)||0,
