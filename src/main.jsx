@@ -513,7 +513,12 @@ function Composer(props){
     setDictationError('');
     try{
       if(isNative){
-        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:700}));
+        try{
+          const last=await SpeechRecognition.getLastPartialResult?.();
+          const text=(last?.text||last?.matches?.[0]||'').trim();
+          if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
+        }catch{}
+        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:900}));
         for(const handle of nativeSpeechHandles.current.splice(0))await handle?.remove?.().catch(()=>{});
       }else if(webRecognition.current){
         webRecognition.current.stop();
@@ -551,17 +556,29 @@ function Composer(props){
         if(permission?.speechRecognition!=='granted')throw new Error('Microphone permission is required for dictation.');
 
         const partial=await SpeechRecognition.addListener('partialResults',event=>{
-          const text=event?.matches?.[0]?.trim();
+          const text=(event?.matches?.[0]||event?.text||'').trim();
           if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
         });
-        const stateHandle=await SpeechRecognition.addListener('listeningState',event=>setListening(event?.status==='started'));
+        const stateHandle=await SpeechRecognition.addListener('listeningState',event=>{
+          const state=String(event?.state||event?.status||'').toLowerCase();
+          if(['started','listening','active'].includes(state))setListening(true);
+          if(['stopped','ended','idle','inactive'].includes(state))setListening(false);
+        });
+        const readyHandle=await SpeechRecognition.addListener('readyForNextSession',()=>setListening(false));
         const errorHandle=await SpeechRecognition.addListener('error',event=>{
           setListening(false);
           if(event?.message)setDictationError(event.message);
         });
-        nativeSpeechHandles.current=[partial,stateHandle,errorHandle];
+        nativeSpeechHandles.current=[partial,stateHandle,readyHandle,errorHandle];
+        let useOnDeviceRecognition=false;
+        try{
+          const local=await SpeechRecognition.isOnDeviceRecognitionAvailable?.({language});
+          useOnDeviceRecognition=!!local?.available;
+        }catch{}
         setListening(true);
-        await SpeechRecognition.start({language,maxResults:3,partialResults:true,popup:false,addPunctuation:true});
+        await SpeechRecognition.start({
+          language,maxResults:3,partialResults:true,popup:false,addPunctuation:true,useOnDeviceRecognition
+        });
       }catch(e){
         setListening(false);
         setDictationError(e?.message||'Dictation could not start.');
