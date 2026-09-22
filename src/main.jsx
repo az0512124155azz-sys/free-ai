@@ -537,10 +537,17 @@ function App(){
   },[product,workTask?.workspace?.name,workTask?.workspace?.branch,workTask?.workspace?.head,workTask?.workspace?.dirty]);
 
   const activeProject=useMemo(()=>projects.find(project=>project.id===activeProjectId)||null,[projects,activeProjectId]);
+  const currentChatRecord=useMemo(()=>chats.find(chat=>chat.id===currentChatId)||null,[chats,currentChatId]);
   const projectChats=useMemo(()=>activeProjectId
     ? chats.filter(chat=>chat.projectId===activeProjectId).sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0))
     : [],[chats,activeProjectId]);
   const visibleProjects=useMemo(()=>projects.filter(project=>(project.product||'free')===product),[projects,product]);
+
+  useEffect(()=>{
+    if(product!=='super'||!currentChatRecord?.isAgentThread||currentChatRecord.detachedFromTask)return;
+    if(currentChatRecord.taskId!==activeWorkTaskIdRef.current)return;
+    setMessages(Array.isArray(currentChatRecord.messages)?currentChatRecord.messages:[]);
+  },[product,currentChatRecord?.id,currentChatRecord?.updatedAt,currentChatRecord?.detachedFromTask]);
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
