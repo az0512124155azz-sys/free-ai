@@ -27,11 +27,16 @@ let browserDownloads=[];
 let browserDownloadHooked=false;
 const browserDownloadItems=new Map();
 const browserSiteTools=new Map();
+const browserPermissionGrants=new Set();
+const browserPermissionRequests=new Map();
+let browserPermissionsConfigured=false;
 let siteToolsEnabled=true;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
 const BROWSER_PARTITION='persist:freeai-browser';
+const BROWSER_RENDERABLE_PROTOCOLS=new Set(['http:','https:','about:','data:','blob:']);
+const BROWSER_EXTERNAL_PROTOCOLS=new Set(['mailto:','tel:','sms:','webcal:']);
 
 function handleAuthCallback(url){
   if(typeof url!=='string'||!url.startsWith(AUTH_CALLBACK_PREFIX))return false;
@@ -150,11 +155,29 @@ function browserTabMeta(id,view){
   };
 }
 
+function browserPermissionPublic(record){
+  return {
+    id:record.id,
+    tabId:record.tabId,
+    permission:record.permission,
+    origin:record.origin,
+    requestingUrl:record.requestingUrl,
+    userGesture:!!record.userGesture
+  };
+}
+
+function browserPermissionSnapshot(tabId){
+  if(process.platform!=='win32'||!tabId)return [];
+  return [...browserPermissionRequests.values()]
+    .filter(record=>record.tabId===tabId)
+    .map(browserPermissionPublic);
+}
+
 function browserSnapshot(){
   const entry=activeBrowserEntry();
   const tabs=[...browserTabs.entries()].map(([id,view])=>browserTabMeta(id,view));
   if(!entry){
-    return {url:'',title:'New tab',favicon:'',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[],error:null};
+    return {url:'',title:'New tab',favicon:'',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[],permissionRequests:[],error:null};
   }
   const wc=entry.webContents;
   const activeMeta=browserTabMeta(activeBrowserTabId,entry);
@@ -169,6 +192,7 @@ function browserSnapshot(){
     activeTabId:activeBrowserTabId,
     downloads:browserDownloads,
     siteTools:browserSiteTools.get(activeBrowserTabId)||[],
+    permissionRequests:browserPermissionSnapshot(activeBrowserTabId),
     error:browserErrors.get(activeBrowserTabId)||null
   };
 }
