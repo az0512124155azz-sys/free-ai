@@ -1930,6 +1930,16 @@ ipcMain.handle('browser:reload',()=>{
 });
 ipcMain.handle('browser:close',()=>{hideBrowserView();return true});
 
+ipcMain.handle('browserUse:builtInSnapshot',(_e,tabId)=>builtInBrowserAgentSnapshot(tabId));
+ipcMain.handle('browserUse:builtInAction',(_e,payload)=>performBuiltInBrowserAction(payload));
+ipcMain.handle('browserUse:extensionListTabs',()=>requestExtensionBrowser('listTabs'));
+ipcMain.handle('browserUse:extensionActivateTab',(_e,tabId)=>requestExtensionBrowser('activateTab',{tabId}));
+ipcMain.handle('browserUse:extensionCreateTab',(_e,payload)=>requestExtensionBrowser('createTab',payload||{}));
+ipcMain.handle('browserUse:extensionCloseTab',(_e,tabId)=>requestExtensionBrowser('closeTab',{tabId}));
+ipcMain.handle('browserUse:extensionNavigate',(_e,payload)=>requestExtensionBrowser('navigate',payload||{}));
+ipcMain.handle('browserUse:extensionSnapshot',(_e,tabId)=>requestExtensionBrowser('snapshot',{tabId},20000));
+ipcMain.handle('browserUse:extensionAction',(_e,payload)=>requestExtensionBrowser('action',payload||{},20000));
+
 ipcMain.handle('computer:performAction',(_e,payload)=>performWindowsComputerAction(payload));
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
   if(process.platform!=='win32'&&process.platform!=='darwin'){
