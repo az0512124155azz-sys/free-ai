@@ -1850,7 +1850,7 @@ function App(){
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
-                    <div className="messageBody">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
+                    <div className="messageBody" dir="auto">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
                     {isWindowsDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
                       <Sparkles size={13}/><span>{m.streaming?(m.activity||'Deep research in progress…'):'Deep research report'}</span>{!m.streaming&&<Check size={13}/>}
                       {!m.streaming&&<div className="researchReportActions" aria-label="Export research report">
@@ -2058,7 +2058,7 @@ function NewProjectDialog({draft,setDraft,onCreate,onClose}){
   return <div className="projectDialogScrim" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
     <form className="projectDialog" onSubmit={e=>{e.preventDefault();onCreate()}}>
       <div className="projectDialogHeader"><div><b>New project</b><small>Keep related Chat and Work conversations together.</small></div><button type="button" onClick={onClose} aria-label="Close"><X size={17}/></button></div>
-      <label className="projectNameField"><span>Name</span><input autoFocus value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Project name" maxLength={80}/></label>
+      <label className="projectNameField"><span>Name</span><input autoFocus dir="auto" value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Project name" maxLength={80}/></label>
       <div className="projectChoiceBlock"><span>Icon</span><div className="projectIconGrid">{projectIconOptions.map(([key,label,Icon])=><button type="button" key={key} className={draft.icon===key?'active':''} onClick={()=>setDraft({...draft,icon:key})} aria-label={label} title={label}><Icon size={17}/></button>)}</div></div>
       <div className="projectChoiceBlock"><span>Color</span><div className="projectColorGrid">{projectColorOptions.map(color=><button type="button" key={color} className={draft.color===color?'active':''} data-color={color} onClick={()=>setDraft({...draft,color})} aria-label={color+' color'}><span/></button>)}</div></div>
       <div className="projectDialogActions"><button type="button" onClick={onClose}>Cancel</button><button className="primaryProjectAction" type="submit" disabled={!String(draft.name||'').trim()}>Create project</button></div>
@@ -2293,6 +2293,7 @@ function Composer(props){
     </div>}
     <textarea
       ref={textareaRef}
+      dir="auto"
       value={prompt} onChange={e=>setPrompt(e.target.value)}
       spellCheck={spellCheckEnabled!==false}
       autoCorrect={spellCheckEnabled!==false?'on':'off'}
@@ -3457,7 +3458,7 @@ function ProfileSettings({session}){
   return <div className="settingsPane">
     <h3>Account</h3>
     <div className="settingBlock profileSettingsBlock">
-      <label className="profileField"><span>Display name</span><input value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label>
+      <label className="profileField"><span>Display name</span><input dir="auto" value={name} onChange={e=>setName(e.target.value)} placeholder="Your name"/></label>
       <SettingRow title="Email" desc={session?.user?.email||'No email available'} control={<span className="valuePill">Signed in</span>}/>
       <div className="profileActions"><span>{state}</span><button className="primaryAction" onClick={save}>Save profile</button></div>
     </div>
@@ -3491,7 +3492,7 @@ function PersonalizationSettings({prefs,setPrefs}){
       <label className="customInstructionsField">
         <span>Custom instructions</span>
         <small>These instructions are sent as request context to the connected model you choose.</small>
-        <textarea value={prefs.customInstructions||''} onChange={e=>setPrefs({...prefs,customInstructions:e.target.value})} placeholder="What should connected models know about how you want them to respond?"/>
+        <textarea dir="auto" value={prefs.customInstructions||''} onChange={e=>setPrefs({...prefs,customInstructions:e.target.value})} placeholder="What should connected models know about how you want them to respond?"/>
       </label>
     </div>
   </div>
