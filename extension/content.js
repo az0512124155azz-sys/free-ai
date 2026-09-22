@@ -28,63 +28,162 @@
 
   const configs={
     chatgpt:{
-      inputs:['#prompt-textarea','textarea[placeholder*="Message"]','div[contenteditable="true"][data-virtualkeyboard]','div[contenteditable="true"]'],
-      send:['button[data-testid="send-button"]','button[aria-label*="Send"]'],
+      inputs:['#prompt-textarea','textarea[placeholder*="Message"]','div[contenteditable="true"][data-virtualkeyboard]','div[contenteditable="true"][role="textbox"]'],
+      send:['button[data-testid="send-button"]','button[aria-label*="Send"]','button[aria-label*="send"]','button[type="submit"]'],
       stop:['button[data-testid="stop-button"]','button[aria-label*="Stop"]'],
       answers:['[data-message-author-role="assistant"]']
     },
     claude:{
       inputs:['div[contenteditable="true"][role="textbox"]','div.ProseMirror[contenteditable="true"]','textarea'],
-      send:['button[aria-label*="Send"]','button[type="submit"]'],
+      send:['button[aria-label*="Send"]','button[aria-label*="send"]','button[type="submit"]','button[data-testid*="send"]'],
       stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['[data-testid*="assistant"]','.font-claude-message']
     },
     gemini:{
       inputs:['rich-textarea div[contenteditable="true"]','div[contenteditable="true"][role="textbox"]','textarea'],
-      send:['button[aria-label*="Send"]','button.send-button'],
-      stop:['button[aria-label*="Stop"]','button[aria-label*="stop"]'],
-      answers:['model-response','.model-response-text']
+      send:['button.send-button','button[aria-label*="Send"]','button[aria-label*="send"]','button[mattooltip*="Send"]','button[mattooltip*="send"]','button[data-test-id*="send"]','button[data-testid*="send"]','button[type="submit"]','.send-button-container button'],
+      stop:['button[aria-label*="Stop"]','button[aria-label*="stop"]','button[mattooltip*="Stop"]'],
+      answers:['model-response','.model-response-text','[data-test-id*="response"]']
     },
     deepseek:{
       inputs:['textarea','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
-      send:['button[aria-label*="Send"]','button[type="submit"]'],
+      send:['button[aria-label*="Send"]','button[aria-label*="send"]','button[type="submit"]','button[data-testid*="send"]'],
       stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['.ds-markdown','[class*="markdown"]']
     },
     grok:{
       inputs:['textarea','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
-      send:['button[aria-label*="Send"]','button[type="submit"]'],
+      send:['button[aria-label*="Send"]','button[aria-label*="send"]','button[type="submit"]','button[data-testid*="send"]'],
       stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['[data-testid*="message"]','article']
     },
     manus:{
       inputs:['textarea','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
-      send:['button[aria-label*="Send"]','button[type="submit"]'],
+      send:['button[aria-label*="Send"]','button[aria-label*="send"]','button[type="submit"]','button[data-testid*="send"]'],
       stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['[data-role="assistant"]','[data-testid*="assistant"]','article']
     }
   };
 
   function cleanLabel(s){
-    return String(s||'').replace(/\s+/g,' ').trim().replace(/^[-•]\s*/,'').slice(0,120);
+    return String(s||'').replace(/\s+/g,' ').trim().replace(/^[-•]\s*/,'').slice(0,160);
+  }
+
+  function controlLabel(el){
+    return cleanLabel([
+      el?.innerText,
+      el?.textContent,
+      el?.getAttribute?.('aria-label'),
+      el?.getAttribute?.('title'),
+      el?.getAttribute?.('data-tooltip'),
+      el?.getAttribute?.('mattooltip')
+    ].filter(Boolean).join(' '));
+  }
+
+  function providerModelPatterns(provider){
+    if(provider==='chatgpt')return [
+      /GPT[-\s]?\d(?:\.\d+)?(?:\s+(?:Sol|Terra|Luna|Astra|Pro|Thinking|Instant))?/i,
+      /GPT[-\s]?(?:Pro|Thinking|Instant)/i
+    ];
+    if(provider==='claude')return [
+      /Claude(?:\s+\d(?:\.\d+)?)?(?:\s+(?:Opus|Sonnet|Haiku))?(?:\s+\d(?:\.\d+)?)?/i,
+      /(?:Opus|Sonnet|Haiku)(?:\s+\d(?:\.\d+)?)?/i
+    ];
+    if(provider==='gemini')return [
+      /Gemini(?:\s+\d(?:\.\d+)?)?(?:\s+(?:Pro|Flash|Deep Think|Thinking))?/i,
+      /\d(?:\.\d+)?\s+(?:Pro|Flash)(?:\s+Thinking)?/i,
+      /(?:Pro|Flash|Deep Think)(?:\s+Thinking)?/i
+    ];
+    if(provider==='deepseek')return [/DeepSeek(?:[-\s][A-Za-z0-9.]+)?/i,/(?:V3|R1)(?:[-\s][A-Za-z0-9.]+)?/i];
+    if(provider==='grok')return [/Grok(?:\s+\d(?:\.\d+)?)?(?:\s+(?:Fast|Heavy))?/i];
+    if(provider==='manus')return [/Manus(?:\s+[A-Za-z0-9.]+)?/i];
+    return [];
+  }
+
+  function modelFromLabel(provider,text){
+    const value=cleanLabel(text);
+    if(!value)return '';
+    for(const re of providerModelPatterns(provider)){
+      const match=value.match(re);
+      if(match)return cleanLabel(match[0]);
+    }
+    return '';
+  }
+
+  function modelCandidates(provider){
+    const selectors=[
+      'header button','nav button','[role="banner"] button',
+      'button[aria-haspopup]','[role="button"][aria-haspopup]',
+      '[role="menuitemradio"]','[role="option"]','[aria-checked="true"]','[aria-selected="true"]',
+      '[data-testid*="model"]','[data-test-id*="model"]','[class*="model"] button'
+    ];
+    const out=[];
+    const seen=new Set();
+    for(const el of document.querySelectorAll(selectors.join(','))){
+      if(!visible(el)||seen.has(el))continue;
+      seen.add(el);
+      const label=controlLabel(el);
+      const model=modelFromLabel(provider,label);
+      if(!model)continue;
+      const rect=el.getBoundingClientRect();
+      let score=0;
+      if(el.getAttribute('aria-checked')==='true'||el.getAttribute('aria-selected')==='true'||el.getAttribute('aria-current'))score+=8;
+      if(el.hasAttribute('aria-haspopup'))score+=4;
+      if(/model/i.test(String(el.getAttribute('data-testid')||el.getAttribute('data-test-id')||el.className||'')))score+=4;
+      if(rect.top>=0&&rect.top<240)score+=3;
+      if(label.length<50)score+=2;
+      out.push({el,label,model,score});
+    }
+    return out.sort((a,b)=>b.score-a.score);
+  }
+
+  function detectActiveModel(provider){
+    const candidates=modelCandidates(provider);
+    if(candidates.length)return candidates[0].model;
+    const titleModel=modelFromLabel(provider,document.title);
+    return titleModel||'';
+  }
+
+  function detectModelOptions(provider){
+    const values=[];
+    const seen=new Set();
+    for(const item of modelCandidates(provider)){
+      const value=item.model;
+      const key=value.toLowerCase();
+      if(!seen.has(key)){seen.add(key);values.push(value)}
+    }
+    return values.slice(0,20);
   }
 
   function scanMcps(){
     const found=new Set();
-    const selectors=['button','[role="menuitem"]','[role="option"]','a','[aria-label]','[title]'];
-    for(const el of document.querySelectorAll(selectors.join(','))){
-      if(!visible(el)) continue;
-      const raw=[el.innerText,el.getAttribute('aria-label'),el.getAttribute('title')].filter(Boolean).join(' ');
-      const text=cleanLabel(raw);
-      if(!text) continue;
-      if(/\b(mcp|connector|connectors|connected apps|plugins?|tools?)\b/i.test(text)&&text.length<120) found.add(text);
+    const generic=/^(tools?|apps?|plugins?|connectors?|connected apps?|add|more|manage|settings)$/i;
+    const add=value=>{
+      const text=cleanLabel(value);
+      if(!text||generic.test(text)||text.length>100)return;
+      found.add(text);
+    };
+    const structural=[
+      '[data-testid*="connector"]','[data-test-id*="connector"]','[data-testid*="plugin"]','[data-test-id*="plugin"]',
+      '[data-testid*="tool"] [role="menuitem"]','[data-test-id*="tool"] [role="menuitem"]',
+      '[aria-label*="connector" i]','[title*="connector" i]','a[href*="connector" i]','a[href*="plugin" i]'
+    ];
+    for(const el of document.querySelectorAll(structural.join(','))){
+      add(controlLabel(el));
     }
-    return [...found].slice(0,40);
+    const containers=[...document.querySelectorAll('[role="menu"],[role="listbox"],[role="dialog"],[class*="menu"],[class*="popover"]')];
+    for(const container of containers){
+      const context=cleanLabel(container.getAttribute('aria-label')||container.getAttribute('data-testid')||container.textContent||'');
+      if(!/tool|plugin|connector|connected app/i.test(context))continue;
+      for(const el of container.querySelectorAll('[role="menuitem"],[role="option"],button,a'))add(controlLabel(el));
+    }
+    return [...found].slice(0,60);
   }
 
   function detectFileUpload(){
     return !!document.querySelector('input[type="file"]');
   }
+
   async function uploadAttachments(attachments){
     if(!Array.isArray(attachments)||!attachments.length)return;
     const input=document.querySelector('input[type="file"]');
@@ -105,27 +204,6 @@
     await sleep(450);
   }
 
-  function detectActiveModel(){
-    const candidates=[...document.querySelectorAll('button,[role="button"],[aria-label],[data-testid]')].filter(visible);
-    const patterns=[
-      /GPT[-\s]?\d(?:\.\d+)?(?:\s+(?:Sol|Terra|Luna|Astra|Pro))?/i,
-      /Claude(?:\s+\d(?:\.\d+)?)?(?:\s+(?:Opus|Sonnet|Haiku))?/i,
-      /Gemini(?:\s+\d(?:\.\d+)?)?(?:\s+(?:Pro|Flash))?/i,
-      /DeepSeek(?:[-\s][A-Za-z0-9.]+)?/i,
-      /Grok(?:\s+\d(?:\.\d+)?)?/i,
-      /Manus(?:\s+[A-Za-z0-9.]+)?/i
-    ];
-    for(const el of candidates){
-      const raw=cleanLabel([el.innerText,el.getAttribute('aria-label'),el.getAttribute('title')].filter(Boolean).join(' '));
-      if(!raw||raw.length>80) continue;
-      for(const re of patterns){
-        const m=raw.match(re);
-        if(m) return m[0];
-      }
-    }
-    return '';
-  }
-
   async function setInput(el,text){
     el.focus();
     if(el.tagName==='TEXTAREA'||el.tagName==='INPUT'){
@@ -141,6 +219,46 @@
     try{document.execCommand('insertText',false,text)}
     catch{el.textContent=text}
     el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
+  }
+
+  function sendButtonLabel(el){
+    return cleanLabel([
+      el?.getAttribute?.('aria-label'),el?.getAttribute?.('title'),el?.getAttribute?.('mattooltip'),
+      el?.getAttribute?.('data-tooltip'),el?.innerText,el?.textContent,
+      el?.querySelector?.('mat-icon')?.textContent,
+      el?.querySelector?.('[data-icon]')?.getAttribute?.('data-icon')
+    ].filter(Boolean).join(' '));
+  }
+
+  function findSendButton(config,input){
+    const direct=first(config.send||[]);
+    if(direct&&!direct.disabled&&direct.getAttribute('aria-disabled')!=='true')return direct;
+    const form=input?.closest?.('form');
+    const formSubmit=form?.querySelector?.('button[type="submit"]:not([disabled])');
+    if(formSubmit&&visible(formSubmit)&&formSubmit.getAttribute('aria-disabled')!=='true')return formSubmit;
+
+    let root=input;
+    for(let depth=0;depth<7&&root;depth++,root=root.parentElement){
+      const buttons=[...root.querySelectorAll?.('button,[role="button"]')||[]].filter(visible);
+      for(const button of buttons){
+        if(button.disabled||button.getAttribute('aria-disabled')==='true')continue;
+        const label=sendButtonLabel(button);
+        const semantic=/\b(send|submit|שלח|envoyer|senden|enviar|invia)\b/i.test(label);
+        const classHint=/\b(send|submit)\b/i.test(String(button.className||'')+' '+String(button.getAttribute('data-testid')||''));
+        if(semantic||classHint)return button;
+      }
+    }
+    return null;
+  }
+
+  async function waitForSendButton(config,input,timeoutMs=3200){
+    const started=Date.now();
+    while(Date.now()-started<timeoutMs){
+      const button=findSendButton(config,input);
+      if(button)return button;
+      await sleep(100);
+    }
+    return null;
   }
 
   function browserLabel(el){
@@ -302,9 +420,14 @@
     await setInput(input,finalText);
     await sleep(180);
 
-    const send=first(c.send);
-    if(!send) throw new Error('Could not find the send button for this provider.');
-    send.click();
+    const send=await waitForSendButton(c,input);
+    if(send){
+      send.click();
+    }else{
+      const form=input.closest?.('form');
+      if(form&&typeof form.requestSubmit==='function')form.requestSubmit();
+      else throw new Error('Could not find the send control for '+provider+' on '+location.hostname+'. The provider UI may have changed.');
+    }
 
     const answer=await waitForAnswer(c,before,requestId);
     return {text:answer,requestedTool:toolRequest?.mcp||null};
@@ -317,7 +440,13 @@
     }
 
     if(m?.type==='freeai:scanCapabilities'){
-      sendResponse({mcps:scanMcps(),modelName:detectActiveModel(),fileUpload:detectFileUpload()});
+      const provider=String(m.provider||'');
+      sendResponse({
+        mcps:scanMcps(),
+        modelName:detectActiveModel(provider),
+        modelOptions:detectModelOptions(provider),
+        fileUpload:detectFileUpload()
+      });
       return;
     }
 
