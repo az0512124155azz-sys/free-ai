@@ -2,6 +2,8 @@ import fs from 'node:fs';
 
 const main=fs.readFileSync('electron/main.cjs','utf8');
 const source=fs.readFileSync('src/main.jsx','utf8');
+const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
+const installerSmoke=fs.readFileSync('scripts/windows-installer-smoke.ps1','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 
 function fail(message){
@@ -54,5 +56,17 @@ has(main,"Free AI will not send or save this API key in plaintext.",'API-key sec
 has(main,"apiConnections=apiConnections.filter(item=>item.id!==connection.id)",'Failed API connection saves must roll back the in-memory add.');
 has(main,"apiConnections=previous;",'Failed API connection removals must roll back the in-memory removal.');
 has(main,"raw?.mode==='plain'&&apiConnections.some(item=>item?.apiKey)&&safeStorage.isEncryptionAvailable()",'Legacy plaintext API credentials must migrate when secure storage is available.');
+
+has(workflow,'Windows clean install and first launch smoke','Windows installer smoke step is missing from CI.');
+has(workflow,"matrix.artifact == 'windows'",'Installer smoke must remain Windows-only.');
+has(workflow,'./scripts/windows-installer-smoke.ps1','Windows installer smoke script is not invoked.');
+has(installerSmoke,"Free-AI-Windows-*.exe",'Installer smoke does not locate the built Windows installer.');
+has(installerSmoke,"'/S'",'Installer smoke does not use the NSIS silent-install switch.');
+has(installerSmoke,'"/D=$installRoot"','Installer smoke does not use an isolated clean-install directory.');
+has(installerSmoke,"Join-Path $installRoot 'Free AI.exe'",'Installer smoke does not verify the installed application executable.');
+has(installerSmoke,"Join-Path $installRoot 'resources\\app.asar'",'Installer smoke does not verify the packaged ASAR.');
+has(installerSmoke,"Port 17341",'Installer smoke does not verify first-launch bridge startup.');
+has(installerSmoke,"'*Uninstall*.exe'",'Installer smoke does not verify the NSIS uninstaller.');
+has(installerSmoke,'"_?=$installRoot"','Installer smoke does not wait on the uninstaller in-place.');
 
 console.log('Windows 7 QA regression checks passed.');
