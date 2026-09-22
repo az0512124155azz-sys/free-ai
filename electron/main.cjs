@@ -57,6 +57,7 @@ function installAppMenu(){
       label:'File',
       submenu:[
         {label:'New chat',accelerator:'CmdOrCtrl+N',click:()=>win?.webContents.send('app-command','new-chat')},
+        {label:'Settings',accelerator:'CmdOrCtrl+,',click:()=>win?.webContents.send('app-command','settings')},
         {type:'separator'},
         process.platform==='darwin'?{role:'close'}:{role:'quit'}
       ]
@@ -873,7 +874,8 @@ ipcMain.handle('dictation:recognize',async()=>{
   if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');
   try{
     const text=await recognizeWindowsDictation();
-    return {ok:true,text:text||'',mode:'windows-speech-recognition'};
+    if(!text)return {ok:false,text:'',fallback:true,mode:'windows-speech-recognition'};
+    return {ok:true,text,mode:'windows-speech-recognition'};
   }catch(error){
     return {ok:false,text:'',fallback:true,error:error?.message||String(error)};
   }
