@@ -636,7 +636,7 @@ function App(){
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
-    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,finalMessage:'',error:''});
+    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,folder:localFolderWorkspace?{name:localFolderWorkspace.name}:null,finalMessage:'',error:''});
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
@@ -644,6 +644,11 @@ function App(){
       if(product==='super'&&workspace?.root){
         workspace=await window.desktopApi.repositorySummary(workspace.root);
         setRepositoryWorkspace(workspace);
+      }
+      let localFolder=localFolderWorkspace;
+      if(localFolder?.root){
+        localFolder=await window.desktopApi.localFolderSummary(localFolder.root);
+        setLocalFolderWorkspace(localFolder);
       }
       const team=product==='super'
         ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>modelKey(model)!==modelKey(selected)).slice(0,3).map(model=>({
@@ -660,6 +665,7 @@ function App(){
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
         attachments:outbound,
         workspace:product==='super'?workspace:null,
+        localFolder,
         team,
         mcpConnectionIds:selectedMcpIds,
         instructions:projectInstructions||globalInstructions,
