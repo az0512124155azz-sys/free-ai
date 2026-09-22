@@ -1501,7 +1501,7 @@ async function mcpPost(connection,body,{sessionId='',expectResponse=true,timeout
   const timer=setTimeout(()=>controller.abort(),Math.max(1000,Math.min(60000,Number(timeoutMs)||20000)));
   let response;
   try{
-    response=await fetch(connection.url,{
+    response=await fetch(validateMcpUrl(connection.url),{
       method:'POST',
       headers:mcpRequestHeaders(connection,{sessionId,method:body?.method,name:body?.params?.name}),
       body:JSON.stringify(body),
@@ -2071,7 +2071,7 @@ function connectRelay(){
     if(m.type==='prompt'){
       try{
         const r=await routePrompt(m);
-        relaySocket?.send(JSON.stringify({type:'response',id:m.id,text:r.text||'',usedTool:r.usedTool||null}));
+        relaySocket?.send(JSON.stringify({type:'response',id:m.id,text:r.text||'',requestedTool:r.requestedTool||null}));
       }catch(e){
         relaySocket?.send(JSON.stringify({type:'response',id:m.id,error:e.message||String(e)}));
       }
@@ -2309,6 +2309,8 @@ function workApprovalFor(task,decision){
   const mode=task.approvalMode;
   const needsActionApproval=mode==='ask'||(mode==='read'?!readOnly:sensitive);
 
+  // list/describe read only the locally cached MCP tool metadata; they do not call the remote tool.
+  if(mcpMetadata)return null;
   if(!scope&&!needsActionApproval)return null;
 
   const label=workActionLabel(decision);
