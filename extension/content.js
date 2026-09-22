@@ -398,6 +398,60 @@
     return [...found].filter(Boolean).slice(0,80);
   }
 
+
+  async function activateProviderTool(toolName){
+    const desired=cleanLabel(toolName);
+    if(!desired)return {ok:true};
+    const desiredLower=desired.toLowerCase();
+
+    const findTarget=()=>{
+      const candidates=[...document.querySelectorAll('[role="menuitem"],[role="option"],button,a')].filter(visible);
+      return candidates.find(el=>{
+        const label=cleanLabel(controlLabel(el));
+        if(!label)return false;
+        const lower=label.toLowerCase();
+        return lower===desiredLower||lower.includes(desiredLower)||desiredLower.includes(lower);
+      })||null;
+    };
+
+    let target=findTarget();
+    if(target){target.click();await sleep(180);return {ok:true,name:desired}};
+
+    const triggers=[...document.querySelectorAll('button,[role="button"]')].filter(el=>{
+      if(!visible(el))return false;
+      return /(tools?|apps?|plugins?|connectors?|connected apps?|add files|add|more)/i.test(controlLabel(el));
+    }).slice(0,8);
+
+    for(const trigger of triggers){
+      const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
+      if(!wasExpanded){
+        try{trigger.click();await sleep(180)}catch{continue}
+      }
+
+      target=findTarget();
+      if(target){
+        target.click();await sleep(220);
+        return {ok:true,name:desired};
+      }
+
+      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?)$/i.test(cleanLabel(controlLabel(el))));
+      for(const item of nested.slice(0,3)){
+        try{item.click();await sleep(180)}catch{continue}
+        target=findTarget();
+        if(target){
+          target.click();await sleep(220);
+          return {ok:true,name:desired};
+        }
+        document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
+        await sleep(60);
+      }
+
+      if(!wasExpanded)await closeTransientControl(trigger);
+    }
+
+    throw new Error('Could not activate the connected tool "'+desired+'" in this provider tab. Open the provider tool menu once and confirm that the tool is connected.');
+  }
+
   function detectFileUpload(){
     return !!document.querySelector('input[type="file"]');
   }
@@ -628,9 +682,7 @@
 
     const prefixes=[];
     if(effort&&effort!=='default') await selectProviderEffort(effort);
-    if(toolRequest?.mcp){
-      prefixes.push('Use the already-installed MCP/connector "'+toolRequest.mcp+'" for this request if it is available in this account. Do not claim to use it if it is unavailable.');
-    }
+    if(toolRequest?.mcp)await activateProviderTool(toolRequest.mcp);
     const finalText=[...prefixes,String(text||'')].filter(Boolean).join('\n\n');
 
     const before=lastText(c.answers);
