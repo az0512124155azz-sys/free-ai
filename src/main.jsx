@@ -568,6 +568,8 @@ function App(){
     workTaskModelRef.current=selected;
     setWorkTask({id:taskId,status:'running',step:0,maxSteps:18,detail:'Starting Work task…',approval:null,progress:[],finalMessage:'',error:''});
     try{
+      const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
+      const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
       const state=await window.desktopApi.startWorkTask({
         id:taskId,
         provider:selected.id,
@@ -576,7 +578,12 @@ function App(){
         text:finalUserText,
         effort,
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
-        attachments:outbound
+        attachments:outbound,
+        instructions:projectInstructions||globalInstructions,
+        history:messages.slice(-12).filter(message=>message?.role==='user'||message?.role==='assistant').map(message=>({
+          role:message.role,
+          text:String(message.text||'').slice(0,5000)
+        }))
       });
       if(activeWorkTaskIdRef.current===taskId)setWorkTask(state);
       for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
