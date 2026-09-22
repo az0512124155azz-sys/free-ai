@@ -133,7 +133,7 @@ function DesktopProductSwitcher({product,open,setOpen,onSelect}){
         <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
       </button>
       <button role="menuitemradio" aria-checked={product==='super'} className={product==='super'?'active':''} onClick={()=>onSelect('super')}>
-        <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Coding and computer workspace</small></span>{product==='super'&&<Check size={16}/>}
+        <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with browser and computer control</small></span>{product==='super'&&<Check size={16}/>}
       </button>
     </div>}
   </div>;
@@ -900,7 +900,7 @@ function App(){
                   <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
                 </button>
                 <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
-                  <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Local coding, repositories and computer tasks</small></span>{product==='super'&&<Check size={16}/>}
+                  <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with browser and computer control</small></span>{product==='super'&&<Check size={16}/>}
                 </button>
               </div>}
             </div>}
@@ -1326,7 +1326,7 @@ function Composer(props){
       spellCheck={spellCheckEnabled!==false}
       autoCorrect={spellCheckEnabled!==false?'on':'off'}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
-      placeholder={product==='super'?(isNative?'Message your desktop task':'Ask Super AI to build or debug'):mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
+      placeholder={product==='super'?(isNative?'Message your desktop task':'Give Super AI a task'):mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
     />
     <div className="composerBottom">
       <div className="composerLeft">
@@ -1371,7 +1371,7 @@ function Composer(props){
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':windowsDesktop?'Attach project files':'Choose project'}</button>
+      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add workspace files':windowsDesktop?'Attach project files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
