@@ -113,7 +113,7 @@ Google Cloud must contain two OAuth clients in the same project:
 - **Web application** client: `991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com`
 - **Android** client with:
   - package: `com.freeai.mobile`
-  - SHA-1: `74:E6:72:2F:31:E0:7D:D4:F5:0C:A6:51:96:DC:54:78:B7:D0:A1:61`
+  - SHA-1: `1F:F0:59:1B:C8:69:C4:89:01:01:2F:79:E1:2D:0B:2E:7D:FC:C9:4B`
 
 The repository contains a public debug-only keystore so GitHub Actions APKs keep the same SHA-1 across builds. Do not use that debug key for a production Play Store release. Production and Play App Signing certificates need their own Android OAuth client IDs.
 
