@@ -229,6 +229,7 @@ function App(){
   const [session,setSession]=useState(null);
   const [status,setStatus]=useState({extension:false,relay:false,providers:[]});
   const [selected,setSelected]=useState(null);
+  const [parallelCount,setParallelCount]=useState(1);
   const [selectedTool,setSelectedTool]=useState(null);
   const [messages,setMessages]=useState([]);
   const [prompt,setPrompt]=useState('');
@@ -358,9 +359,15 @@ function App(){
   useEffect(()=>{
     if(!selected)return;
     const fresh=connected.find(p=>p.id===selected.id&&p.source===selected.source);
-    if(!fresh){setSelected(null);setSelectedTool(null)}
+    if(!fresh){setSelected(null);setSelectedTool(null);setParallelCount(1)}
     else if(fresh!==selected)setSelected(fresh);
   },[connected]);
+
+  useEffect(()=>{
+    if(!selected||selected.source!=='browser'){setParallelCount(1);return}
+    const count=connected.filter(model=>model.connected!==false&&modelGroupKey(model)===modelGroupKey(selected)).length;
+    setParallelCount(current=>Math.max(1,Math.min(Number(current)||1,Math.max(1,count))));
+  },[connected,selected?.id,selected?.source,selected?.modelName]);
 
   useEffect(()=>{
     setSuperTeamKeys(current=>{
@@ -714,7 +721,7 @@ function App(){
         setLocalFolderWorkspace(localFolder);
       }
       const team=product==='super'
-        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>modelKey(model)!==modelKey(selected)).slice(0,3).map(model=>({
+        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>model.connected!==false&&modelKey(model)!==modelKey(selected)).map(model=>({
             id:model.id,source:model.source||'browser',name:modelLabel(model)
           }))
         : [];
@@ -1237,6 +1244,7 @@ function App(){
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
+                parallelCount={parallelCount} setParallelCount={setParallelCount}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
@@ -1247,7 +1255,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
-                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
@@ -1296,7 +1304,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
-                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
@@ -1409,7 +1417,7 @@ function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
 function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
-    effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
+    parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
     mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
@@ -1590,7 +1598,7 @@ function Composer(props){
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
-          {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
+          {modelMenu&&<ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/>}
         </div>}
         {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
