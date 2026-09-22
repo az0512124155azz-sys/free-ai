@@ -28,8 +28,11 @@ for(const requiredSearchProp of ['webSearchEnabled','onToggleWebSearch','deepRes
     fail('Composer is missing required web/research prop "'+requiredSearchProp+'".');
   }
 }
-if(!source.includes("nativeTool:nativeDeepResearch?'deep-research':nativeSearch?'search':null")){
-  fail('Chat Search / Deep Research is not routed to the provider-native tool.');
+if(!source.includes("nativeTool:nativeDeepResearch&&model.source==='browser'?'deep-research':nativeSearch?'search':null")){
+  fail('Chat Search / provider-native Deep Research routing is missing.');
+}
+if(!source.includes("researchConfig:ownedResearch?researchConfigOverride:undefined")){
+  fail('API-model Deep Research is not routed through the owned research configuration.');
 }
 if(!source.includes("onPromptActivity")){
   fail('Deep Research activity is not wired into the renderer.');
@@ -39,6 +42,16 @@ if(!source.includes("m.deepResearch&&")){
 }
 if(!source.includes('<MessageSources sources={m.sources}')){
   fail('Search responses are missing the Sources renderer.');
+}
+for(const marker of ['ResearchSetupDialog','DEFAULT_RESEARCH_PLAN','Only these sites','Prioritize sites','SearXNG Search API','researchExportReport']){
+  if(!source.includes(marker))fail('Windows 6.8 research UI is missing "'+marker+'".');
+}
+const researchRuntime=fs.readFileSync('electron/research.cjs','utf8');
+for(const marker of ['runOwnedResearch','format=json','allowedByScope','retrievedAt','printToPDF','reportDocx']){
+  if(!researchRuntime.includes(marker))fail('Windows 6.8 research runtime is missing "'+marker+'".');
+}
+if(researchRuntime.includes('api.duckduckgo.com')){
+  fail('Do not label DuckDuckGo Instant Answers as a full independent web-search backend.');
 }
 
 if(/const\s+BRAND_LOGO_SRC\s*=\s*['"]\//.test(source)){
