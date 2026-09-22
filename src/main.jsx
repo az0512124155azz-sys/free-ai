@@ -263,6 +263,7 @@ function App(){
   const [projectDialog,setProjectDialog]=useState(false);
   const [projectDraft,setProjectDraft]=useState('');
   const [imageAssets,setImageAssets]=useState([]);
+  const [scheduledTasks,setScheduledTasks]=useState(()=>readJSON('freeai.scheduled',[]));
   const [recentsSort,setRecentsSort]=useState(()=>localStorage.getItem('freeai.recents.sort')||'recent');
   const [chatMenuId,setChatMenuId]=useState(null);
   const [currentChatId,setCurrentChatId]=useState(null);
@@ -742,24 +743,47 @@ function App(){
       </div>
 
       <nav className="primaryNav desktopPrimaryNav">
-        <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
+        <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId&&!currentProjectId} onClick={()=>{setCurrentProjectId(null);newChat()}}/>
+        {product==='free'&&<NavItem icon={Image} label="Images" active={page==='images'} onClick={()=>setPage('images')}/>}
+        {product==='free'&&<NavItem icon={Clock3} label="Scheduled" active={page==='scheduled'} onClick={()=>setPage('scheduled')}/>}
         <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
         <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
-        <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}>
-          {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
-          {product==='super'?'Repository workspace':'Free AI Workspace'}
-        </button>
-        <div className="sidebarGroupTitle">Recents</div>
-        {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
+        {pinnedChats.length>0&&<>
+          <div className="sidebarGroupTitle">Pinned</div>
+          {pinnedChats.map(chat=><div key={'pinned-'+chat.id} className={'recentRow '+(currentChatId===chat.id?'active':'')}>
+            <button className="recentItem" onClick={()=>openChat(chat)}>{chat.title}</button>
+            <button className="recentMore" aria-label="Pinned chat actions" onClick={()=>setChatMenuId(v=>v===chat.id?null:chat.id)}><Ellipsis size={15}/></button>
+            {chatMenuId===chat.id&&<div className="recentMenu">
+              <button onClick={()=>togglePinChat(chat)}><Pin size={14}/>Unpin</button>
+              <button onClick={()=>archiveChat(chat)}><Archive size={14}/>Archive</button>
+              <button className="dangerText" onClick={()=>deleteChat(chat,false)}><Trash2 size={14}/>Delete</button>
+            </div>}
+          </div>)}
+        </>}
+        <div className="sidebarGroupHeader">
+          <span>{product==='super'?'Coding':'Projects'}</span>
+          {product==='free'&&<button title="New project" onClick={()=>setProjectDialog(true)}><Plus size={14}/></button>}
+        </div>
+        {product==='super'
+          ? <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}><GitBranch size={15}/>Repository workspace</button>
+          : <>
+              {projects.map(project=><button key={project.id} className={'projectItem '+(currentProjectId===project.id?'active':'')} onClick={()=>openProject(project)}><Folder size={15}/><span>{project.name}</span></button>)}
+              {!projects.length&&<div className="sidebarEmpty">No projects yet</div>}
+            </>}
+        <div className="sidebarGroupHeader">
+          <span>Recents</span>
+          <button title={recentsSort==='recent'?'Sort by name':'Sort by recent'} onClick={()=>{const next=recentsSort==='recent'?'name':'recent';setRecentsSort(next);localStorage.setItem('freeai.recents.sort',next)}}><ArrowUp size={13}/></button>
+        </div>
+        {unpinnedChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:unpinnedChats.map(chat=>
           <div key={chat.id} className={'recentRow '+(currentChatId===chat.id?'active':'')}>
             <button className="recentItem" onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}{chat.archived&&<small>Archived</small>}</button>
             {!chat.archived&&<button className="recentMore" aria-label="Chat actions" onClick={()=>setChatMenuId(v=>v===chat.id?null:chat.id)}><Ellipsis size={15}/></button>}
             {chatMenuId===chat.id&&<div className="recentMenu">
-              <button onClick={()=>archiveChat(chat)}><Archive size={14}/>Archive</button>
-              <button className="dangerText" onClick={()=>deleteChat(chat,false)}><Trash2 size={14}/>Delete</button>
+              {!chat.archived&&<button onClick={()=>togglePinChat(chat)}><Pin size={14}/>{chat.pinned?'Unpin':'Pin'}</button>}
+              {!chat.archived&&<button onClick={()=>archiveChat(chat)}><Archive size={14}/>Archive</button>}
+              <button className="dangerText" onClick={()=>deleteChat(chat,!!chat.archived)}><Trash2 size={14}/>Delete</button>
             </div>}
           </div>
         )}
@@ -887,6 +911,13 @@ function App(){
       onClose={()=>setSidePanel(null)}
     />}
 
+    {projectDialog&&<div className="modalScrim" onMouseDown={e=>{if(e.target===e.currentTarget)setProjectDialog(false)}}>
+      <div className="projectDialog" role="dialog" aria-modal="true" aria-label="New project">
+        <div className="dialogHead"><b>New project</b><button onClick={()=>setProjectDialog(false)}><X size={16}/></button></div>
+        <label>Project name<input autoFocus value={projectDraft} onChange={e=>setProjectDraft(e.target.value)} onKeyDown={e=>{if(e.key==='Enter')createProject()}} placeholder="Project name"/></label>
+        <div className="dialogActions"><button onClick={()=>setProjectDialog(false)}>Cancel</button><button className="primaryAction" disabled={!projectDraft.trim()} onClick={createProject}>Create</button></div>
+      </div>
+    </div>}
     {voiceOpen&&isDesktop&&desktopPlatform==='win32'&&<WindowsVoiceOverlay selected={selected} onClose={()=>setVoiceOpen(false)} onTurn={sendVoiceTurn}/>}
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
