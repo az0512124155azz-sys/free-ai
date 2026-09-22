@@ -1641,6 +1641,8 @@ function workPlannerPrompt(task,browserContext,computerContext,previousResult=''
       viewport:computerContext.viewport,
       name:computerContext.name
     }));
+  }else if(task.modelFileUpload){
+    sections.push('Computer Use is available, but no screen has been shared yet. Request {"kind":"computer","action":{"type":"screenshot"}} if the task needs desktop control.');
   }else{
     sections.push('Computer visual context is unavailable to this model. Do not request computer actions.');
   }
@@ -1696,7 +1698,17 @@ async function executeWorkDecision(task,decision,browserContext,computerContext)
   }
 
   if(kind==='computer'){
-    if(!computerContext)throw new Error('Computer visual context is unavailable to the selected model.');
+    const type=String(action.type||'').toLowerCase();
+    if(type==='screenshot'){
+      if(!task.modelFileUpload)throw new Error('The selected model cannot receive the Computer Use screenshot.');
+      const approval=workActionApproval(task,decision);
+      if(approval&&!(await askWorkApproval(task,approval)))return {stopped:true,summary:'Computer screenshot access was denied.'};
+      task.state='running';task.statusText='Capturing computer';emitWorkTask(task);
+      const context=await workComputerContext(task);
+      if(!context)throw new Error('No interactive Windows screen is available.');
+      return {summary:'Computer screenshot captured.',computerContext:context};
+    }
+    if(!computerContext)throw new Error('Take a Computer Use screenshot before requesting coordinate or keyboard actions.');
     const approval=workActionApproval(task,decision);
     if(approval&&!(await askWorkApproval(task,approval)))return {stopped:true,summary:'Computer action was denied.'};
     task.state='running';task.statusText='Using computer';emitWorkTask(task);
@@ -1705,7 +1717,11 @@ async function executeWorkDecision(task,decision,browserContext,computerContext)
       viewport:computerContext.viewport,
       action
     });
-    return {summary:JSON.stringify({action:result?.action,point:result?.point||null}).slice(0,4000)};
+    const refreshed=await workComputerContext(task);
+    return {
+      summary:JSON.stringify({action:result?.action,point:result?.point||null}).slice(0,4000),
+      computerContext:refreshed||computerContext
+    };
   }
 
   throw new Error('Unsupported Work decision kind: '+String(decision.kind||'unknown'));
@@ -1720,11 +1736,8 @@ async function runWorkTask(task){
       task.statusText='Reviewing task · step '+task.step+' of '+task.maxSteps;
       emitWorkTask(task);
 
-      const browserContext=await workBrowserContext(task);
-      if(browserContext?.denied){
-        task.state='stopped';task.statusText='Website access denied';emitWorkTask(task);return;
-      }
-      const computerContext=await workComputerContext(task);
+      const browserContext=task.browserContext||null;
+      const computerContext=task.computerContext||null;
       const prompt=workPlannerPrompt(task,browserContext,computerContext,previousResult);
       const requestId=task.id+':'+task.step;
       task.activeRequestId=requestId;
@@ -1763,6 +1776,8 @@ async function runWorkTask(task){
         emitWorkTask(task);
         return;
       }
+      if(executed?.browserContext)task.browserContext=executed.browserContext;
+      if(executed?.computerContext)task.computerContext=executed.computerContext;
       previousResult=executed?.summary||'Action completed.';
     }
     task.state='failed';
@@ -1807,6 +1822,8 @@ function startWorkTask(payload={}){
     cancelled:false,
     activeRequestId:null,
     approvedHosts:new Set(),
+    browserContext:null,
+    computerContext:null,
     approval:null,
     finalText:'',
     error:''
