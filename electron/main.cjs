@@ -1948,6 +1948,11 @@ async function executeWorkTool(task,decision){
     return performBuiltInBrowserAction({tabId:action.tabId,action});
   }
   if(decision.tool==='browser_extension'){
+    const providerTab=browserProviders.find(item=>item.id===task.provider)?.tabId;
+    const targetTab=Number(action.tabId);
+    if(Number.isFinite(targetTab)&&Number(providerTab)===targetTab){
+      throw new Error('Free AI will not control the Chromium tab that hosts the selected AI model. Open or select a different tab for Browser Use.');
+    }
     if(type==='list_tabs')return requestExtensionBrowser('listTabs');
     if(type==='activate_tab')return requestExtensionBrowser('activateTab',{tabId:action.tabId});
     if(type==='create_tab')return requestExtensionBrowser('createTab',{url:action.url,active:action.active!==false});
@@ -1979,6 +1984,32 @@ async function executeWorkTool(task,decision){
     });
   }
   throw new Error('Unsupported Work tool.');
+}
+
+async function approvePostNavigationIfNeeded(task,decision,result){
+  if(!['browser_builtin','browser_extension'].includes(decision.tool))return {allowed:true,result};
+  const url=String(result?.page?.url||result?.tab?.url||'');
+  const origin=safeWorkOrigin(url);
+  if(!origin)return {allowed:true,result};
+  const scope=decision.tool+':'+origin;
+  if(task.approvedScopes.has(scope))return {allowed:true,result};
+  const approval={
+    id:crypto.randomUUID(),
+    title:'Allow website access?',
+    summary:'Read '+origin,
+    detail:'The previous browser action reached '+origin+'. Free AI has not shared this new page with the AI model yet. Allow access for the rest of this task?',
+    allowLabel:'Allow for this task',
+    scope
+  };
+  const allowed=await requestWorkApproval(task,approval);
+  if(task.stopped)return {allowed:false,result:null};
+  if(!allowed){
+    return {
+      allowed:false,
+      result:{blocked:true,message:'The browser reached a new website, but the user denied access to its page contents.',origin}
+    };
+  }
+  return {allowed:true,result};
 }
 
 async function runWorkTask(task){
@@ -2027,8 +2058,10 @@ async function runWorkTask(task){
       try{
         const result=await executeWorkTool(task,decision);
         if(task.stopped)return;
-        observation=result;
-        observationAttachments=workObservationAttachments(result);
+        const postAccess=await approvePostNavigationIfNeeded(task,decision,result);
+        if(task.stopped)return;
+        observation=postAccess.result;
+        observationAttachments=postAccess.allowed?workObservationAttachments(result):[];
         task.trace.push(label+' — completed');
         addWorkProgress(task,'Done: '+label);
         task.detail='Step completed';
