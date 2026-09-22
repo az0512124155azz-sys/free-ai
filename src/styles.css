@@ -440,6 +440,12 @@ button:disabled{opacity:.42;cursor:default}
 .settingRow select{background:var(--surface-secondary);border:1px solid var(--border);border-radius:var(--r-lg);padding:6px 9px;color:var(--text-secondary);font-size:10px}
 .settingsInlineButton{background:var(--surface-secondary);border:1px solid var(--border);border-radius:8px;padding:6px 9px;color:var(--text-secondary);font-size:10px}
 .settingsInlineButton:hover{background:var(--surface-tertiary);color:var(--text)}
+.customInstructionsField{display:flex;flex-direction:column;gap:5px;padding:13px}
+.customInstructionsField>span{font-size:11.5px;font-weight:600}.customInstructionsField>small{font-size:10px;color:var(--muted);line-height:1.4}
+.customInstructionsField textarea{margin-top:5px;min-height:116px;resize:vertical;background:var(--canvas);border:1px solid var(--border);border-radius:10px;padding:10px;color:var(--text);font:12px/1.5 inherit}
+.customInstructionsField textarea:focus{border-color:color-mix(in srgb,var(--accent) 58%,var(--border));outline:0}
+.confirmInline{display:flex;gap:6px}.confirmInline button{border-radius:8px;padding:6px 9px;font-size:10px;background:var(--surface-secondary);color:var(--text-secondary)}
+.confirmInline .dangerAction{background:rgba(160,45,45,.26);border:1px solid rgba(255,100,100,.22);color:#ffb3b3}.dangerText{color:#ffaaa9}
 .toggle{width:31px;height:19px;border-radius:999px;background:var(--surface-tertiary);padding:2px}.toggle span{width:15px;height:15px;border-radius:50%;display:block;background:var(--text-tertiary);transition:transform 180ms var(--ease),background 180ms var(--ease)}
 .toggle.on{background:var(--accent)}.toggle.on span{transform:translateX(12px);background:#fff}
 .valuePill,.connectionStatus{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:999px;padding:5px 9px;font-size:10px;color:var(--text-secondary)}
