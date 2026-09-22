@@ -4,12 +4,13 @@ import {createClient} from '@supabase/supabase-js';
 import {Capacitor} from '@capacitor/core';
 import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
+import {Haptics,ImpactStyle} from '@capacitor/haptics';
 import {SpeechRecognition} from '@capgo/capacitor-speech-recognition';
 import {InAppBrowser} from '@capgo/capacitor-inappbrowser';
 import {SocialLogin} from '@capgo/capacitor-social-login';
 import {
-  AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,
-  CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,ExternalLink,
+  AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,Camera,
+  CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,Download,ExternalLink,
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
   Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
@@ -32,6 +33,7 @@ const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:
 
 const settingsSections=[
   ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
+  ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
   ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
   ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',SquareTerminal]
@@ -98,21 +100,17 @@ function App(){
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
-    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',browserAccess:'ask',voiceLanguage:'auto',
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,language:'English',showBottomPanel:true})
+    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
+    autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,
+    spellCheckEnabled:true,hapticsEnabled:true,
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
   const fileRef=useRef(null);
-
-  useEffect(()=>{
-    if(isNative&&product==='super'){
-      setProduct('free');
-      localStorage.setItem('freeai.product','free');
-      setMode('chat');
-    }
-  },[product]);
+  const photoRef=useRef(null);
+  const cameraRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -175,14 +173,26 @@ function App(){
 
   useEffect(()=>{
     const root=document.documentElement;
-    let resolved=appPrefs.appearance||'dark';
-    if(resolved==='system')resolved=window.matchMedia?.('(prefers-color-scheme: light)').matches?'light':'dark';
-    root.dataset.theme=resolved;
-    root.dataset.contrast=appPrefs.contrast||'medium';
-    root.dataset.accent=appPrefs.accent||'blue';
-    const scale=(Number(appPrefs.textSize)||100)/100;
-    root.style.setProperty('--ui-scale',String(scale));
-    document.body.style.zoom=isNative?'1':String(scale);
+    const scheme=window.matchMedia?.('(prefers-color-scheme: light)');
+    const highContrast=window.matchMedia?.('(prefers-contrast: more)');
+    const apply=()=>{
+      let resolved=appPrefs.appearance||'dark';
+      if(resolved==='system')resolved=scheme?.matches?'light':'dark';
+      root.dataset.theme=resolved;
+      root.dataset.contrast=appPrefs.contrast==='system'?(highContrast?.matches?'increased':'medium'):(appPrefs.contrast||'medium');
+      root.dataset.accent=appPrefs.accent||'blue';
+      const scale=(Number(appPrefs.textSize)||100)/100;
+      const canZoom=(!isNative&&!isDesktop)||(isDesktop&&desktopPlatform==='win32');
+      root.style.setProperty('--ui-scale',String(canZoom?scale:1));
+      document.body.style.zoom=String(canZoom?scale:1);
+    };
+    apply();
+    if(appPrefs.appearance==='system')scheme?.addEventListener?.('change',apply);
+    if(appPrefs.contrast==='system')highContrast?.addEventListener?.('change',apply);
+    return()=>{
+      scheme?.removeEventListener?.('change',apply);
+      highContrast?.removeEventListener?.('change',apply);
+    };
   },[appPrefs.appearance,appPrefs.contrast,appPrefs.accent,appPrefs.textSize]);
 
   useEffect(()=>{
@@ -220,6 +230,18 @@ function App(){
     if(product==='super')setMode('work');
   },[product]);
 
+  useEffect(()=>{
+    if(isDesktop)window.desktopApi?.browserSetSiteToolsEnabled?.(appPrefs.siteToolsEnabled!==false).catch(()=>{});
+  },[appPrefs.siteToolsEnabled]);
+
+  useEffect(()=>{
+    if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
+      persistPrefs({...appPrefs,approvalMode:'ask'});
+    }else if(appPrefs.approvalMode==='full'&&!appPrefs.fullAccessEnabled){
+      persistPrefs({...appPrefs,approvalMode:'ask'});
+    }
+  },[appPrefs.autoReviewEnabled,appPrefs.fullAccessEnabled]);
+
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
     return q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):chats;
@@ -251,11 +273,16 @@ function App(){
     const text=prompt.trim();
     if(!text||busy)return;
     if(!selected){setModelMenu(true);return}
+    if(isNative&&appPrefs.hapticsEnabled!==false)Haptics.impact({style:ImpactStyle.Light}).catch(()=>{});
     setBusy(true);setPrompt('');
     const withUser=[...messages,{role:'user',text}];setMessages(withUser);saveCurrentChat(withUser,selected);
     try{
+      const instructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      const routedText=instructions
+        ? ['Free AI user preferences for this request:',instructions,'','User request:',text].join('\n')
+        : text;
       const payload={
-        provider:selected.id,source:selected.source||'browser',text,effort,
+        provider:selected.id,source:selected.source||'browser',text:routedText,effort,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
@@ -277,6 +304,32 @@ function App(){
     catch(e){setApiError(e?.message||String(e))}
   }
   async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
+
+  function clearLocalHistory(){
+    localStorage.removeItem('freeai.chats');
+    localStorage.removeItem('freeai.chats.free');
+    localStorage.removeItem('freeai.chats.super');
+    setChats([]);setMessages([]);setCurrentChatId(null);
+  }
+
+  async function exportLocalData(){
+    const payload={
+      product:'Free AI',
+      exportedAt:new Date().toISOString(),
+      account:session?.user?.email||null,
+      chats:{free:readJSON('freeai.chats.free',[]),super:readJSON('freeai.chats.super',[])},
+      preferences:appPrefs
+    };
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const file=new File([blob],'free-ai-export.json',{type:'application/json'});
+    if(isNative&&navigator.share){
+      try{await navigator.share({files:[file],title:'Free AI data export'});return}catch(e){if(e?.name==='AbortError')return}
+    }
+    const href=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=href;a.download='free-ai-export.json';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(href),1500);
+  }
 
   async function openBrowser(){
     setPlusMenu(false);
@@ -335,24 +388,26 @@ function App(){
 
   const sidebarName=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Free AI';
   const heading=product==='super'
-    ? 'What should we build?'
+    ? (isNative?'Continue on your desktop':'What should we build?')
     : mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
   return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
+    <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={attachFiles}/>
+    <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={attachFiles}/>
 
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
         <div className="productSwitcher">
-          <button className="brandButton" title={isNative?'Free AI':'Switch product'} aria-haspopup={isNative?undefined:'menu'} aria-expanded={isNative?undefined:productMenu} onClick={()=>!isNative&&setProductMenu(v=>!v)}>
-            <BrandMark size={20}/><b>{product==='super'?'Super AI':'Free AI'}</b>{!isNative&&<ChevronDown size={14}/>}
+          <button className="brandButton" title={isNative?'Free AI':'Switch product'} aria-haspopup={!isNative?'menu':undefined} aria-expanded={!isNative?productMenu:undefined} onClick={()=>!isNative&&setProductMenu(v=>!v)}>
+            <BrandMark size={20}/><b>{isNative?'Free AI':product==='super'?'Super AI':'Free AI'}</b>{!isNative&&<ChevronDown size={14}/>}
           </button>
           {!isNative&&productMenu&&<div className="productMenu" role="menu">
             <button className={product==='free'?'active':''} onClick={()=>{setProduct('free');setProductMenu(false);setMode('chat')}}>
-              <BrandMark size={20}/><span><b>Free AI</b><small>Chat and work with all connected models</small></span>{product==='free'&&<Check size={16}/>}
+              <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
             </button>
             <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
-              <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Build, debug and run coding tasks</small></span>{product==='super'&&<Check size={16}/>}
+              <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Local coding, repositories and computer tasks</small></span>{product==='super'&&<Check size={16}/>}
             </button>
           </div>}
         </div>
@@ -364,11 +419,11 @@ function App(){
       {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
 
       <div className="mobileQuickStart">
-        <button className="mobileNewChat" onClick={newChat}><SquarePen size={17}/><span>New chat</span></button>
+        <button className="mobileNewChat" onClick={()=>{setProduct('free');setMode('chat');newChat()}}><SquarePen size={17}/><span>New chat</span></button>
         <div className="mobileExperienceRail" aria-label="Experiences">
-          {!isNative&&<button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>}
-          <button className={page==='plugins'?'active':''} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Plugins</span></button>
-          <button className={page==='explore'?'active':''} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
+          <button className={product==='super'&&page==='chat'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><Monitor size={18}/><span>Remote</span></button>
+          <button className={page==='plugins'?'active':''} onClick={()=>{setProduct('free');setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Apps</span></button>
+          <button className={page==='explore'?'active':''} onClick={()=>{setProduct('free');setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
         </div>
       </div>
 
@@ -394,7 +449,7 @@ function App(){
           <span className="profileName">{sidebarName}</span>
           <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-        <button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>
+        {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
         {profileMenu&&<ProfileMenu session={session} onSettings={()=>{setProfileMenu(false);setSettingsOpen(true)}}/>}
       </div>
@@ -413,7 +468,7 @@ function App(){
         </div>:<div className="superHeaderLabel"><BrandMark size={16}/><span>Super AI</span></div>}
         <div className="mobileModeAnchor">
           <button className="mobileModeButton" aria-haspopup={product==='free'?'menu':undefined} aria-expanded={product==='free'?mobileModeMenu:undefined} onClick={()=>product==='free'&&setMobileModeMenu(v=>!v)}>
-            <span>{product==='super'?'Super AI':mode==='work'?'Free AI · Work':'Free AI · Chat'}</span>{product==='free'&&<ChevronDown size={14}/>}
+            <span>{product==='super'?(isNative?'Remote':'Super AI'):mode==='work'?'Free AI · Work':'Free AI · Chat'}</span>{product==='free'&&<ChevronDown size={14}/>}
           </button>
           {product==='free'&&mobileModeMenu&&<div className="mobileModeMenu" role="menu">
             <button className={mode==='chat'?'active':''} onClick={()=>{setMode('chat');setMobileModeMenu(false)}}>Chat</button>
@@ -427,6 +482,10 @@ function App(){
       </header>
 
       {page==='chat'&&<section className="chatStage">
+        {isNative&&<MobileConversationPicker
+          connected={connected} selected={selected} choose={model=>{setSelected(model);setModelMenu(false)}}
+          open={modelMenu} setOpen={setModelMenu} effort={effort} setEffort={setEffort}
+        />}
         {messages.length===0
           ? <div className={'emptyChat '+(mode==='work'?'workEmpty':'')}>
               <h1>{heading}</h1>
@@ -435,10 +494,12 @@ function App(){
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
-                plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
+                plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
+                spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
                 approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
+                permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -460,10 +521,12 @@ function App(){
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
-                  plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
+                  plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                   product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
+                  spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
                   approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
+                  permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                   onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -478,10 +541,25 @@ function App(){
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
 
-    {sidePanel==='browser'&&<BrowserPane onClose={()=>setSidePanel(null)}/>}
+    {sidePanel==='browser'&&<BrowserPane
+      siteToolsEnabled={appPrefs.siteToolsEnabled!==false}
+      onAnnotate={(annotation,note)=>{
+        const block=[
+          '[Browser annotation]',
+          'URL: '+(annotation?.url||''),
+          'Element: '+(annotation?.selector||annotation?.tag||''),
+          annotation?.ariaLabel?'Label: '+annotation.ariaLabel:'',
+          annotation?.text?'Visible text: '+annotation.text:'',
+          note?.trim()?'Comment: '+note.trim():''
+        ].filter(Boolean).join('\n');
+        setPrompt(current=>(current?current+'\n\n':'')+block);
+      }}
+      onClose={()=>setSidePanel(null)}
+    />}
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='computer'&&<ComputerPane
       screens={screens} setScreens={setScreens} approvalMode={appPrefs.approvalMode||'ask'}
+      permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
       setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
       onClose={()=>setSidePanel(null)}
     />}
@@ -491,6 +569,7 @@ function App(){
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
       saveSettings={saveSettings} connected={connected} apiDraft={apiDraft} setApiDraft={setApiDraft}
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
+      onExportData={exportLocalData} onClearHistory={clearLocalHistory}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
       onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
       onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
@@ -505,8 +584,8 @@ function NavItem({icon:Icon,label,active,onClick}){
 function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
-    effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,approvalMode,setApprovalMode,onBrowser,onComputer,onPlugins
+    effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -521,12 +600,10 @@ function Composer(props){
     setDictationError('');
     try{
       if(isNative){
-        try{
-          const last=await SpeechRecognition.getLastPartialResult?.();
-          const text=(last?.text||last?.matches?.[0]||'').trim();
-          if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
-        }catch{}
-        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:900}));
+        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:700}));
+        const last=await SpeechRecognition.getLastPartialResult?.().catch(()=>null);
+        const text=last?.text||last?.matches?.[0]||'';
+        if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text.trim());
         for(const handle of nativeSpeechHandles.current.splice(0))await handle?.remove?.().catch(()=>{});
       }else if(webRecognition.current){
         webRecognition.current.stop();
@@ -537,6 +614,7 @@ function Composer(props){
   }
 
   async function startVoice(){
+    if(isNative&&hapticsEnabled)Haptics.impact({style:ImpactStyle.Light}).catch(()=>{});
     if(listening){await stopVoice();return}
     setDictationError('');
     dictationBase.current=prompt.trimEnd();
@@ -564,28 +642,27 @@ function Composer(props){
         if(permission?.speechRecognition!=='granted')throw new Error('Microphone permission is required for dictation.');
 
         const partial=await SpeechRecognition.addListener('partialResults',event=>{
-          const text=(event?.matches?.[0]||event?.text||'').trim();
+          const text=(event?.accumulatedText||event?.accumulated||event?.matches?.[0]||'').trim();
           if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
         });
         const stateHandle=await SpeechRecognition.addListener('listeningState',event=>{
-          const state=String(event?.state||event?.status||'').toLowerCase();
-          if(['started','listening','active'].includes(state))setListening(true);
-          if(['stopped','ended','idle','inactive'].includes(state))setListening(false);
+          const state=event?.state||event?.status;
+          setListening(state==='started'||state==='listening');
         });
-        const readyHandle=await SpeechRecognition.addListener('readyForNextSession',()=>setListening(false));
         const errorHandle=await SpeechRecognition.addListener('error',event=>{
           setListening(false);
           if(event?.message)setDictationError(event.message);
         });
-        nativeSpeechHandles.current=[partial,stateHandle,readyHandle,errorHandle];
-        let useOnDeviceRecognition=false;
-        try{
-          const local=await SpeechRecognition.isOnDeviceRecognitionAvailable?.({language});
-          useOnDeviceRecognition=!!local?.available;
-        }catch{}
+        nativeSpeechHandles.current=[partial,stateHandle,errorHandle];
+        const onDevice=await SpeechRecognition.isOnDeviceRecognitionAvailable?.({language}).catch(()=>({available:false}));
         setListening(true);
         await SpeechRecognition.start({
-          language,maxResults:3,partialResults:true,popup:false,addPunctuation:true,useOnDeviceRecognition
+          language,
+          maxResults:3,
+          partialResults:true,
+          popup:false,
+          addPunctuation:true,
+          useOnDeviceRecognition:!!onDevice?.available
         });
       }catch(e){
         setListening(false);
@@ -625,34 +702,36 @@ function Composer(props){
     <textarea
       ref={textareaRef}
       value={prompt} onChange={e=>setPrompt(e.target.value)}
+      spellCheck={spellCheckEnabled!==false}
+      autoCorrect={spellCheckEnabled!==false?'on':'off'}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
-      placeholder={product==='super'?'Ask Super AI to build or debug':mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
+      placeholder={product==='super'?(isNative?'Message your desktop task':'Ask Super AI to build or debug'):mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
     />
     <div className="composerBottom">
       <div className="composerLeft">
         <div className="menuAnchor">
           <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
-            fileRef={fileRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
+            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
-          <button className={'accessButton mode-'+approvalMode} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
-            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual'}<ChevronDown size={12}/>
+          <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
+            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
           </button>
-          {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
+          {approvalMenu&&<PermissionModeMenu value={approvalMode} options={permissionOptions} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
       </div>
 
       <div className="composerRight">
-        <div className="menuAnchor">
+        {!isNative&&<div className="menuAnchor">
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} onClick={()=>setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
-        </div>
-        {Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1&&<div className="menuAnchor">
+        </div>}
+        {!isNative&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
@@ -668,6 +747,36 @@ function Composer(props){
       <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
+    </div>}
+  </div>
+}
+
+function MobileConversationPicker({connected,selected,choose,open,setOpen,effort,setEffort}){
+  const levels=Array.isArray(selected?.effortLevels)&&selected.effortLevels.length?selected.effortLevels:[];
+  const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High','pro-standard':'Pro Standard','pro-extended':'Pro Extended'};
+  const currentEffort=labels[effort]||effort||'Instant';
+  return <div className="mobileConversationPicker menuAnchor">
+    <button className="mobileModelTrigger" aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>
+      <span className={'providerBadge small '+(selected?.source==='api'?'api':selected?.id||'')}>{selected?modelLabel(selected).slice(0,1):'+'}</span>
+      <span className="mobileModelTriggerText"><b>{selected?modelLabel(selected):'Select model'}</b>{levels.length>1&&<small>{currentEffort}</small>}</span>
+      <ChevronDown size={14}/>
+    </button>
+    {open&&<div className="mobileTopModelPanel" role="dialog" aria-label="Model and intelligence">
+      <div className="mobilePickerSectionTitle">Models</div>
+      <div className="mobileModelList">
+        {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Connect your desktop or add an API model first.</span></div>:connected.map(model=><button key={(model.source||'browser')+model.id} className={(selected?.id===model.id&&selected?.source===model.source)?'active':''} onClick={()=>choose(model)}>
+          <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
+          <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Desktop · '+model.name}</small></span>
+          {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
+        </button>)}
+      </div>
+      {levels.length>1&&<div className="mobileIntelligenceSection">
+        <div className="mobilePickerSectionTitle">Intelligence</div>
+        {levels.map(level=><button key={level} className={effort===level?'active':''} onClick={()=>{setEffort(level);setOpen(false)}}>
+          <span><b>{labels[level]||level}</b><small>{level==='instant'?'Fast everyday responses':'More reasoning for complex requests'}</small></span>
+          {effort===level&&<Check size={16}/>}
+        </button>)}
+      </div>}
     </div>}
   </div>
 }
@@ -701,25 +810,29 @@ function EffortMenu({effort,levels,choose}){
   </div>
 }
 
-function PermissionModeMenu({value,choose}){
+function PermissionModeMenu({value,options={},choose}){
   const rows=[
-    ['ask','Manual','Ask before every supported action that can affect your computer or another service.'],
-    ['auto','Automatic','Allow low-risk actions automatically, but still pause for sensitive or consequential actions.'],
-    ['full','Full access','Run supported computer actions without repeated approval prompts. Sensitive actions may still require confirmation.']
+    ['ask','Ask for approval','Default workspace permissions. Ask before additional access.',true],
+    ['auto','Approve for me','Keep the workspace boundary and send additional-access requests to automatic review.',!!options.auto],
+    ['full','Full access','Allow supported disk and network actions without repeated approval prompts.',!!options.full]
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
-    {rows.map(([id,label,desc])=><button key={id} className={'permissionRow '+(value===id?'active':'')} onClick={()=>choose(id)}>
-      <ShieldCheck size={17}/><span><b>{label}</b><small>{desc}</small></span>{value===id&&<Check size={15}/>}
+    {rows.map(([id,label,desc,enabled])=><button key={id} disabled={!enabled} className={'permissionRow '+(value===id?'active ':'')+(!enabled?'disabled':'')} onClick={()=>enabled&&choose(id)}>
+      <ShieldCheck size={17}/><span><b>{label}</b><small>{enabled?desc:'Enable this mode in Settings → General first.'}</small></span>{value===id&&<Check size={15}/>}
     </button>)}
   </div>
 }
 
-function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
+function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
-    <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
-    {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in the isolated Free AI browser" onClick={onBrowser}/>} 
+    {isNative?<>
+      <MenuRow icon={Camera} label="Camera" onClick={()=>cameraRef.current?.click()}/>
+      <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
+      <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
+    </>:<MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>} 
+    {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
@@ -748,13 +861,14 @@ function ProfileMenu({session,onSettings}){
 
 function PluginsPage({tools,connected,onBack,onRefresh}){
   const [query,setQuery]=useState('');
+  const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
   const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
   const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
   return <div className="contentPage">
-    <PageTop onBack={onBack} title="Plugins" action={isDesktop?'Refresh':null} onAction={onRefresh}/>
+    <PageTop onBack={onBack} title={pageName} action={isDesktop?'Refresh':null} onAction={onRefresh}/>
     <div className="contentInner">
-      <h1>Plugins</h1>
+      <h1>{pageName}</h1>
       <p className="pageLead">Use MCP/connectors that are already installed and authorized in a connected AI provider.</p>
       <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search detected plugins"/></div>
 
@@ -797,9 +911,8 @@ function ExplorePage({tools,chats,onBack}){
     <PageTop onBack={onBack} title="Explore"/>
     <div className="contentInner exploreInner">
       <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
-      <h3>Apps</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/>
-      <MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/>
-      <h3>Plugins</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName}/>)}
+      {!isNative&&<><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>}
+      <h3>{isNative?'Apps':'Plugins'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName}/>)}
       <h3>Conversations</h3>{chats.slice(0,8).map(c=><MenuRow key={c.id} icon={Bot} label={c.title} sub={c.modelName}/>)}
     </div>
   </div>
@@ -812,9 +925,16 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
   return <div className="placeholderPage"><Icon size={38}/><h1>{title}</h1><p>{subtitle}</p></div>
 }
 
-function BrowserPane({onClose}){
+function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
-  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,activeTabId:null,tabs:[]});
+  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[]});
+  const [siteToolsOpen,setSiteToolsOpen]=useState(false);
+  const [selectedSiteTool,setSelectedSiteTool]=useState(null);
+  const [siteToolInput,setSiteToolInput]=useState('{}');
+  const [siteToolStatus,setSiteToolStatus]=useState('');
+  const [annotating,setAnnotating]=useState(false);
+  const [annotation,setAnnotation]=useState(null);
+  const [annotationNote,setAnnotationNote]=useState('');
   const surfaceRef=useRef(null);
 
   useEffect(()=>{
@@ -823,7 +943,7 @@ function BrowserPane({onClose}){
       setState(next);
       if(next.url)setUrl(next.url);
     });
-    return()=>{off?.();window.desktopApi.browserHide?.().catch(()=>{})};
+    return()=>{off?.();window.desktopApi.browserCancelAnnotation?.().catch(()=>{});window.desktopApi.browserClose?.().catch(()=>{})};
   },[]);
 
   useEffect(()=>{
@@ -844,55 +964,121 @@ function BrowserPane({onClose}){
     return()=>{ro.disconnect();window.removeEventListener('resize',sync)};
   },[]);
 
-  async function navigate(){
-    if(!isDesktop)return;
-    const next=await window.desktopApi.browserNavigate(url).catch(()=>null);
-    if(next){setState(next);if(next.url)setUrl(next.url)}
+  function navigate(){window.desktopApi?.browserNavigate(url).catch(()=>{})}
+  function chooseTab(id){
+    window.desktopApi?.browserCancelAnnotation?.().catch(()=>{});
+    setAnnotating(false);setAnnotation(null);setAnnotationNote('');
+    window.desktopApi?.browserSelectTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})
+  }
+  function closeTab(e,id){e.stopPropagation();window.desktopApi?.browserCloseTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
+  function newTab(){
+    setSiteToolsOpen(false);setSelectedSiteTool(null);setSiteToolStatus('');
+    window.desktopApi?.browserNewTab('https://www.google.com/').then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})
+  }
+  async function startAnnotation(){
+    setSiteToolsOpen(false);setAnnotation(null);setAnnotationNote('');setAnnotating(true);
+    try{
+      const result=await window.desktopApi?.browserStartAnnotation?.();
+      setAnnotating(false);
+      if(result)setAnnotation(result);
+    }catch(e){
+      setAnnotating(false);
+      setSiteToolStatus(e?.message||'Could not start annotation mode.');
+    }
+  }
+  async function cancelAnnotation(){
+    await window.desktopApi?.browserCancelAnnotation?.().catch(()=>{});
+    setAnnotating(false);setAnnotation(null);setAnnotationNote('');
+  }
+  function attachAnnotation(){
+    if(!annotation)return;
+    onAnnotate?.(annotation,annotationNote);
+    setAnnotation(null);setAnnotationNote('');
   }
 
-  async function newTab(){
-    if(!isDesktop)return;
-    const next=await window.desktopApi.browserNewTab('https://www.google.com/').catch(()=>null);
-    if(next){setState(next);setUrl(next.url||'https://www.google.com/')}
+  async function refreshSiteTools(){
+    setSiteToolStatus('Scanning this page…');
+    try{
+      await window.desktopApi?.browserRefreshSiteTools?.();
+      setSiteToolStatus('');
+    }catch(e){setSiteToolStatus(e?.message||'Could not scan this page.')}
   }
-
-  async function switchTab(id){
-    const next=await window.desktopApi.browserSwitchTab(id).catch(()=>null);
-    if(next){setState(next);setUrl(next.url||'')}
+  function chooseSiteTool(tool){
+    setSelectedSiteTool(tool);
+    setSiteToolInput('{}');
+    setSiteToolStatus('');
   }
-
-  async function closeTab(e,id){
-    e.stopPropagation();
-    let next=await window.desktopApi.browserCloseTab(id).catch(()=>null);
-    if(next?.tabs?.length===0)next=await window.desktopApi.browserNewTab('https://www.google.com/').catch(()=>next);
-    if(next){setState(next);setUrl(next.url||'https://www.google.com/')}
+  async function runSiteTool(){
+    if(!selectedSiteTool)return;
+    let input={};
+    try{
+      const parsed=siteToolInput.trim()?JSON.parse(siteToolInput):{};
+      if(parsed===null||Array.isArray(parsed)||typeof parsed!=='object')throw new Error('Input must be a JSON object.');
+      input=parsed;
+    }catch(e){setSiteToolStatus(e?.message||'Invalid JSON input.');return}
+    setSiteToolStatus('Running…');
+    try{
+      const result=await window.desktopApi?.browserExecuteSiteTool?.({tabId:state.activeTabId,name:selectedSiteTool.name,input});
+      const value=result?.value;
+      setSiteToolStatus(typeof value==='string'?value:JSON.stringify(value??'Done',null,2));
+    }catch(e){setSiteToolStatus(e?.message||'Site tool failed.')}
   }
+  const activeDownloads=(state.downloads||[]).filter(d=>d.state==='progressing').length;
+  const siteTools=Array.isArray(state.siteTools)?state.siteTools:[];
 
   return <aside className="sidePane browserPane">
-    <div className="browserTabsBar">
-      <div className="browserTabsScroller">
-        {(state.tabs||[]).map(tab=><button
-          key={tab.id}
-          className={'browserTopTab '+(tab.id===state.activeTabId?'active':'')}
-          onClick={()=>switchTab(tab.id)}
-          title={tab.title||tab.url||'New tab'}
-        >
-          <Globe2 size={13}/>
-          <span>{tab.title||'New tab'}</span>
-          <span className="browserTabClose" role="button" tabIndex={0} onClick={e=>closeTab(e,tab.id)}><X size={12}/></span>
+    <div className="paneTabs browserTabsBar">
+      <div className="browserTabsScroll">
+        {(state.tabs||[]).map(tab=><button key={tab.id} className={'browserTab '+(tab.id===state.activeTabId?'active':'')} onClick={()=>chooseTab(tab.id)}>
+          <Globe2 size={13}/><span>{tab.title||'New tab'}</span>
+          <span className="tabClose" role="button" aria-label="Close tab" onClick={e=>closeTab(e,tab.id)}><X size={12}/></span>
         </button>)}
-        <button className="browserNewTab" onClick={newTab} aria-label="New browser tab"><Plus size={15}/></button>
+        <button className="newBrowserTab" onClick={newTab} title="New tab"><Plus size={15}/></button>
       </div>
-      <button className="browserPaneClose" onClick={onClose} aria-label="Close browser"><X size={16}/></button>
+      <button className="closePaneButton" onClick={onClose} title="Close browser"><X size={16}/></button>
     </div>
+
     <div className="browserToolbar">
       <button disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
       <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
-      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in default browser"><ExternalLink size={15}/></button>
+      {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
+      {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
+      <button className={annotating?'active':''} onClick={annotating?cancelAnnotation:startAnnotation} title={annotating?'Cancel annotation':'Annotate page'}><PenLine size={15}/></button>
+      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
-    <div className="nativeBrowserSurface" ref={surfaceRef}/>
+
+    {siteToolsOpen&&<div className="siteToolsPanel">
+      <div className="siteToolsHeader">
+        <span><b>Site tools</b><small>{!siteToolsEnabled?'Disabled in Browser settings':siteTools.length?'WebMCP tools exposed by this page':'No site tools detected on this page'}</small></span>
+        <button disabled={!siteToolsEnabled} onClick={refreshSiteTools}><RefreshCw size={14}/>Scan</button>
+      </div>
+      {siteToolsEnabled&&siteTools.length>0&&<div className="siteToolsBody">
+        <div className="siteToolsList">
+          {siteTools.map(tool=><button key={tool.name} className={selectedSiteTool?.name===tool.name?'active':''} onClick={()=>chooseSiteTool(tool)}>
+            <Target size={14}/><span><b>{tool.title||tool.name}</b><small>{tool.description||tool.origin}</small></span>
+          </button>)}
+        </div>
+        {selectedSiteTool&&<div className="siteToolRunner">
+          <div className="siteToolTitle"><b>{selectedSiteTool.title||selectedSiteTool.name}</b>{selectedSiteTool.annotations?.consequentialHint&&<span className="consequentialBadge">May change data</span>}</div>
+          <small>{selectedSiteTool.description||'No description provided by this site.'}</small>
+          <textarea spellCheck="false" value={siteToolInput} onChange={e=>setSiteToolInput(e.target.value)} aria-label="Site tool JSON input"/>
+          <button className={selectedSiteTool.annotations?.consequentialHint?'siteToolRun consequential':'siteToolRun'} onClick={runSiteTool}>{selectedSiteTool.annotations?.consequentialHint?'Review & run':'Run tool'}</button>
+          {siteToolStatus&&<pre className="siteToolStatus">{siteToolStatus}</pre>}
+        </div>}
+      </div>}
+      {!siteToolsEnabled&&<div className="siteToolsDisabled">Enable site tools in Settings → Browser to discover WebMCP tools on supported pages.</div>}
+      {siteToolsEnabled&&!siteTools.length&&siteToolStatus&&<pre className="siteToolStatus empty">{siteToolStatus}</pre>}
+    </div>}
+
+    {annotating&&<div className="annotationGuide"><PenLine size={15}/><span>Move over the page and select an element. Press Esc to cancel.</span><button onClick={cancelAnnotation}>Cancel</button></div>}
+    {annotation&&<div className="annotationPanel">
+      <div className="annotationElement"><b>{annotation.ariaLabel||annotation.tag||'Selected element'}</b><small>{annotation.selector}</small>{annotation.text&&<span>{annotation.text}</span>}</div>
+      <textarea value={annotationNote} onChange={e=>setAnnotationNote(e.target.value)} placeholder="Add a specific comment about this element…"/>
+      <div className="annotationActions"><button onClick={cancelAnnotation}>Discard</button><button className="primaryAnnotation" onClick={attachAnnotation}>Add to chat</button></div>
+    </div>}
+        <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
   </aside>
 }
 
@@ -909,7 +1095,7 @@ function FilePane({file,onClose}){
   </aside>
 }
 
-function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose}){
+function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setApprovalMode,onClose}){
   const [loading,setLoading]=useState(false);
   const [lastPoint,setLastPoint]=useState(null);
   const [typeText,setTypeText]=useState('');
@@ -945,15 +1131,15 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
     await executeAction(action);
   }
 
-  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
+  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
       <select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Manual</option>
-        <option value="auto">Automatic</option>
-        <option value="full">Full access</option>
+        <option value="ask">Ask for approval</option>
+        <option value="auto" disabled={!permissionOptions.auto}>Approve for me</option>
+        <option value="full" disabled={!permissionOptions.full}>Full access</option>
       </select>
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
     </div>
@@ -975,10 +1161,10 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
-  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Browser','Configuration','Git','Environments']);
+  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
@@ -986,7 +1172,7 @@ function SettingsView(props){
       <div className="settingsSearch"><Search size={15}/><input value={settingsQuery} onChange={e=>setSettingsQuery(e.target.value)} placeholder="Search settings"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
-        {visibleSettings.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{label}</button>)}
+        {visibleSettings.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{isNative&&label==='Plugins'?'Apps':label}</button>)}
       </div>)}
     </aside>
     <main className="settingsContent">
@@ -999,11 +1185,13 @@ function SettingsView(props){
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Personalization'&&<PersonalizationSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
-      {section==='Plugins'&&<IntegrationSettings icon={Plug} title="Plugins" text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
-      {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text={isNative?'Open the managed Free AI browser.':'Open the real browser panel beside your chat.'} status="Available" action={onBrowser}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Approve for me':'Ask for approval'} action={onComputer}/>}
+      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
+      {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
       {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Git integration','Available through installed plugins'],['Repository context','Super AI / Work']]}/>}
       {section==='Environments'&&!isNative&&<SimpleSettings title="Environments" rows={[['Desktop runtime','Electron desktop'],['Browser bridge',status.extension?'Connected':'Disconnected']]}/>}
@@ -1013,15 +1201,25 @@ function SettingsView(props){
 
 function Toggle({value,onChange}){return <button role="switch" aria-checked={value} className={'toggle '+(value?'on':'')} onClick={()=>onChange(!value)}><span/></button>}
 function GeneralSettings({prefs,setPrefs}){
+  if(isNative)return <div className="settingsPane">
+    <h3>General</h3>
+    <div className="settingBlock">
+      <SettingRow title="App language" desc="Free AI currently follows the Android system language." control={<span className="valuePill">{navigator.language||'System'}</span>}/>
+      <SettingRow title="Auto-correct spelling" desc="Allow Android keyboard spelling and correction in the message composer." control={<Toggle value={prefs.spellCheckEnabled!==false} onChange={v=>setPrefs({...prefs,spellCheckEnabled:v})}/>}/>
+      <SettingRow title="Haptic feedback" desc="Use subtle vibration feedback for send and dictation controls." control={<Toggle value={prefs.hapticsEnabled!==false} onChange={v=>setPrefs({...prefs,hapticsEnabled:v})}/>}/>
+    </div>
+  </div>;
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI review supported actions." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Manual</option><option value="auto">Automatic</option><option value="full">Full access</option></select>}/>} 
+      <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
+      <SettingRow title="Auto-review" desc="Makes “Approve for me” available. Simple pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
+      <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
     </div>
-    {!isNative&&<><h3>General</h3>
+    <h3>General</h3>
     <div className="settingBlock">
       <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
-    </div></>}
+    </div>
   </div>
 }
 function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
@@ -1030,9 +1228,9 @@ function AppearanceSettings({prefs,setPrefs}){
     <h3>Theme</h3>
     <div className="settingBlock">
       <SettingRow title="Appearance" desc="Follow the system or choose a fixed theme." control={<select value={prefs.appearance||'dark'} onChange={e=>setPrefs({...prefs,appearance:e.target.value})}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>}/>
-      {!isNative&&<SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>}
-      <SettingRow title="Accent color" desc="Used for active controls and voice actions." control={<select value={prefs.accent||'blue'} onChange={e=>setPrefs({...prefs,accent:e.target.value})}><option value="blue">Blue</option><option value="green">Green</option><option value="yellow">Yellow</option><option value="pink">Pink</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="neutral">Neutral</option></select>}/>
-      {!isNative&&<SettingRow title="Text size" desc="Scale interface text without changing window zoom." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>} 
+      {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>}
+      <SettingRow title="Accent color" desc="Used for active controls, message highlights and voice actions." control={<select value={prefs.accent||'blue'} onChange={e=>setPrefs({...prefs,accent:e.target.value})}><option value="blue">Blue</option><option value="green">Green</option><option value="yellow">Yellow</option><option value="pink">Pink</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="neutral">Neutral</option></select>}/>
+      {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Text size" desc="Zoom the entire Free AI interface." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>} 
     </div>
   </div>
 }
@@ -1073,6 +1271,31 @@ function VoiceSettings({prefs,setPrefs}){
     </div>
   </div>
 }
+function PersonalizationSettings({prefs,setPrefs}){
+  return <div className="settingsPane">
+    <h3>Personalization</h3>
+    <div className="settingBlock">
+      <SettingRow title="Enable customization" desc="Apply your instructions to requests sent through Free AI." control={<Toggle value={prefs.customizationEnabled!==false} onChange={v=>setPrefs({...prefs,customizationEnabled:v})}/>}/>
+      <label className="customInstructionsField">
+        <span>Custom instructions</span>
+        <small>These instructions are sent as request context to the connected model you choose.</small>
+        <textarea value={prefs.customInstructions||''} onChange={e=>setPrefs({...prefs,customInstructions:e.target.value})} placeholder="What should connected models know about how you want them to respond?"/>
+      </label>
+    </div>
+  </div>
+}
+function DataControlsSettings({onExportData,onClearHistory}){
+  const [confirmClear,setConfirmClear]=useState(false);
+  return <div className="settingsPane">
+    <h3>Local data</h3>
+    <div className="settingBlock">
+      <SettingRow title="Export Free AI data" desc="Export locally stored chats and preferences as JSON." control={<button className="settingsInlineButton" onClick={onExportData}>Export</button>}/>
+      <SettingRow title="Clear local chat history" desc="Delete locally stored Free AI and Super AI chats on this device." control={confirmClear
+        ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={()=>{onClearHistory();setConfirmClear(false)}}>Clear</button></span>
+        : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
+    </div>
+  </div>
+}
 function ConfigurationSettings({prefs,setPrefs}){
   return <div className="settingsPane"><h3>Work</h3><div className="settingBlock">
     <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
@@ -1082,35 +1305,28 @@ function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
 
 function BrowserSettings({prefs,setPrefs,onBrowser}){
-  const [clearing,setClearing]=useState(false);
-  const [state,setState]=useState('');
+  const [clearState,setClearState]=useState('');
+  const [confirmClear,setConfirmClear]=useState(false);
   async function clearData(){
-    if(!isDesktop||!window.desktopApi?.browserClearData)return;
-    setClearing(true);setState('');
-    try{await window.desktopApi.browserClearData();setState('Browser cookies, storage and cache cleared.')}
-    catch(e){setState(e?.message||'Could not clear browser data.')}
-    finally{setClearing(false)}
+    setClearState('Clearing…');
+    try{
+      await window.desktopApi?.browserClearData?.();
+      setClearState('Browsing data cleared');
+    }catch(e){setClearState(e?.message||'Could not clear browsing data')}
+    setConfirmClear(false);
   }
   return <div className="settingsPane">
-    <h3>Built-in browser</h3>
+    <h3>Browser</h3>
     <div className="settingBlock">
-      <SettingRow title="Website access" desc="Choose how agent website-access requests are reviewed. Consequential actions can still require confirmation." control={
-        <select value={prefs.browserAccess||'ask'} onChange={e=>setPrefs({...prefs,browserAccess:e.target.value})}>
-          <option value="ask">Always ask</option>
-          <option value="auto">Auto approve</option>
-          <option value="allow">Always allow</option>
-        </select>
-      }/>
-      <SettingRow title="Browser profile" desc="The built-in browser uses its own cookies and signed-in sessions, separate from Chrome." control={<span className="valuePill">Isolated</span>}/>
+      <SettingRow title="Enable site tools" desc="Discover WebMCP tools exposed by supported websites in Free AI's built-in browser." control={<Toggle value={prefs.siteToolsEnabled!==false} onChange={v=>setPrefs({...prefs,siteToolsEnabled:v})}/>}/>
+      <SettingRow title="Open built-in browser" desc="Use Free AI's separate browser profile, tabs, sign-ins and downloads." control={<button className="settingsInlineButton" onClick={onBrowser}>Open</button>}/>
+      <SettingRow title="Clear browsing data" desc="Clear cookies, signed-in website state, local storage and browser cache for the Free AI browser profile." control={confirmClear
+        ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={clearData}>Clear</button></span>
+        : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
     </div>
-    <div className="browserSettingsActions">
-      <button className="primaryAction" onClick={onBrowser}><Globe2 size={15}/>Open browser</button>
-      <button className="settingsInlineButton" disabled={clearing} onClick={clearData}>{clearing?'Clearing…':'Clear browser data'}</button>
-    </div>
-    {state&&<div className="settingsFeedback">{state}</div>}
+    {clearState&&<div className="settingsStatus">{clearState}</div>}
   </div>
 }
-
 function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
   return <div className="settingsPane">
     <h3>Desktop bridge</h3>
