@@ -10,8 +10,10 @@ let extensionSocket=null;
 let relaySocket=null;
 let relayReconnectTimer=null;
 let browserProviders=[];
+let extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
 let apiConnections=[];
 const pending=new Map();
+const extensionBrowserPending=new Map();
 const activePrompts=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
@@ -1102,6 +1104,12 @@ function publicApiConnection(c){
 function status(){
   return {
     extension:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
+    browserExtension:{
+      connected:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
+      tabs:Array.isArray(extensionBrowserState.tabs)?extensionBrowserState.tabs:[],
+      activeTabId:extensionBrowserState.activeTabId??null,
+      activeWindowId:extensionBrowserState.activeWindowId??null
+    },
     relay:!!(relaySocket&&relaySocket.readyState===WebSocket.OPEN),
     computerUse:process.platform==='win32'?{
       available:true,
