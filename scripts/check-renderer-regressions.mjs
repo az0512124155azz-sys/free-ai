@@ -70,6 +70,9 @@ if(!desktopMain.includes("minWidth:process.platform==='win32'?500:980")){
 if(!desktopMain.includes("minHeight:process.platform==='win32'?420:650")){
   fail('Windows 7 compact-window minimum height regression detected.');
 }
+for(const marker of ['function initialWindowSize()','screen.getPrimaryDisplay()?.workAreaSize','Math.floor((Number(workArea.width)||1380)*.92)','Math.floor((Number(workArea.height)||880)*.92)']){
+  if(!desktopMain.includes(marker))fail('Windows 7 first-launch work-area sizing is missing "'+marker+'".');
+}
 if(!styles.includes('@media(max-width:760px)')){
   fail('The compact responsive layout required by the Windows 7 window minimum is missing.');
 }
