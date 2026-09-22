@@ -1,5 +1,6 @@
 const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences,session,dialog}=require('electron');
 const path=require('path');
+const {pathToFileURL}=require('url');
 const fs=require('fs');
 const crypto=require('crypto');
 const {execFile}=require('child_process');
