@@ -1294,6 +1294,78 @@ function ProfileMenu({session,onSettings}){
   </div>
 }
 
+function ImagesPage({assets,onBack,onUpload,onCreate,onOpen,onDelete}){
+  return <div className="contentPage">
+    <PageTop onBack={onBack} title="Images"/>
+    <div className="contentInner imageLibraryInner">
+      <div className="pageHeroRow">
+        <div><h1>Images</h1><p className="pageLead">Create with a connected model or keep reference images in your Free AI library.</p></div>
+        <div className="pageHeroActions"><button className="secondaryAction" onClick={onUpload}><Upload size={15}/>Add image</button><button className="primaryAction" onClick={onCreate}><Image size={15}/>Create</button></div>
+      </div>
+      {assets.length===0?<div className="emptyLibrary"><Image size={34}/><b>No images yet</b><span>Add a reference image or start an image request in Chat.</span></div>:
+      <div className="imageGrid">{assets.map(asset=><div className="imageCard" key={asset.id}>
+        <button className="imageThumb" onClick={()=>onOpen(asset)}><img src={asset.dataUrl} alt={asset.name}/></button>
+        <div className="imageCardMeta"><span><b>{asset.name}</b><small>{humanSize(asset.size)}</small></span><button title="Remove" onClick={()=>onDelete(asset.id)}><Trash2 size={14}/></button></div>
+      </div>)}</div>}
+    </div>
+  </div>
+}
+
+function ScheduledPage({tasks,connected,onBack,onCreate,onRun,onToggle,onDelete}){
+  const first=connected[0]||null;
+  const toInput=timestamp=>{
+    const date=new Date(timestamp||Date.now()+60*60*1000);
+    const local=new Date(date.getTime()-date.getTimezoneOffset()*60000);
+    return local.toISOString().slice(0,16);
+  };
+  const [form,setForm]=useState(()=>({title:'',prompt:'',when:toInput(),frequency:'once',providerKey:first?(first.source||'browser')+'::'+first.id:''}));
+  const [showForm,setShowForm]=useState(false);
+  const [error,setError]=useState('');
+  useEffect(()=>{
+    if(!form.providerKey&&connected[0])setForm(v=>({...v,providerKey:(connected[0].source||'browser')+'::'+connected[0].id}));
+  },[connected]);
+  function submit(){
+    setError('');
+    try{
+      const [source,providerId]=form.providerKey.split('::');
+      const provider=connected.find(p=>p.id===providerId&&(p.source||'browser')===source);
+      onCreate({...form,providerId,source,modelName:modelLabel(provider)});
+      setForm(v=>({...v,title:'',prompt:'',when:toInput(Date.now()+60*60*1000)}));
+      setShowForm(false);
+    }catch(e){setError(e?.message||String(e))}
+  }
+  return <div className="contentPage">
+    <PageTop onBack={onBack} title="Scheduled" action="New task" onAction={()=>setShowForm(v=>!v)}/>
+    <div className="contentInner scheduledInner">
+      <h1>Scheduled</h1>
+      <p className="pageLead">Local Free AI schedules run while the desktop app is open and the selected model is connected.</p>
+      {showForm&&<div className="scheduleComposer">
+        <label>Title<input value={form.title} onChange={e=>setForm({...form,title:e.target.value})} placeholder="Daily research brief"/></label>
+        <label>Task<textarea value={form.prompt} onChange={e=>setForm({...form,prompt:e.target.value})} placeholder="What should Free AI do?"/></label>
+        <div className="scheduleFields">
+          <label>When<input type="datetime-local" value={form.when} onChange={e=>setForm({...form,when:e.target.value})}/></label>
+          <label>Repeat<select value={form.frequency} onChange={e=>setForm({...form,frequency:e.target.value})}><option value="once">Once</option><option value="daily">Daily</option><option value="weekly">Weekly</option></select></label>
+          <label>Model<select value={form.providerKey} onChange={e=>setForm({...form,providerKey:e.target.value})}><option value="">Select model</option>{connected.map(p=><option key={(p.source||'browser')+'::'+p.id} value={(p.source||'browser')+'::'+p.id}>{modelLabel(p)}</option>)}</select></label>
+        </div>
+        {error&&<div className="formError">{error}</div>}
+        <div className="dialogActions"><button onClick={()=>setShowForm(false)}>Cancel</button><button className="primaryAction" onClick={submit}>Schedule</button></div>
+      </div>}
+      <div className="scheduledList">
+        {tasks.length===0?<div className="emptyLibrary"><Clock3 size={34}/><b>No scheduled tasks</b><span>Create a one-time, daily, or weekly task.</span></div>:tasks.map(task=><div className="scheduledCard" key={task.id}>
+          <div className="scheduledCardIcon"><Clock3 size={17}/></div>
+          <div className="scheduledCardBody"><div className="scheduledCardTitle"><b>{task.title}</b><span className={'taskState '+(task.enabled?'on':'')}>{task.running?'Running':task.enabled?'Active':'Paused'}</span></div>
+            <p>{task.prompt}</p>
+            <small>{task.modelName||'Model'} · {task.frequency==='once'?'Once':task.frequency==='daily'?'Daily':'Weekly'} · Next {new Date(task.nextRun).toLocaleString()}</small>
+            {task.lastResult&&<details><summary>Last result</summary><div>{task.lastResult}</div></details>}
+            {task.lastError&&<div className="taskError">{task.lastError}</div>}
+          </div>
+          <div className="scheduledActions"><button onClick={()=>onRun(task)}>Run now</button><button onClick={()=>onToggle(task.id)}>{task.enabled?'Pause':'Resume'}</button><button className="dangerText" onClick={()=>onDelete(task.id)}>Delete</button></div>
+        </div>)}
+      </div>
+    </div>
+  </div>
+}
+
 function PluginsPage({tools,connected,onBack,onRefresh}){
   const [query,setQuery]=useState('');
   const pageName=isNative?'Apps':'Plugins';
