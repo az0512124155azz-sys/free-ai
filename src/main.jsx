@@ -162,6 +162,7 @@ function App(){
   const [messages,setMessages]=useState([]);
   const [prompt,setPrompt]=useState('');
   const [busy,setBusy]=useState(false);
+  const [workTask,setWorkTask]=useState(null);
   const [product,setProduct]=useState(()=>localStorage.getItem('freeai.product')||'free');
   const [productMenu,setProductMenu]=useState(false);
   const [sidebarOpen,setSidebarOpen]=useState(true);
@@ -383,6 +384,49 @@ function App(){
       setMessages(prev=>prev.map(message=>message.requestId===event.id?{...message,text,streaming:true}:message));
     });
   },[]);
+
+  useEffect(()=>{
+    if(!isWindowsDesktop||!window.desktopApi?.onWorkTask)return;
+    return window.desktopApi.onWorkTask(task=>{
+      if(!task?.id)return;
+      setWorkTask(task);
+      if(task.id!==activeRequestRef.current)return;
+      if(task.state==='completed'){
+        setMessages(prev=>{
+          const next=prev.map(message=>message.requestId===task.id
+            ? {...message,text:String(task.finalText||'Task completed.'),streaming:false,requestId:undefined}
+            : message);
+          queueMicrotask(()=>saveCurrentChat(next,selected));
+          return next;
+        });
+        activeRequestRef.current=null;
+        setBusy(false);
+      }else if(task.state==='failed'){
+        setMessages(prev=>{
+          const next=prev.flatMap(message=>{
+            if(message.requestId!==task.id)return [message];
+            return [{role:'error',text:String(task.error||'Work task failed.')}];
+          });
+          queueMicrotask(()=>saveCurrentChat(next,selected));
+          return next;
+        });
+        activeRequestRef.current=null;
+        setBusy(false);
+      }else if(task.state==='stopped'){
+        setMessages(prev=>{
+          const next=prev.flatMap(message=>{
+            if(message.requestId!==task.id)return [message];
+            if(String(message.text||'').trim())return [{...message,streaming:false,stopped:true,requestId:undefined}];
+            return [];
+          });
+          queueMicrotask(()=>saveCurrentChat(next,selected));
+          return next;
+        });
+        activeRequestRef.current=null;
+        setBusy(false);
+      }
+    });
+  },[selected,currentChatId,product,mode]);
 
   useEffect(()=>{
     if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
