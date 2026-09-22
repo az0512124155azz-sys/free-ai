@@ -23,6 +23,18 @@ for(const requiredProp of ['onSelectProviderModel','onSelectProviderEffort','onR
   }
 }
 
+for(const requiredSearchProp of ['webSearchEnabled','onToggleWebSearch']){
+  if(!composer.includes(requiredSearchProp)){
+    fail('Composer is missing required Search prop "'+requiredSearchProp+'".');
+  }
+}
+if(!source.includes("nativeTool:nativeSearch?'search':null")){
+  fail('Chat Web Search is not routed to the provider-native search tool.');
+}
+if(!source.includes('<MessageSources sources={m.sources}')){
+  fail('Search responses are missing the Sources renderer.');
+}
+
 if(/const\s+BRAND_LOGO_SRC\s*=\s*['"]\//.test(source)){
   fail('Packaged Electron assets must not use an absolute /free-ai-logo.svg path.');
 }
