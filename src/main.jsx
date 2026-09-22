@@ -1041,6 +1041,16 @@ function App(){
                 <div ref={messageEndRef}/>
               </div>
               <div className="conversationComposer">
+                {isWindowsDesktop&&mode==='work'&&workTask&&['running','waiting_approval'].includes(workTask.state)&&<div className={'workTaskStatus '+(workTask.state==='waiting_approval'?'waiting':'running')} role="status" aria-live="polite">
+                  <div className="workTaskStatusMain">
+                    {workTask.state==='waiting_approval'?<ShieldCheck size={16}/>:<RefreshCw className="spin" size={15}/>}
+                    <span><b>{workTask.state==='waiting_approval'?'Waiting for approval':'Working'}</b><small>{workTask.statusText||('Step '+workTask.step+' of '+workTask.maxSteps)}</small></span>
+                  </div>
+                  {workTask.state==='waiting_approval'&&workTask.approval&&<div className="workTaskApprovalActions">
+                    <button onClick={()=>resolveWorkTaskApproval(false)}>Deny</button>
+                    <button className="approveAction" onClick={()=>resolveWorkTaskApproval(true)}>Approve</button>
+                  </div>}
+                </div>}
                 <Composer
                   windowsDesktop={isWindowsDesktop}
                   stopGeneration={stopGeneration}
