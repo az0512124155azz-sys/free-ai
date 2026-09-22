@@ -291,9 +291,12 @@ async function performBuiltInBrowserAction(payload={}){
     wc.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
   }else if(type==='click'||type==='double_click'){
     const count=type==='double_click'?2:1;
+    const requestedButton=String(action.button||'left').toLowerCase();
+    const button=requestedButton==='wheel'?'middle':requestedButton;
+    if(!['left','middle','right'].includes(button))throw new Error('Browser Use requested an unsupported mouse button.');
     wc.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
-    wc.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:String(action.button||'left'),clickCount:count});
-    wc.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:String(action.button||'left'),clickCount:count});
+    wc.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button,clickCount:count});
+    wc.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button,clickCount:count});
   }else if(type==='scroll'){
     wc.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
     wc.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaX:Number(action.deltaX)||0,deltaY:Number(action.deltaY)||0,canScroll:true});
@@ -1222,9 +1225,7 @@ function status(){
     extension:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
     browserExtension:{
       connected:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
-      tabs:Array.isArray(extensionBrowserState.tabs)?extensionBrowserState.tabs:[],
-      activeTabId:extensionBrowserState.activeTabId??null,
-      activeWindowId:extensionBrowserState.activeWindowId??null
+      tabCount:Array.isArray(extensionBrowserState.tabs)?extensionBrowserState.tabs.length:0
     },
     relay:!!(relaySocket&&relaySocket.readyState===WebSocket.OPEN),
     computerUse:process.platform==='win32'?{
