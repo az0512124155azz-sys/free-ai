@@ -4,11 +4,12 @@ import {createClient} from '@supabase/supabase-js';
 import {Capacitor} from '@capacitor/core';
 import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
+import {Haptics,ImpactStyle} from '@capacitor/haptics';
 import {SpeechRecognition} from '@capgo/capacitor-speech-recognition';
 import {InAppBrowser} from '@capgo/capacitor-inappbrowser';
 import {SocialLogin} from '@capgo/capacitor-social-login';
 import {
-  AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,
+  AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,Camera,
   CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,Download,ExternalLink,
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
@@ -101,12 +102,15 @@ function App(){
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
     autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,language:'English',showBottomPanel:true})
+    spellCheckEnabled:true,hapticsEnabled:true,
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
   const fileRef=useRef(null);
+  const photoRef=useRef(null);
+  const cameraRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -269,6 +273,7 @@ function App(){
     const text=prompt.trim();
     if(!text||busy)return;
     if(!selected){setModelMenu(true);return}
+    if(isNative&&appPrefs.hapticsEnabled!==false)Haptics.impact({style:ImpactStyle.Light}).catch(()=>{});
     setBusy(true);setPrompt('');
     const withUser=[...messages,{role:'user',text}];setMessages(withUser);saveCurrentChat(withUser,selected);
     try{
@@ -388,6 +393,8 @@ function App(){
 
   return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
+    <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={attachFiles}/>
+    <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={attachFiles}/>
 
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
@@ -483,9 +490,11 @@ function App(){
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
-                plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef}
+                plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} photoRef={photoRef} cameraRef={cameraRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
+                  spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
+                spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
                 approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                 permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                 onBrowser={openBrowser}
@@ -571,8 +580,8 @@ function NavItem({icon:Icon,label,active,onClick}){
 function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
-    effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
+    effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -601,6 +610,7 @@ function Composer(props){
   }
 
   async function startVoice(){
+    if(isNative&&hapticsEnabled)Haptics.impact({style:ImpactStyle.Light}).catch(()=>{});
     if(listening){await stopVoice();return}
     setDictationError('');
     dictationBase.current=prompt.trimEnd();
@@ -688,6 +698,8 @@ function Composer(props){
     <textarea
       ref={textareaRef}
       value={prompt} onChange={e=>setPrompt(e.target.value)}
+      spellCheck={spellCheckEnabled!==false}
+      autoCorrect={spellCheckEnabled!==false?'on':'off'}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
       placeholder={product==='super'?(isNative?'Message your desktop task':'Ask Super AI to build or debug'):mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
     />
@@ -696,7 +708,7 @@ function Composer(props){
         <div className="menuAnchor">
           <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
-            fileRef={fileRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
+            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
@@ -778,10 +790,14 @@ function PermissionModeMenu({value,options={},choose}){
   </div>
 }
 
-function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
+function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
-    <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
+    {isNative?<>
+      <MenuRow icon={Camera} label="Camera" onClick={()=>cameraRef.current?.click()}/>
+      <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
+      <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
+    </>:<MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
