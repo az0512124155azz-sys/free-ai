@@ -2150,6 +2150,9 @@ function publicWorkTask(task){
     workspace:task.workspace?{
       name:task.workspace.name,branch:task.workspace.branch,head:task.workspace.head,dirty:task.workspace.dirty
     }:null,
+    apps:Array.isArray(task.mcpConnections)?task.mcpConnections.map(item=>({
+      id:item.id,name:item.name,toolCount:Array.isArray(mcpSessions.get(item.id)?.tools)?mcpSessions.get(item.id).tools.length:0
+    })):[],
     finalMessage:task.finalMessage||'',
     error:task.error||''
   };
@@ -2211,6 +2214,19 @@ function workActionIsSensitive(tool,type){
   return true;
 }
 
+function taskMcpConnection(task,id){
+  const key=String(id||'');
+  if(!Array.isArray(task?.mcpConnections)||!task.mcpConnections.some(item=>item.id===key))return null;
+  return mcpConnections.find(item=>item.id===key)||null;
+}
+
+function workMcpTool(task,action={}){
+  const connection=taskMcpConnection(task,action.connectionId);
+  if(!connection)return null;
+  const tool=getMcpToolDefinition(connection.id,action.name);
+  return tool?{connection,tool}:null;
+}
+
 function workApprovalFor(task,decision){
   const tool=String(decision?.tool||'');
   const action=decision?.action||{};
@@ -2234,10 +2250,19 @@ function workApprovalFor(task,decision){
       scopeTitle='Allow website access?';
       scopeDetail='Free AI will share the current page state from '+origin+' with the selected AI model for this task.';
     }
+  }else if(tool==='mcp'){
+    const resolved=workMcpTool(task,action);
+    if(resolved&&!task.approvedScopes.has('mcp:'+resolved.connection.id)){
+      scope='mcp:'+resolved.connection.id;
+      scopeTitle='Allow app access for this task?';
+      scopeDetail='Free AI will send the requested tool arguments to the MCP app "'+resolved.connection.name+'" for this task.';
+    }
   }
 
-  const readOnly=workActionIsReadOnly(tool,type);
-  const sensitive=workActionIsSensitive(tool,type);
+  const resolvedMcp=tool==='mcp'?workMcpTool(task,action):null;
+  const mcpReadOnly=!!resolvedMcp&&resolvedMcp.tool.annotations?.readOnlyHint===true&&resolvedMcp.tool.annotations?.destructiveHint!==true;
+  const readOnly=tool==='mcp'?mcpReadOnly:workActionIsReadOnly(tool,type);
+  const sensitive=tool==='mcp'?!mcpReadOnly:workActionIsSensitive(tool,type);
   const mode=task.approvalMode;
   const needsActionApproval=mode==='ask'||(mode==='read'?!readOnly:sensitive);
 
@@ -2254,6 +2279,9 @@ function workApprovalFor(task,decision){
       : '';
   const repositoryTarget=tool==='repository'&&action.path
     ? 'Repository file: '+String(action.path).slice(0,500)+'.'
+    : '';
+  const mcpTarget=tool==='mcp'&&resolvedMcp
+    ? 'App: '+resolvedMcp.connection.name+'. Tool: '+resolvedMcp.tool.name+'. '+(mcpReadOnly?'Declared read-only.':'Not declared read-only; confirmation is required.')
     : '';
   let repositoryWrite='';
   if(tool==='repository'&&type==='write'){
@@ -2276,6 +2304,7 @@ function workApprovalFor(task,decision){
     target,
     repositoryTarget,
     repositoryWrite,
+    mcpTarget,
     typedText?'Text to enter: "'+typedText+(String(action.text).length>160?'…':'')+'"':'',
     keys?'Keys: '+keys+'.':''
   ].filter(Boolean).join(' ');
@@ -2361,7 +2390,7 @@ function parseWorkDecision(raw){
   if(parsed.kind==='ask'){
     return {kind:'complete',message:String(parsed.message||'I need more information before I can continue.')};
   }
-  if(parsed.kind!=='tool'||!['browser_builtin','browser_extension','computer','repository'].includes(parsed.tool)||!parsed.action||typeof parsed.action!=='object'){
+  if(parsed.kind!=='tool'||!['browser_builtin','browser_extension','computer','repository','mcp'].includes(parsed.tool)||!parsed.action||typeof parsed.action!=='object'){
     throw new Error('The selected model returned an unsupported Work action.');
   }
   return {
