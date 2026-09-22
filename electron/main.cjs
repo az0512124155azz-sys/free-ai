@@ -1454,7 +1454,9 @@ function startLocalBridge(){
       if(m.type==='hello'&&m.role==='extension'){
         extensionSocket=ws;
         browserProviders=[];
+        extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
         sendExtension({type:'scanProviders'});
+        sendExtension({type:'scanBrowser'});
         sendStatus();
         return;
       }
