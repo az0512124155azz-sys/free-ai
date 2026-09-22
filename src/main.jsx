@@ -525,6 +525,9 @@ function Composer(props){
     try{
       if(isNative){
         await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:700}));
+        const last=await SpeechRecognition.getLastPartialResult?.().catch(()=>null);
+        const text=last?.text||last?.matches?.[0]||'';
+        if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text.trim());
         for(const handle of nativeSpeechHandles.current.splice(0))await handle?.remove?.().catch(()=>{});
       }else if(webRecognition.current){
         webRecognition.current.stop();
@@ -562,17 +565,28 @@ function Composer(props){
         if(permission?.speechRecognition!=='granted')throw new Error('Microphone permission is required for dictation.');
 
         const partial=await SpeechRecognition.addListener('partialResults',event=>{
-          const text=event?.matches?.[0]?.trim();
+          const text=(event?.accumulatedText||event?.accumulated||event?.matches?.[0]||'').trim();
           if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
         });
-        const stateHandle=await SpeechRecognition.addListener('listeningState',event=>setListening(event?.status==='started'));
+        const stateHandle=await SpeechRecognition.addListener('listeningState',event=>{
+          const state=event?.state||event?.status;
+          setListening(state==='started'||state==='listening');
+        });
         const errorHandle=await SpeechRecognition.addListener('error',event=>{
           setListening(false);
           if(event?.message)setDictationError(event.message);
         });
         nativeSpeechHandles.current=[partial,stateHandle,errorHandle];
+        const onDevice=await SpeechRecognition.isOnDeviceRecognitionAvailable?.({language}).catch(()=>({available:false}));
         setListening(true);
-        await SpeechRecognition.start({language,maxResults:3,partialResults:true,popup:false,addPunctuation:true});
+        await SpeechRecognition.start({
+          language,
+          maxResults:3,
+          partialResults:true,
+          popup:false,
+          addPunctuation:true,
+          useOnDeviceRecognition:!!onDevice?.available
+        });
       }catch(e){
         setListening(false);
         setDictationError(e?.message||'Dictation could not start.');
@@ -705,7 +719,7 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
-    <MenuRow icon={Chrome} label={isNative?'Free AI Browser':'Attach browser'} sub={isNative?'Open a managed browser inside Free AI':'Browse beside your chat'} onClick={onBrowser}/>
+    {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
@@ -943,7 +957,7 @@ function SettingsView(props){
   const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
-  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Configuration','Git','Environments']);
+  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
