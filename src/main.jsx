@@ -1599,7 +1599,7 @@ function App(){
                 attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                 selected={selected} connected={connected} setSelected={setSelected}
-                modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={onSelectProviderModel} onSelectProviderEffort={selectProviderEffortOption}
+                modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                 parallelCount={parallelCount} setParallelCount={setParallelCount}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
@@ -1652,7 +1652,7 @@ function App(){
                   attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
                   compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                   selected={selected} connected={connected} setSelected={setSelected}
-                  modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={onSelectProviderModel} onSelectProviderEffort={selectProviderEffortOption}
+                  modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                   parallelCount={parallelCount} setParallelCount={setParallelCount}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
