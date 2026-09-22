@@ -646,22 +646,26 @@ function closeBrowserTab(id){
   if(!view)return browserSnapshot();
   const ids=[...browserTabs.keys()];
   const index=ids.indexOf(id);
-  if(activeBrowserTabId===id&&browserAttached){
+  const wasActive=activeBrowserTabId===id;
+  const wasAttached=wasActive&&browserAttached;
+  if(wasAttached){
     try{win?.contentView.removeChildView(view)}catch{}
     browserAttached=false;
   }
+  removeBrowserTabState(id);
+  if(wasActive)activeBrowserTabId=null;
   try{view.webContents.close()}catch{}
-  browserTabs.delete(id);
-  browserSiteTools.delete(id);
-  browserErrors.delete(id);
-  browserUrls.delete(id);
-  browserTitles.delete(id);
-  browserFavicons.delete(id);
-  if(activeBrowserTabId===id){
-    activeBrowserTabId=null;
+  if(wasActive){
     const nextId=ids[index+1]||ids[index-1]||[...browserTabs.keys()][0]||null;
-    if(nextId)activateBrowserTab(nextId);
-    else createBrowserTab('https://www.google.com/',true);
+    if(nextId){
+      if(wasAttached)activateBrowserTab(nextId);
+      else{
+        activeBrowserTabId=nextId;
+        emitBrowserState();
+      }
+    }else{
+      createBrowserTab('https://www.google.com/',true,{preserveHidden:!wasAttached});
+    }
   }
   emitBrowserState();
   return browserSnapshot();
@@ -1272,12 +1276,22 @@ ipcMain.handle('browser:setSiteToolsEnabled',(_e,value)=>{
   return siteToolsEnabled;
 });
 ipcMain.handle('browser:clearData',async()=>{
-  const sessions=new Set([...browserTabs.values()].map(view=>view.webContents.session));
-  for(const ses of sessions){
+  if(process.platform==='win32'){
+    const ses=persistentBrowserSession();
     await ses.clearStorageData();
     await ses.clearCache();
+    for(const [id,view] of browserTabs){
+      browserSiteTools.set(id,[]);
+      if(!view.webContents.isDestroyed())view.webContents.reload();
+    }
+  }else{
+    const sessions=new Set([...browserTabs.values()].map(view=>view.webContents.session));
+    for(const ses of sessions){
+      await ses.clearStorageData();
+      await ses.clearCache();
+    }
+    for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
   }
-  for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
   emitBrowserState();
   return {ok:true};
 });
