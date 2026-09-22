@@ -33,7 +33,7 @@ const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 
 const settingsSections=[
-  ['personal','General',Settings],['personal','Import',Upload],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],['personal','Pets',Bot],
+  ['personal','General',Settings],['personal','Import',Upload],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],['personal','Companion window',AppWindow],
   ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
   ['integrations','Computer use',Monitor],['integrations','Appshots',Camera],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
@@ -307,8 +307,8 @@ function App(){
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
     autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,
-    spellCheckEnabled:true,hapticsEnabled:true,quickChatEnabled:true,
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,quickChatEnabled:true,language:'English',showBottomPanel:true})
+    spellCheckEnabled:true,hapticsEnabled:true,quickChatEnabled:true,quickChatShortcut:'Alt+Space',
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,quickChatEnabled:true,quickChatShortcut:'Alt+Space',language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
@@ -448,8 +448,15 @@ function App(){
   },[appPrefs.siteToolsEnabled]);
 
   useEffect(()=>{
-    if(isDesktop&&desktopPlatform==='win32')window.desktopApi?.setQuickChatEnabled?.(appPrefs.quickChatEnabled!==false).catch(()=>{});
-  },[appPrefs.quickChatEnabled]);
+    if(isDesktop&&desktopPlatform==='win32')window.desktopApi?.configureQuickChat?.({
+      enabled:appPrefs.quickChatEnabled!==false,
+      shortcut:appPrefs.quickChatShortcut||'Alt+Space'
+    }).then(result=>{
+      if(result?.shortcut&&result.shortcut!==appPrefs.quickChatShortcut){
+        persistPrefs({...appPrefs,quickChatShortcut:result.shortcut});
+      }
+    }).catch(()=>{});
+  },[appPrefs.quickChatEnabled,appPrefs.quickChatShortcut]);
 
   useEffect(()=>{
     if(!isQuickWindow)return;
@@ -1769,7 +1776,7 @@ function SettingsView(props){
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='Pets'&&isDesktop&&desktopPlatform==='win32'&&<PetsSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Companion window'&&isDesktop&&desktopPlatform==='win32'&&<CompanionSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Personalization'&&<PersonalizationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
@@ -1838,12 +1845,13 @@ function ProfileSettings({session}){
     </div>
   </div>
 }
-function PetsSettings({prefs,setPrefs}){
+function CompanionSettings({prefs,setPrefs}){
+  const shortcuts=['Alt+Space','Ctrl+Space','Ctrl+Shift+Space','Super+Alt+P'];
   return <div className="settingsPane">
-    <h3>Quick Chat</h3>
+    <h3>Companion window</h3>
     <div className="settingBlock">
-      <SettingRow title="Mini controls" desc="Open a lightweight floating Free AI composer without opening the main window." control={<Toggle value={prefs.quickChatEnabled!==false} onChange={v=>setPrefs({...prefs,quickChatEnabled:v})}/>}/>
-      <SettingRow title="Shortcut" desc="Open Quick Chat from anywhere in Windows." control={<span className="valuePill">Windows + Alt + P</span>}/>
+      <SettingRow title="Companion window" desc="Open a lightweight Free AI chat window while you work in other Windows apps." control={<Toggle value={prefs.quickChatEnabled!==false} onChange={v=>setPrefs({...prefs,quickChatEnabled:v})}/>}/>
+      <SettingRow title="Hotkey" desc="Alt + Space matches the default ChatGPT companion-window shortcut on Windows." control={<select value={prefs.quickChatShortcut||'Alt+Space'} onChange={e=>setPrefs({...prefs,quickChatShortcut:e.target.value})}>{shortcuts.map(value=><option key={value} value={value}>{value.replaceAll('+',' + ')}</option>)}</select>}/>
     </div>
   </div>
 }
