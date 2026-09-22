@@ -418,9 +418,9 @@ button:disabled{opacity:.42;cursor:default}
 .providerBadge.claude{background:#d97757;color:#fff}.providerBadge.gemini{background:#6f8cff;color:#fff}.providerBadge.deepseek{background:#536dfe;color:#fff}
 .providerBadge.grok{background:#111;color:#fff;border:1px solid #777}.providerBadge.manus{background:#777;color:#fff}.providerBadge.api{background:linear-gradient(135deg,#5ec7ff,#876dff);color:#fff}
 .pickerRow.disconnected{opacity:.56}
-.parallelPicker{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--border-soft);margin-top:5px;padding:10px 9px 5px}
-.parallelPicker>span{display:flex;flex-direction:column;min-width:0}.parallelPicker b{font-size:11px}.parallelPicker small{font-size:9px;color:var(--muted);margin-top:2px;line-height:1.35}
-.parallelPicker select{flex:none;min-width:78px}
+.providerModelPicker,.parallelPicker{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid var(--border-soft);margin-top:5px;padding:10px 9px 5px}
+.providerModelPicker>span,.parallelPicker>span{display:flex;flex-direction:column;min-width:0}.providerModelPicker b,.parallelPicker b{font-size:11px}.providerModelPicker small,.parallelPicker small{font-size:9px;color:var(--muted);margin-top:2px;line-height:1.35}
+.providerModelPicker select,.parallelPicker select{flex:none;min-width:78px;max-width:128px}
 .teamUseAll{width:100%;display:flex;align-items:center;gap:8px;padding:8px 9px;margin:4px 0;border-radius:10px;background:var(--surface-secondary);color:var(--text-secondary);text-align:left}
 .teamUseAll:hover,.teamUseAll.active{background:var(--hover);color:var(--text)}.teamUseAll span{flex:1;font-size:10.5px}
 .menuEmpty{display:flex;flex-direction:column;gap:4px;padding:12px;color:var(--muted);font-size:11px;line-height:1.45}
