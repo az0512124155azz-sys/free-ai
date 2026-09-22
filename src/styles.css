@@ -830,3 +830,6 @@ button:disabled{opacity:.42;cursor:default}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important;scroll-behavior:auto!important}
 }
+
+.deepResearchModeChip{border-color:color-mix(in srgb,var(--accent) 42%,var(--border-soft));background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 13%,var(--surface-secondary)),var(--surface-secondary))}.deepResearchModeChip>span{color:var(--text)}
+.deepResearchStatus{display:flex;align-items:center;gap:7px;width:max-content;max-width:100%;margin:10px 0 8px;padding:6px 9px;border:1px solid var(--border-soft);border-radius:999px;color:var(--text-tertiary);font-size:10.5px;background:var(--surface-secondary)}.deepResearchStatus.running svg{animation:spin 1.3s linear infinite}.deepResearchStatus.complete{color:var(--text-secondary)}
