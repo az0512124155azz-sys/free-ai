@@ -701,7 +701,7 @@ function App(){
       </section>}
 
       {page==='project'&&isWindowsDesktop&&activeProject&&<ProjectPage
-        project={activeProject} chats={projectChats} onBack={()=>setPage('chat')}
+        project={activeProject} chats={projectChats} onBack={()=>{setActiveProjectId(null);setPage('chat')}}
         onStart={nextMode=>startProjectConversation(activeProject.id,nextMode)}
         onOpenChat={openChat} onSave={patch=>updateProject(activeProject.id,patch)}
       />}
