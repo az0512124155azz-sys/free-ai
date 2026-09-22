@@ -642,18 +642,19 @@ async function openAICompatibleChat(cfg,msg,onStream){
   let timedOut=false;
   const timeout=setTimeout(()=>{timedOut=true;controller.abort()},120000);
   try{
+    const useStream=!!msg.requestId;
     const response=await fetch(endpoint,{
       method:'POST',
       headers,
       signal:controller.signal,
-      body:JSON.stringify({model:cfg.model,messages,stream:true})
+      body:JSON.stringify({model:cfg.model,messages,stream:useStream})
     });
     if(!response.ok){
       const data=await response.json().catch(()=>({}));
       throw new Error(data?.error?.message||data?.message||('API request failed: '+response.status));
     }
     const contentType=String(response.headers.get('content-type')||'').toLowerCase();
-    if(contentType.includes('text/event-stream')&&response.body){
+    if(useStream&&contentType.includes('text/event-stream')&&response.body){
       const reader=response.body.getReader();
       const decoder=new TextDecoder();
       let buffer='';
