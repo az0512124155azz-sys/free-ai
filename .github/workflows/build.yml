@@ -170,13 +170,21 @@ jobs:
       - name: Apply Free AI Android branding
         run: npm run android:configure-branding
 
+      - name: Configure stable Android OAuth signing
+        run: npm run android:configure-signing
+
+      - name: Verify Android signing fingerprint
+        run: chmod +x android/gradlew && cd android && ./gradlew signingReport && cd .. && cat android-oauth-info.txt
+
       - name: Build APK
-        run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
+        run: cd android && ./gradlew assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
           name: free-ai-android
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android-oauth-info.txt
           if-no-files-found: error
 
   extension:
