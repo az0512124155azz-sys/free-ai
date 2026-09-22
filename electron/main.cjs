@@ -1565,15 +1565,20 @@ async function ensureWorkWebsiteAccess(task,channel){
 }
 
 async function workBrowserContext(task){
-  if(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN&&extensionBrowserState.activeTabId){
-    if(!(await ensureWorkWebsiteAccess(task,'extension')))return {denied:true};
-    const snapshot=await requestExtensionBrowser('snapshot',{tabId:extensionBrowserState.activeTabId},20000);
-    return {channel:'extension',snapshot};
-  }
-  if(activeBrowserTabId){
-    if(!(await ensureWorkWebsiteAccess(task,'built-in')))return {denied:true};
-    const snapshot=await builtInBrowserAgentSnapshot(activeBrowserTabId);
-    return {channel:'built-in',snapshot};
+  const extensionAvailable=!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN&&extensionBrowserState.activeTabId);
+  const builtInAvailable=!!activeBrowserTabId;
+  const order=task.browserPreference==='built-in'?['built-in','extension']:['extension','built-in'];
+  for(const channel of order){
+    if(channel==='extension'&&extensionAvailable){
+      if(!(await ensureWorkWebsiteAccess(task,'extension')))return {denied:true};
+      const snapshot=await requestExtensionBrowser('snapshot',{tabId:extensionBrowserState.activeTabId},20000);
+      return {channel:'extension',snapshot};
+    }
+    if(channel==='built-in'&&builtInAvailable){
+      if(!(await ensureWorkWebsiteAccess(task,'built-in')))return {denied:true};
+      const snapshot=await builtInBrowserAgentSnapshot(activeBrowserTabId);
+      return {channel:'built-in',snapshot};
+    }
   }
   return null;
 }
@@ -1588,8 +1593,8 @@ async function workComputerContext(task){
     viewport:{width:screenItem.width,height:screenItem.height},
     name:screenItem.name,
     attachment:{
-      name:'free-ai-computer-screenshot.jpg',
-      type:'image/jpeg',
+      name:'free-ai-computer-screenshot.png',
+      type:'image/png',
       size:0,
       dataUrl:screenItem.thumbnail
     }
@@ -1769,6 +1774,7 @@ function startWorkTask(payload={}){
     approvalMode:['ask','auto','full'].includes(payload.approvalMode)?payload.approvalMode:'ask',
     modelFileUpload:payload.modelFileUpload===true,
     initialAttachments:Array.isArray(payload.attachments)?payload.attachments:[],
+    browserPreference:payload.browserPreference==='built-in'?'built-in':'extension',
     state:'running',
     statusText:'Starting Work task',
     step:0,
