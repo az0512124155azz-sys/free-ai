@@ -1985,9 +1985,14 @@ async function callMcpTool(connectionId,name,args={}){
   };
 }
 
-function encodeSecret(value){
+function encodeSecret(value,{requireEncryption=false}={}){
   const text=JSON.stringify(value);
-  if(safeStorage.isEncryptionAvailable()) return {mode:'encrypted',data:safeStorage.encryptString(text).toString('base64')};
+  if(safeStorage.isEncryptionAvailable()){
+    return {mode:'encrypted',data:safeStorage.encryptString(text).toString('base64')};
+  }
+  if(requireEncryption){
+    throw new Error('Secure credential storage is unavailable. Free AI will not save API keys in plaintext.');
+  }
   return {mode:'plain',data:Buffer.from(text,'utf8').toString('base64')};
 }
 
@@ -2004,15 +2009,19 @@ function decodeSecret(payload){
 function loadApiConnections(){
   try{
     const raw=JSON.parse(fs.readFileSync(apiStorePath(),'utf8'));
-    apiConnections=Array.isArray(decodeSecret(raw))?decodeSecret(raw):[];
+    const decoded=decodeSecret(raw);
+    apiConnections=Array.isArray(decoded)?decoded:[];
+    if(raw?.mode==='plain'&&apiConnections.some(item=>item?.apiKey)&&safeStorage.isEncryptionAvailable()){
+      try{saveApiConnections()}catch(error){console.error('Failed to migrate legacy API credentials to secure storage',error)}
+    }
   }catch{apiConnections=[]}
 }
 
 function saveApiConnections(){
-  try{
-    fs.mkdirSync(path.dirname(apiStorePath()),{recursive:true});
-    fs.writeFileSync(apiStorePath(),JSON.stringify(encodeSecret(apiConnections)),'utf8');
-  }catch(e){console.error('Failed to save API connections',e)}
+  const containsApiKey=apiConnections.some(item=>!!String(item?.apiKey||''));
+  fs.mkdirSync(path.dirname(apiStorePath()),{recursive:true});
+  const payload=encodeSecret(apiConnections,{requireEncryption:containsApiKey});
+  fs.writeFileSync(apiStorePath(),JSON.stringify(payload),'utf8');
 }
 
 function publicApiConnection(c){
@@ -3894,14 +3903,26 @@ ipcMain.handle('api:addConnection',(_e,input)=>{
   };
   if(!connection.baseUrl||!connection.model) throw new Error('Base URL and model are required.');
   if(!/^https?:\/\//i.test(connection.baseUrl)) throw new Error('Base URL must start with http:// or https://');
+  if(connection.apiKey&&!safeStorage.isEncryptionAvailable()){
+    throw new Error('Secure credential storage is unavailable. Free AI will not send or save this API key in plaintext.');
+  }
   apiConnections.push(connection);
-  saveApiConnections();
+  try{saveApiConnections()}
+  catch(error){
+    apiConnections=apiConnections.filter(item=>item.id!==connection.id);
+    throw error;
+  }
   sendStatus();
   return publicApiConnection(connection);
 });
 ipcMain.handle('api:removeConnection',(_e,id)=>{
+  const previous=apiConnections;
   apiConnections=apiConnections.filter(c=>c.id!==id);
-  saveApiConnections();
+  try{saveApiConnections()}
+  catch(error){
+    apiConnections=previous;
+    throw error;
+  }
   sendStatus();
   return apiConnections.map(publicApiConnection);
 });

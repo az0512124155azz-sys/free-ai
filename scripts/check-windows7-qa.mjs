@@ -45,4 +45,14 @@ has(source,'function ModelMenu','Model picker is missing.');
 has(source,'function ResearchSetupDialog','Deep Research setup is missing.');
 has(source,'function ChatContextMenu','Chat management menu is missing.');
 
+has(main,"function encodeSecret(value,{requireEncryption=false}={})",'Secret persistence must support an encryption-required mode.');
+has(main,"throw new Error('Secure credential storage is unavailable. Free AI will not save API keys in plaintext.')",'API-key persistence must refuse plaintext fallback.');
+has(main,"const containsApiKey=apiConnections.some",'API connection persistence must detect stored API keys.');
+has(main,"encodeSecret(apiConnections,{requireEncryption:containsApiKey})",'API-key storage is not requiring encryption.');
+has(main,"if(connection.apiKey&&!safeStorage.isEncryptionAvailable())",'Adding an API key must preflight secure storage availability.');
+has(main,"Free AI will not send or save this API key in plaintext.",'API-key secure-storage failure must be explicit.');
+has(main,"apiConnections=apiConnections.filter(item=>item.id!==connection.id)",'Failed API connection saves must roll back the in-memory add.');
+has(main,"apiConnections=previous;",'Failed API connection removals must roll back the in-memory removal.');
+has(main,"raw?.mode==='plain'&&apiConnections.some(item=>item?.apiKey)&&safeStorage.isEncryptionAvailable()",'Legacy plaintext API credentials must migrate when secure storage is available.');
+
 console.log('Windows 7 QA regression checks passed.');
