@@ -1896,11 +1896,20 @@ function workModelPrompt(task,observation){
   const observationText=observation===null
     ? 'No tool observation yet.'
     : JSON.stringify(workSerializable(observation));
+  const conversation=Array.isArray(task.history)&&task.history.length
+    ? task.history.map(item=>String(item.role||'user')+': '+String(item.text||'')).join('\n')
+    : 'No prior conversation context.';
   return [
     'You are controlling a Free AI Work task. Choose exactly ONE next step.',
     'Return exactly one JSON object and no markdown.',
     'Never claim an action happened unless the tool observation confirms it.',
     'Do not ask the user to paste passwords or secrets into chat. If sign-in is needed, complete with a short message asking the user to sign in directly in the browser.',
+    '',
+    'Task instructions:',
+    task.instructions||'No additional instructions.',
+    '',
+    'Prior conversation context:',
+    conversation,
     '',
     'User task:',
     task.userText,
@@ -2141,6 +2150,11 @@ function startWorkTask(input={}){
     currentPromptId:null,
     finalMessage:'',
     error:'',
+    instructions:String(input.instructions||'').slice(0,8000),
+    history:Array.isArray(input.history)?input.history.slice(-12).map(item=>({
+      role:item?.role==='assistant'?'assistant':'user',
+      text:String(item?.text||'').slice(0,5000)
+    })):[],
     initialAttachments:Array.isArray(input.attachments)?input.attachments.slice(0,5):[]
   };
   if(!task.userText&&!task.initialAttachments.length)throw new Error('Describe the Work task first.');
