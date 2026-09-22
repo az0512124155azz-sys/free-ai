@@ -1457,6 +1457,10 @@ function Composer(props){
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
     </div>}
+    {windowsDesktop&&mode==='work'&&localFolderWorkspace&&<div className="repositoryContextChip localFolderContextChip">
+      <Folder size={13}/><span><b>{localFolderWorkspace.name}</b><small>Local folder · access confirmed per task</small></span>
+      <button type="button" aria-label="Remove local folder" disabled={busy} onClick={()=>!busy&&onClearLocalFolder?.()}><X size={12}/></button>
+    </div>}
     {windowsDesktop&&mode==='work'&&selectedMcpConnections.length>0&&<div className="mcpSelectionTray" aria-label="Selected MCP apps">
       {selectedMcpConnections.map(connection=><div className="mcpSelectionChip" key={connection.id}>
         <Plug size={12}/><span><b>{connection.name}</b><small>{connection.connected?'Connected':connection.hasToken?'Saved · connects on send':'Saved · connects on send'}</small></span>
@@ -1529,7 +1533,8 @@ function Composer(props){
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      <button onClick={product==='super'&&windowsDesktop?onChooseRepository:()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?(repositoryWorkspace?.name||'Choose repository'):windowsDesktop?'Attach project files':'Choose project'}</button>
+      {product==='super'&&windowsDesktop&&<button onClick={onChooseRepository}><GitBranch size={15}/>{repositoryWorkspace?.name||'Choose repository'}</button>}
+      {windowsDesktop?<button onClick={onChooseLocalFolder}><Folder size={15}/>{localFolderWorkspace?.name||'Open local folder'}</button>:<button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>}
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
@@ -1643,6 +1648,7 @@ function WorkTaskStatus({task,onApproval}){
       <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
     </div>
     {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
+    {task.folder&&<div className="workWorkspaceLine"><Folder size={12}/><span>{task.folder.name}</span><small>Local Files</small></div>}
     {Array.isArray(task.apps)&&task.apps.length>0&&<div className="workAppsLine"><Plug size={12}/><span>{task.apps.map(app=>app.name).join(' · ')}</span><small>{task.apps.reduce((sum,app)=>sum+(Number(app.toolCount)||0),0)} direct MCP tools</small></div>}
     {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
       <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
@@ -1669,7 +1675,8 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
     </>:<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
-    {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
+    {mode==='work'&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
+    {mode==='work'&&isWindowsDesktop&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
     {mode==='work'&&isWindowsDesktop&&<>
       <div className="floatingTitle section">Direct MCP apps</div>
       {directMcpConnections.length===0
