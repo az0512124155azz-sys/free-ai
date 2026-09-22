@@ -36,7 +36,7 @@ has(source,'function WindowsAppSettings','Windows app settings are missing.');
 has(source,'Check for updates','Update-check UI is missing.');
 has(main,"https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest",'Update check is not using the official GitHub Releases feed.');
 has(source,'function AppearanceSettings','Appearance settings are missing.');
-has(source,"option value="system">System",'System appearance mode is missing.');
+has(source,'option value="system">System','System appearance mode is missing.');
 has(source,"window.matchMedia?.('(prefers-color-scheme: light)')",'System theme observation is missing.');
 has(source,'ResizeObserver','Resize integration is missing.');
 has(source,'browserSetBounds','Browser bounds synchronization is missing.');
