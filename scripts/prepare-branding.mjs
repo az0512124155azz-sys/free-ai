@@ -2,11 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
 
-const source=path.resolve('public/free-ai-logo.png');
+const source=path.resolve('build/free-ai-symbol.svg');
 const target=path.resolve('build/icon.png');
 
 if(!fs.existsSync(source)){
-  console.error('Missing public/free-ai-logo.png');
+  console.error('Missing build/free-ai-symbol.svg');
   process.exit(1);
 }
 
@@ -16,4 +16,4 @@ await sharp(source)
   .png()
   .toFile(target);
 
-console.log('Prepared Free AI desktop icon from the supplied brand logo.');
+console.log('Prepared Free AI desktop icon from the canonical supplied SVG.');
