@@ -2,6 +2,8 @@ const {contextBridge,ipcRenderer}=require('electron');
 
 contextBridge.exposeInMainWorld('desktopApi',{
   platform:process.platform,
+  quitApp:()=>ipcRenderer.invoke('app:quit'),
+  reloadApp:()=>ipcRenderer.invoke('app:reload'),
   getStatus:()=>ipcRenderer.invoke('bridge:getStatus'),
   scanProviders:()=>ipcRenderer.invoke('bridge:scanProviders'),
   sendPrompt:(m)=>ipcRenderer.invoke('bridge:sendPrompt',m),
