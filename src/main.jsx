@@ -136,7 +136,7 @@ function DesktopProductSwitcher({product,open,setOpen,onSelect}){
         <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
       </button>
       <button role="menuitemradio" aria-checked={product==='super'} className={product==='super'?'active':''} onClick={()=>onSelect('super')}>
-        <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with repositories, browser and computer</small></span>{product==='super'&&<Check size={16}/>}>
+        <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with repositories, browser and computer</small></span>{product==='super'&&<Check size={16}/>} 
       </button>
     </div>}
   </div>;
@@ -955,7 +955,7 @@ function App(){
                   <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
                 </button>
                 <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
-                  <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with browser and computer control</small></span>{product==='super'&&<Check size={16}/>}>
+                  <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with browser and computer control</small></span>{product==='super'&&<Check size={16}/>} 
                 </button>
               </div>}
             </div>}
