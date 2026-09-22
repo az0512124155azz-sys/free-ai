@@ -98,7 +98,7 @@ function App(){
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
-    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
+    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',browserAccess:'ask',voiceLanguage:'auto',
     ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
@@ -694,7 +694,7 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
-    <MenuRow icon={Chrome} label={isNative?'Free AI Browser':'Attach browser'} sub={isNative?'Open a managed browser inside Free AI':'Browse beside your chat'} onClick={onBrowser}/>
+    {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in the isolated Free AI browser" onClick={onBrowser}/>} 
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
@@ -953,7 +953,7 @@ function SettingsView(props){
   const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
-  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Configuration','Git','Environments']);
+  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Browser','Configuration','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
@@ -1055,6 +1055,36 @@ function ConfigurationSettings({prefs,setPrefs}){
 }
 function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<span className="valuePill">{b}</span>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
+
+function BrowserSettings({prefs,setPrefs,onBrowser}){
+  const [clearing,setClearing]=useState(false);
+  const [state,setState]=useState('');
+  async function clearData(){
+    if(!isDesktop||!window.desktopApi?.browserClearData)return;
+    setClearing(true);setState('');
+    try{await window.desktopApi.browserClearData();setState('Browser cookies, storage and cache cleared.')}
+    catch(e){setState(e?.message||'Could not clear browser data.')}
+    finally{setClearing(false)}
+  }
+  return <div className="settingsPane">
+    <h3>Built-in browser</h3>
+    <div className="settingBlock">
+      <SettingRow title="Website access" desc="Choose how agent website-access requests are reviewed. Consequential actions can still require confirmation." control={
+        <select value={prefs.browserAccess||'ask'} onChange={e=>setPrefs({...prefs,browserAccess:e.target.value})}>
+          <option value="ask">Always ask</option>
+          <option value="auto">Auto approve</option>
+          <option value="allow">Always allow</option>
+        </select>
+      }/>
+      <SettingRow title="Browser profile" desc="The built-in browser uses its own cookies and signed-in sessions, separate from Chrome." control={<span className="valuePill">Isolated</span>}/>
+    </div>
+    <div className="browserSettingsActions">
+      <button className="primaryAction" onClick={onBrowser}><Globe2 size={15}/>Open browser</button>
+      <button className="settingsInlineButton" disabled={clearing} onClick={clearData}>{clearing?'Clearing…':'Clear browser data'}</button>
+    </div>
+    {state&&<div className="settingsFeedback">{state}</div>}
+  </div>
+}
 
 function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
   return <div className="settingsPane">
