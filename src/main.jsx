@@ -484,7 +484,11 @@ function App(){
   }
   async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null){
     const userText=String(text||'').trim();
-    if(!userText||busy)return;
+    const hasAttachmentIntent=isWindowsDesktop&&(
+      (!retryContext&&attachments.length>0)||
+      (retryContext&&(Array.isArray(retryContext.attachments)&&retryContext.attachments.length>0||String(retryContext.attachmentContext||'').trim()))
+    );
+    if((!userText&&!hasAttachmentIntent)||busy)return;
     if(!model){setModelMenu(true);return}
     const activeAttachments=isWindowsDesktop&&!retryContext?attachments:[];
     const retryAttachmentContext=String(retryContext?.attachmentContext||'');
@@ -1201,9 +1205,9 @@ function Composer(props){
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'} aria-label={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
-        {(busy||prompt.trim())&&<button className={'voiceOrb '+(!busy&&prompt.trim()&&selected?'sendReady':'')}
-          onClick={busy?(windowsDesktop?stopGeneration:undefined):prompt.trim()?send:undefined}
-          disabled={busy?!windowsDesktop:(!selected&&!!prompt.trim())}
+        {(busy||prompt.trim()||(windowsDesktop&&attachments.length>0))&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||windowsDesktop&&attachments.length>0)&&selected?'sendReady':'')}
+          onClick={busy?(windowsDesktop?stopGeneration:undefined):send}
+          disabled={busy?!windowsDesktop:!selected}
           aria-label={busy?(windowsDesktop?'Stop generating':'Generating response'):'Send message'}
           title={busy?(windowsDesktop?'Stop generating':'Generating response'):'Send'}>
           {busy?(windowsDesktop?<Square size={15}/>:<RefreshCw className="spin" size={17}/>):<ArrowUp size={18}/>} 
@@ -1215,7 +1219,7 @@ function Composer(props){
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':'Attach project files'}</button>
+      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':windowsDesktop?'Attach project files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
@@ -1301,7 +1305,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
       <MenuRow icon={Camera} label="Camera" onClick={()=>cameraRef.current?.click()}/>
       <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
-    </>:<MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>} 
+    </>:<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
@@ -1559,8 +1563,8 @@ function FilePane({file,onClose}){
     <div className="filePreview">
       {file?.kind==='image'&&<img src={file.url} alt={file.name}/>}
       {file?.kind==='text'&&<pre>{file.content}</pre>}
-      {file?.kind==='archive'&&<div className="paneEmpty"><Archive size={38}/><b>Archive previews aren't supported yet</b><span>The file is attached to this chat.</span></div>}
-      {file?.kind==='binary'&&<div className="paneEmpty"><File size={38}/><b>Preview unavailable</b><span>The file is attached to this chat.</span></div>}
+      {file?.kind==='archive'&&<div className="paneEmpty"><Archive size={38}/><b>Archive previews aren't supported yet</b><span>{isWindowsDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
+      {file?.kind==='binary'&&<div className="paneEmpty"><File size={38}/><b>Preview unavailable</b><span>{isWindowsDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
     </div>
   </aside>
 }
