@@ -482,6 +482,10 @@ function App(){
       </header>
 
       {page==='chat'&&<section className="chatStage">
+        {isNative&&<MobileConversationPicker
+          connected={connected} selected={selected} choose={model=>{setSelected(model);setModelMenu(false)}}
+          open={modelMenu} setOpen={setModelMenu} effort={effort} setEffort={setEffort}
+        />}
         {messages.length===0
           ? <div className={'emptyChat '+(mode==='work'?'workEmpty':'')}>
               <h1>{heading}</h1>
@@ -721,13 +725,13 @@ function Composer(props){
       </div>
 
       <div className="composerRight">
-        <div className="menuAnchor">
+        {!isNative&&<div className="menuAnchor">
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} onClick={()=>setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
-        </div>
-        {Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1&&<div className="menuAnchor">
+        </div>}
+        {!isNative&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
@@ -743,6 +747,36 @@ function Composer(props){
       <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
+    </div>}
+  </div>
+}
+
+function MobileConversationPicker({connected,selected,choose,open,setOpen,effort,setEffort}){
+  const levels=Array.isArray(selected?.effortLevels)&&selected.effortLevels.length?selected.effortLevels:[];
+  const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High','pro-standard':'Pro Standard','pro-extended':'Pro Extended'};
+  const currentEffort=labels[effort]||effort||'Instant';
+  return <div className="mobileConversationPicker menuAnchor">
+    <button className="mobileModelTrigger" aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>
+      <span className={'providerBadge small '+(selected?.source==='api'?'api':selected?.id||'')}>{selected?modelLabel(selected).slice(0,1):'+'}</span>
+      <span className="mobileModelTriggerText"><b>{selected?modelLabel(selected):'Select model'}</b>{levels.length>1&&<small>{currentEffort}</small>}</span>
+      <ChevronDown size={14}/>
+    </button>
+    {open&&<div className="mobileTopModelPanel" role="dialog" aria-label="Model and intelligence">
+      <div className="mobilePickerSectionTitle">Models</div>
+      <div className="mobileModelList">
+        {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Connect your desktop or add an API model first.</span></div>:connected.map(model=><button key={(model.source||'browser')+model.id} className={(selected?.id===model.id&&selected?.source===model.source)?'active':''} onClick={()=>choose(model)}>
+          <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
+          <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Desktop · '+model.name}</small></span>
+          {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
+        </button>)}
+      </div>
+      {levels.length>1&&<div className="mobileIntelligenceSection">
+        <div className="mobilePickerSectionTitle">Intelligence</div>
+        {levels.map(level=><button key={level} className={effort===level?'active':''} onClick={()=>{setEffort(level);setOpen(false)}}>
+          <span><b>{labels[level]||level}</b><small>{level==='instant'?'Fast everyday responses':'More reasoning for complex requests'}</small></span>
+          {effort===level&&<Check size={16}/>}
+        </button>)}
+      </div>}
     </div>}
   </div>
 }
@@ -1130,7 +1164,7 @@ function SettingsView(props){
   const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
-  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
+  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
@@ -1167,19 +1201,25 @@ function SettingsView(props){
 
 function Toggle({value,onChange}){return <button role="switch" aria-checked={value} className={'toggle '+(value?'on':'')} onClick={()=>onChange(!value)}><span/></button>}
 function GeneralSettings({prefs,setPrefs}){
+  if(isNative)return <div className="settingsPane">
+    <h3>General</h3>
+    <div className="settingBlock">
+      <SettingRow title="App language" desc="Free AI currently follows the Android system language." control={<span className="valuePill">{navigator.language||'System'}</span>}/>
+      <SettingRow title="Auto-correct spelling" desc="Allow Android keyboard spelling and correction in the message composer." control={<Toggle value={prefs.spellCheckEnabled!==false} onChange={v=>setPrefs({...prefs,spellCheckEnabled:v})}/>}/>
+      <SettingRow title="Haptic feedback" desc="Use subtle vibration feedback for send and dictation controls." control={<Toggle value={prefs.hapticsEnabled!==false} onChange={v=>setPrefs({...prefs,hapticsEnabled:v})}/>}/>
+    </div>
+  </div>;
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      {!isNative&&<>
-        <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
-        <SettingRow title="Auto-review" desc="Makes “Approve for me” available. Simple pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
-        <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
-      </>}
+      <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
+      <SettingRow title="Auto-review" desc="Makes “Approve for me” available. Simple pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
+      <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
     </div>
-    {!isNative&&<><h3>General</h3>
+    <h3>General</h3>
     <div className="settingBlock">
       <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
-    </div></>}
+    </div>
   </div>
 }
 function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
