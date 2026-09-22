@@ -779,7 +779,9 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
 function activateBrowserTab(id){
   const view=browserTabs.get(id);
   if(!view)return false;
+  const previousId=activeBrowserTabId;
   const previous=activeBrowserEntry();
+  if(previousId&&previousId!==id)cancelBrowserPermissionsForTab(previousId);
   if(previous&&previous!==view&&browserAttached){
     try{win?.contentView.removeChildView(previous)}catch{}
     browserAttached=false;
@@ -844,6 +846,7 @@ function closeBrowserTab(id){
 
 function hideBrowserView(){
   const view=activeBrowserEntry();
+  if(activeBrowserTabId)cancelBrowserPermissionsForTab(activeBrowserTabId);
   if(view&&browserAttached){
     try{win?.contentView.removeChildView(view)}catch{}
   }
@@ -1521,6 +1524,11 @@ ipcMain.handle('browser:showDownload',(_e,id)=>{
   return {ok:true};
 });
 ipcMain.handle('browser:resolvePermission',(_e,{id,allow}={})=>resolveBrowserPermission(id,!!allow));
+ipcMain.handle('browser:dismissError',()=>{
+  if(activeBrowserTabId)browserErrors.delete(activeBrowserTabId);
+  emitBrowserState();
+  return browserSnapshot();
+});
 ipcMain.handle('browser:openExternalProtocol',async(_e,url)=>{
   if(process.platform!=='win32')return {ok:false,error:'External protocol handling is currently available on Windows.'};
   const activeError=activeBrowserTabId?browserErrors.get(activeBrowserTabId):null;
