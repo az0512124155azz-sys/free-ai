@@ -48,22 +48,30 @@ const settingsSections=[
 
 const PUBLIC_PLUGIN_DIRECTORY_URL='https://chatgpt.com/plugins?show_chat_button=true';
 const publicPluginDirectory=[
-  {id:'gmail',name:'Gmail',category:'Featured',description:'Read and manage Gmail'},
-  {id:'github',name:'GitHub',category:'Featured',description:'Triage PRs, issues, CI, and publish flows'},
-  {id:'google-drive',name:'Google Drive',category:'Featured',description:'Work across Drive, Docs, Sheets, and Slides'},
-  {id:'google-calendar',name:'Google Calendar',category:'Featured',description:'Manage Google Calendar events'},
-  {id:'notion',name:'Notion',category:'Featured',description:'Notion workflows for specs, research, meetings, and knowledge capture'},
-  {id:'slack',name:'Slack',category:'Featured',description:'Read and manage Slack'},
-  {id:'granola',name:'Granola',category:'Productivity',description:'Add your meeting context'},
-  {id:'fireflies',name:'Fireflies',category:'Productivity',description:'Search meeting transcripts'},
+  {id:'gmail',name:'Gmail',category:'Popular',description:'Work with Gmail messages'},
+  {id:'google-drive',name:'Google Drive',category:'Popular',description:'Work across Drive, Docs, Sheets, and Slides'},
+  {id:'github',name:'GitHub',category:'Popular',description:'Work with PRs, issues, CI, and publishing'},
+  {id:'outlook-email',name:'Outlook Email',category:'Popular',description:'Work with Outlook inboxes'},
+  {id:'health',name:'Health',category:'Popular',description:'Explore supported health data'},
+  {id:'remote-desktop-commander',name:'Remote Desktop Commander',category:'Popular',description:'Remote build and automation workflows'},
+  {id:'chatgpt-ads-manager',name:'ChatGPT Ads Manager',category:'New & Noteworthy',description:'Manage ads and performance'},
+  {id:'stack-overflow-for-agents',name:'Stack Overflow For Agents',category:'New & Noteworthy',description:'Agent-focused knowledge exchange'},
+  {id:'data',name:'Data',category:'New & Noteworthy',description:'Answer questions using connected data'},
+  {id:'tableau',name:'Tableau',category:'New & Noteworthy',description:'Explore and understand analytics'},
+  {id:'microsoft-power-bi',name:'Microsoft Power BI',category:'New & Noteworthy',description:'Explore and author browser analytics'},
+  {id:'aws-data-analytics',name:'AWS Data Analytics',category:'New & Noteworthy',description:'Work with AWS analytics capabilities'},
+  {id:'notion',name:'Notion',category:'Productivity',description:'Work with Notion docs and workflows'},
+  {id:'google-calendar',name:'Google Calendar',category:'Productivity',description:'Manage Google Calendar events'},
   {id:'outlook-calendar',name:'Outlook Calendar',category:'Productivity',description:'Manage Outlook schedules'},
-  {id:'otter',name:'Otter.ai',category:'Productivity',description:'Search meetings from Otter.ai'},
-  {id:'atlassian-rovo',name:'Atlassian Rovo',category:'Productivity',description:'Manage Jira and Confluence'},
-  {id:'canva',name:'Canva',category:'Creativity',description:'Create, review, edit designs'},
-  {id:'figma',name:'Figma',category:'Creativity',description:'Figma design-to-code workflows'},
-  {id:'heygen',name:'HeyGen',category:'Creativity',description:'Create AI videos'},
-  {id:'datadog-preview',name:'Datadog (Preview)',category:'New & Noteworthy',description:'Search and act on your data'},
-  {id:'bigquery',name:'BigQuery',category:'New & Noteworthy',description:'Work with BigQuery data'}
+  {id:'monday',name:'monday.com',category:'Productivity',description:'Manage projects, tasks, and CRM'},
+  {id:'metricool',name:'Metricool',category:'Productivity',description:'Analyze and schedule social posts'},
+  {id:'fathom',name:'Fathom',category:'Productivity',description:'Work with meeting insights'},
+  {id:'canva',name:'Canva',category:'Creativity',description:'Create, review, and edit designs'},
+  {id:'higgsfield',name:'Higgsfield',category:'Creativity',description:'Create images and videos with AI models'},
+  {id:'runway',name:'Runway',category:'Creativity',description:'Generate creative media with AI models'},
+  {id:'figma',name:'Figma',category:'Creativity',description:'Create designs and ship them to code'},
+  {id:'invideo',name:'invideo',category:'Creativity',description:'Create videos with AI'},
+  {id:'openart',name:'OpenArt',category:'Creativity',description:'Create images and videos'}
 ];
 
 function directMcpCapabilitySummary(connection){
@@ -1792,7 +1800,7 @@ function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,on
       {direct&&<>
         <div className="pluginDetailsStatusRow">
           <span className={'connectionStatus '+(direct.connected?'good':'')}>{direct.connected?'Connected':'Saved'}</span>
-          <span>MCP {direct.protocolVersion||'2025-11-25'}</span>
+          <span>{direct.protocolVersion?('MCP '+direct.protocolVersion):'Unknown protocol version'}</span>
           <span>{direct.hasToken?'Bearer token stored securely':'No stored token'}</span>
         </div>
         <div className="pluginDetailsBlock"><b>Endpoint</b><code>{direct.url}</code></div>
