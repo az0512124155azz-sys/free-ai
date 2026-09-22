@@ -417,6 +417,18 @@ function App(){
     }
   },[appPrefs.autoReviewEnabled,appPrefs.fullAccessEnabled]);
 
+  useEffect(()=>{
+    if(!isDesktop)return;
+    const tick=()=>{
+      const now=Date.now();
+      const due=scheduledTasks.find(task=>task.enabled&&!task.running&&Number(task.nextRun)<=now);
+      if(due)runScheduledTask(due,false);
+    };
+    const timer=setInterval(tick,30000);
+    tick();
+    return()=>clearInterval(timer);
+  },[scheduledTasks,connected]);
+
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
     let active=chats.filter(chat=>!currentProjectId||chat.projectId===currentProjectId);
@@ -586,6 +598,58 @@ function App(){
     const next=[...messages,{role:'user',text},{role:'assistant',text:result?.text||String(result||''),provider:selected.id}];
     setMessages(next);saveCurrentChat(next,selected);
     return result;
+  }
+
+  function persistScheduled(next){setScheduledTasks(next);localStorage.setItem('freeai.scheduled',JSON.stringify(next))}
+  function createScheduledTask(input){
+    const when=new Date(input.when).getTime();
+    if(!input.title?.trim()||!input.prompt?.trim()||!Number.isFinite(when))throw new Error('Title, task and schedule are required.');
+    const task={
+      id:crypto.randomUUID(),title:input.title.trim(),prompt:input.prompt.trim(),
+      providerId:input.providerId||selected?.id||'',source:input.source||selected?.source||'browser',
+      modelName:input.modelName||modelLabel(selected),frequency:input.frequency||'once',
+      nextRun:when,enabled:true,createdAt:Date.now(),running:false,lastRun:null,lastResult:'',lastError:''
+    };
+    persistScheduled([task,...scheduledTasks]);
+  }
+  function scheduleNext(task,from=Date.now()){
+    if(task.frequency==='daily')return from+24*60*60*1000;
+    if(task.frequency==='weekly')return from+7*24*60*60*1000;
+    return null;
+  }
+  async function runScheduledTask(task,manual=false){
+    if(!isDesktop)return;
+    const provider=connected.find(p=>p.id===task.providerId&&p.source===task.source);
+    if(!provider){
+      persistScheduled(scheduledTasks.map(t=>t.id===task.id?{...t,running:false,lastError:'The selected model is not connected.',lastRun:Date.now(),enabled:manual?t.enabled:t.frequency!=='once',nextRun:manual?t.nextRun:scheduleNext(t)}:t));
+      return;
+    }
+    persistScheduled(scheduledTasks.map(t=>t.id===task.id?{...t,running:true,lastError:''}:t));
+    try{
+      const result=await window.desktopApi.sendPrompt({
+        provider:provider.id,source:provider.source||'browser',text:task.prompt,effort:'instant',
+        mode:'work',product:'free',approvalMode:'ask',toolRequest:null
+      });
+      const now=Date.now();
+      const nextRun=manual?task.nextRun:scheduleNext(task,now);
+      setScheduledTasks(prev=>{
+        const next=prev.map(t=>t.id===task.id?{...t,running:false,lastRun:now,lastResult:result?.text||String(result||''),lastError:'',enabled:manual?t.enabled:!!nextRun,nextRun:nextRun||t.nextRun}:t);
+        localStorage.setItem('freeai.scheduled',JSON.stringify(next));return next;
+      });
+      if(typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification('Free AI task complete',{body:task.title});
+    }catch(e){
+      const now=Date.now(),nextRun=manual?task.nextRun:scheduleNext(task,now);
+      setScheduledTasks(prev=>{
+        const next=prev.map(t=>t.id===task.id?{...t,running:false,lastRun:now,lastError:e?.message||String(e),enabled:manual?t.enabled:!!nextRun,nextRun:nextRun||t.nextRun}:t);
+        localStorage.setItem('freeai.scheduled',JSON.stringify(next));return next;
+      });
+    }
+  }
+  function toggleScheduledTask(id){
+    setScheduledTasks(prev=>{const next=prev.map(t=>t.id===id?{...t,enabled:!t.enabled}:t);localStorage.setItem('freeai.scheduled',JSON.stringify(next));return next});
+  }
+  function deleteScheduledTask(id){
+    setScheduledTasks(prev=>{const next=prev.filter(t=>t.id!==id);localStorage.setItem('freeai.scheduled',JSON.stringify(next));return next});
   }
 
   async function saveSettings(){
@@ -884,6 +948,8 @@ function App(){
         <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
       </section>}
 
+      {page==='images'&&<ImagesPage assets={imageAssets} onBack={()=>setPage('chat')} onUpload={()=>photoRef.current?.click()} onCreate={()=>{setCurrentProjectId(null);newChat();setPrompt('Create an image of ')}} onOpen={asset=>{setSelectedFile({name:asset.name,type:asset.type,size:asset.size,kind:'image',url:asset.dataUrl});setSidePanel('file')}} onDelete={deleteImageAssetFromLibrary}/>}
+      {page==='scheduled'&&<ScheduledPage tasks={scheduledTasks} connected={connected} onBack={()=>setPage('chat')} onCreate={createScheduledTask} onRun={task=>runScheduledTask(task,true)} onToggle={toggleScheduledTask} onDelete={deleteScheduledTask}/>}
       {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')} onRefresh={()=>window.desktopApi?.scanProviders?.().catch(()=>{})}/>}
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
