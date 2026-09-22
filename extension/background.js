@@ -207,7 +207,7 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
   if(m?.type==='freeai:getStatus'){
     sendResponse({
       bridgeConnected:!!(ws&&ws.readyState===WebSocket.OPEN),
-      providers:lastProviders.map(p=>({id:p.id,name:p.name,title:p.title,tabId:p.tabId})),
+      providers:lastProviders.map(p=>({id:p.id,providerId:p.providerId,name:p.name,modelName:p.modelName,title:p.title,tabId:p.tabId,favIconUrl:p.favIconUrl})),
       providerCount:lastProviders.length
     });
     return;
@@ -287,7 +287,10 @@ function stopHeartbeat(){
 function startHeartbeat(){
   stopHeartbeat();
   heartbeatTimer=setInterval(()=>{
-    if(ws&&ws.readyState===WebSocket.OPEN)safeSend({type:'keepalive',at:Date.now()});
+    if(ws&&ws.readyState===WebSocket.OPEN){
+      safeSend({type:'keepalive',at:Date.now()});
+      scanProviders().catch(()=>{});
+    }
   },HEARTBEAT_MS);
 }
 
