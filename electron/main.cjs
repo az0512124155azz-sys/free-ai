@@ -5,7 +5,7 @@ const fs=require('fs');
 const crypto=require('crypto');
 const {execFile}=require('child_process');
 const {WebSocketServer,WebSocket}=require('ws');
-const {runOwnedResearch,exportResearchReport}=require('./research.cjs');
+const {runOwnedResearch,exportResearchReport,apiTransportUrl}=require('./research.cjs');
 
 let win;
 let extensionSocket=null;
@@ -2148,8 +2148,7 @@ function cancelPrompt(id){
 }
 
 async function openAICompatibleChat(cfg,msg,onStream){
-  const base=String(cfg.baseUrl||'').trim().replace(/\/$/,'');
-  if(!/^https?:\/\//i.test(base)) throw new Error('API endpoint must start with http:// or https://');
+  const base=apiTransportUrl(cfg.baseUrl,cfg.apiKey);
   if(!cfg.model) throw new Error('API model is required.');
   const endpoint=base.endsWith('/chat/completions')?base:base+'/chat/completions';
   const headers={'Content-Type':'application/json'};
@@ -3942,7 +3941,7 @@ ipcMain.handle('api:addConnection',(_e,input)=>{
     apiKey:String(input?.apiKey||'').trim()
   };
   if(!connection.baseUrl||!connection.model) throw new Error('Base URL and model are required.');
-  if(!/^https?:\/\//i.test(connection.baseUrl)) throw new Error('Base URL must start with http:// or https://');
+  connection.baseUrl=apiTransportUrl(connection.baseUrl,connection.apiKey);
   if(connection.apiKey&&!safeStorage.isEncryptionAvailable()){
     throw new Error('Secure credential storage is unavailable. Free AI will not send or save this API key in plaintext.');
   }
