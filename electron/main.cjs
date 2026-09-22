@@ -3658,12 +3658,28 @@ async function startWorkTask(input={}){
   return publicWorkTask(task);
 }
 
+function windowsInitialWindowBounds(){
+  if(process.platform!=='win32'){
+    return {width:1380,height:880,minWidth:980,minHeight:650};
+  }
+  const workArea=screen.getPrimaryDisplay()?.workArea;
+  const usableWidth=Math.max(480,Math.floor(Number(workArea?.width)||1380)-40);
+  const usableHeight=Math.max(360,Math.floor(Number(workArea?.height)||880)-40);
+  const width=Math.min(1380,usableWidth);
+  const height=Math.min(880,usableHeight);
+  const x=Math.round((Number(workArea?.x)||0)+Math.max(0,((Number(workArea?.width)||width)-width)/2));
+  const y=Math.round((Number(workArea?.y)||0)+Math.max(0,((Number(workArea?.height)||height)-height)/2));
+  return {
+    x,y,width,height,
+    minWidth:Math.min(640,width),
+    minHeight:Math.min(480,height)
+  };
+}
+
 function createWindow(){
+  const initialWindowBounds=windowsInitialWindowBounds();
   win=new BrowserWindow({
-    width:1380,
-    height:880,
-    minWidth:980,
-    minHeight:650,
+    ...initialWindowBounds,
     backgroundColor:'#181818',
     show:false,
     autoHideMenuBar:false,
