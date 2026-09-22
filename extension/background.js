@@ -2,6 +2,7 @@ let ws=null;
 let reconnectTimer=null;
 let scanTimer=null;
 let browserStateTimer=null;
+let lastProviders=[];
 
 const PROVIDERS={
   chatgpt:{name:'ChatGPT',matches:['https://chatgpt.com/*']},
@@ -94,6 +95,7 @@ async function scanProviders(){
     });
   }
 
+  lastProviders=connected;
   safeSend({type:'providers',providers:connected});
   return connected;
 }
@@ -194,9 +196,27 @@ async function handleBrowserRequest(message){
   throw new Error('Unsupported Browser Use command: '+command);
 }
 
-chrome.runtime.onMessage.addListener(m=>{
+chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
   if(m?.type==='freeai:stream'&&m.id){
     safeSend({type:'stream',id:m.id,text:String(m.text||'')});
+    return;
+  }
+  if(m?.type==='freeai:getStatus'){
+    sendResponse({
+      bridgeConnected:!!(ws&&ws.readyState===WebSocket.OPEN),
+      providers:lastProviders.map(p=>({id:p.id,name:p.name,title:p.title,tabId:p.tabId})),
+      providerCount:lastProviders.length
+    });
+    return;
+  }
+  if(m?.type==='freeai:reconnect'){
+    connect();
+    setTimeout(()=>sendResponse({ok:true}),120);
+    return true;
+  }
+  if(m?.type==='freeai:rescan'){
+    scanProviders().then(providers=>sendResponse({ok:true,providerCount:providers.length})).catch(err=>sendResponse({ok:false,error:err?.message||String(err)}));
+    return true;
   }
 });
 
