@@ -3658,10 +3658,19 @@ async function startWorkTask(input={}){
   return publicWorkTask(task);
 }
 
+function initialWindowSize(){
+  if(process.platform!=='win32')return {width:1380,height:880};
+  const workArea=screen.getPrimaryDisplay()?.workAreaSize||{width:1380,height:880};
+  const width=Math.max(500,Math.min(1380,Math.floor((Number(workArea.width)||1380)*.92)));
+  const height=Math.max(420,Math.min(880,Math.floor((Number(workArea.height)||880)*.92)));
+  return {width,height};
+}
+
 function createWindow(){
+  const initialSize=initialWindowSize();
   win=new BrowserWindow({
-    width:1380,
-    height:880,
+    width:initialSize.width,
+    height:initialSize.height,
     minWidth:process.platform==='win32'?500:980,
     minHeight:process.platform==='win32'?420:650,
     backgroundColor:'#181818',
