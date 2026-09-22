@@ -630,7 +630,7 @@ function Composer(props){
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
-          <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
+          <button className={'accessButton mode-'+approvalMode} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
             <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual'}<ChevronDown size={12}/>
           </button>
           {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
