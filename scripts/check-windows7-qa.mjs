@@ -74,6 +74,7 @@ has(main,"request.reject(new Error('Browser extension disconnected during genera
 has(main,"for(const [id,request] of pending)",'Extension disconnect must drain pending browser prompts.');
 has(source,"if(!fresh||fresh.connected===false){setSelected(null);setSelectedTool(null);setParallelCount(1)}",'Renderer must clear a selected provider after disconnect or adapter failure.');
 
+// Windows 7.6 provider-adapter contract coverage.
 has(contentScript,'function providerAdapterHealth(provider)','Provider DOM health detection is missing.');
 has(contentScript,"adapterReady:false",'Provider capability scan must expose an unavailable adapter state.');
 has(contentScript,"adapterReady:true",'Provider capability scan must expose a healthy adapter state.');
