@@ -528,7 +528,21 @@ function App(){
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
 
-    {sidePanel==='browser'&&<BrowserPane siteToolsEnabled={appPrefs.siteToolsEnabled!==false} onClose={()=>setSidePanel(null)}/>}
+    {sidePanel==='browser'&&<BrowserPane
+      siteToolsEnabled={appPrefs.siteToolsEnabled!==false}
+      onAnnotate={(annotation,note)=>{
+        const block=[
+          '[Browser annotation]',
+          'URL: '+(annotation?.url||''),
+          'Element: '+(annotation?.selector||annotation?.tag||''),
+          annotation?.ariaLabel?'Label: '+annotation.ariaLabel:'',
+          annotation?.text?'Visible text: '+annotation.text:'',
+          note?.trim()?'Comment: '+note.trim():''
+        ].filter(Boolean).join('\n');
+        setPrompt(current=>(current?current+'\n\n':'')+block);
+      }}
+      onClose={()=>setSidePanel(null)}
+    />}
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='computer'&&<ComputerPane
       screens={screens} setScreens={setScreens} approvalMode={appPrefs.approvalMode||'ask'}
@@ -861,13 +875,16 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
   return <div className="placeholderPage"><Icon size={38}/><h1>{title}</h1><p>{subtitle}</p></div>
 }
 
-function BrowserPane({siteToolsEnabled=true,onClose}){
+function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
   const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[]});
   const [siteToolsOpen,setSiteToolsOpen]=useState(false);
   const [selectedSiteTool,setSelectedSiteTool]=useState(null);
   const [siteToolInput,setSiteToolInput]=useState('{}');
   const [siteToolStatus,setSiteToolStatus]=useState('');
+  const [annotating,setAnnotating]=useState(false);
+  const [annotation,setAnnotation]=useState(null);
+  const [annotationNote,setAnnotationNote]=useState('');
   const surfaceRef=useRef(null);
 
   useEffect(()=>{
@@ -876,7 +893,7 @@ function BrowserPane({siteToolsEnabled=true,onClose}){
       setState(next);
       if(next.url)setUrl(next.url);
     });
-    return()=>{off?.();window.desktopApi.browserClose?.().catch(()=>{})};
+    return()=>{off?.();window.desktopApi.browserCancelAnnotation?.().catch(()=>{});window.desktopApi.browserClose?.().catch(()=>{})};
   },[]);
 
   useEffect(()=>{
@@ -898,12 +915,37 @@ function BrowserPane({siteToolsEnabled=true,onClose}){
   },[]);
 
   function navigate(){window.desktopApi?.browserNavigate(url).catch(()=>{})}
-  function chooseTab(id){window.desktopApi?.browserSelectTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
+  function chooseTab(id){
+    window.desktopApi?.browserCancelAnnotation?.().catch(()=>{});
+    setAnnotating(false);setAnnotation(null);setAnnotationNote('');
+    window.desktopApi?.browserSelectTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})
+  }
   function closeTab(e,id){e.stopPropagation();window.desktopApi?.browserCloseTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
   function newTab(){
     setSiteToolsOpen(false);setSelectedSiteTool(null);setSiteToolStatus('');
     window.desktopApi?.browserNewTab('https://www.google.com/').then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})
   }
+  async function startAnnotation(){
+    setSiteToolsOpen(false);setAnnotation(null);setAnnotationNote('');setAnnotating(true);
+    try{
+      const result=await window.desktopApi?.browserStartAnnotation?.();
+      setAnnotating(false);
+      if(result)setAnnotation(result);
+    }catch(e){
+      setAnnotating(false);
+      setSiteToolStatus(e?.message||'Could not start annotation mode.');
+    }
+  }
+  async function cancelAnnotation(){
+    await window.desktopApi?.browserCancelAnnotation?.().catch(()=>{});
+    setAnnotating(false);setAnnotation(null);setAnnotationNote('');
+  }
+  function attachAnnotation(){
+    if(!annotation)return;
+    onAnnotate?.(annotation,annotationNote);
+    setAnnotation(null);setAnnotationNote('');
+  }
+
   async function refreshSiteTools(){
     setSiteToolStatus('Scanning this page…');
     try{
@@ -953,6 +995,7 @@ function BrowserPane({siteToolsEnabled=true,onClose}){
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
       {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
       {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
+      <button className={annotating?'active':''} onClick={annotating?cancelAnnotation:startAnnotation} title={annotating?'Cancel annotation':'Annotate page'}><PenLine size={15}/></button>
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
 
@@ -979,7 +1022,13 @@ function BrowserPane({siteToolsEnabled=true,onClose}){
       {siteToolsEnabled&&!siteTools.length&&siteToolStatus&&<pre className="siteToolStatus empty">{siteToolStatus}</pre>}
     </div>}
 
-    <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
+    {annotating&&<div className="annotationGuide"><PenLine size={15}/><span>Move over the page and select an element. Press Esc to cancel.</span><button onClick={cancelAnnotation}>Cancel</button></div>}
+    {annotation&&<div className="annotationPanel">
+      <div className="annotationElement"><b>{annotation.ariaLabel||annotation.tag||'Selected element'}</b><small>{annotation.selector}</small>{annotation.text&&<span>{annotation.text}</span>}</div>
+      <textarea value={annotationNote} onChange={e=>setAnnotationNote(e.target.value)} placeholder="Add a specific comment about this element…"/>
+      <div className="annotationActions"><button onClick={cancelAnnotation}>Discard</button><button className="primaryAnnotation" onClick={attachAnnotation}>Add to chat</button></div>
+    </div>}
+        <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
   </aside>
 }
 
