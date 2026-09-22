@@ -625,10 +625,22 @@ function Composer(props){
         return;
       }
       try{
-        textareaRef.current?.focus();
-        await new Promise(r=>setTimeout(r,60));
-        await window.desktopApi.startSystemDictation();
-      }catch(e){setDictationError(e?.message||'Windows voice typing could not start.')}
+        setListening(true);
+        const result=await window.desktopApi.recognizeSystemDictation?.();
+        if(result?.ok&&result.text){
+          setPrompt((dictationBase.current?dictationBase.current+' ':'')+result.text.trim());
+        }else if(result?.fallback){
+          textareaRef.current?.focus();
+          await new Promise(r=>setTimeout(r,60));
+          await window.desktopApi.startSystemDictation();
+        }else if(result?.error){
+          throw new Error(result.error);
+        }
+      }catch(e){
+        setDictationError(e?.message||'Windows dictation could not start.');
+      }finally{
+        setListening(false);
+      }
       return;
     }
 
@@ -832,7 +844,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
       <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
     </>:<MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>} 
-    {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
+    {!isNative&&mode==='work'&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside Work or Super AI in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
@@ -1230,7 +1242,7 @@ function AppearanceSettings({prefs,setPrefs}){
       <SettingRow title="Appearance" desc="Follow the system or choose a fixed theme." control={<select value={prefs.appearance||'dark'} onChange={e=>setPrefs({...prefs,appearance:e.target.value})}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>}/>
       {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>}
       <SettingRow title="Accent color" desc="Used for active controls, message highlights and voice actions." control={<select value={prefs.accent||'blue'} onChange={e=>setPrefs({...prefs,accent:e.target.value})}><option value="blue">Blue</option><option value="green">Green</option><option value="yellow">Yellow</option><option value="pink">Pink</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="neutral">Neutral</option></select>}/>
-      {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Text size" desc="Zoom the entire Free AI interface." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>} 
+      {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Text size" desc="Zoom the entire Free AI interface." control={<div className="zoomControl"><button aria-label="Zoom out" onClick={()=>setPrefs({...prefs,textSize:Math.max(80,(Number(prefs.textSize)||100)-10)})}>−</button><span>{Number(prefs.textSize)||100}%</span><button aria-label="Zoom in" onClick={()=>setPrefs({...prefs,textSize:Math.min(150,(Number(prefs.textSize)||100)+10)})}>+</button><button className="resetZoom" onClick={()=>setPrefs({...prefs,textSize:100})}>Reset</button></div>}/>} 
     </div>
   </div>
 }
