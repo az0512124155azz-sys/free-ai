@@ -1975,6 +1975,11 @@ function stopWorkTask(taskId){
   task.status='stopped';
   task.approval=null;
   task.detail='Task stopped';
+  if(Array.isArray(task.agents)){
+    for(const agent of task.agents){
+      if(agent.status==='running'||agent.status==='idle')agent.status='stopped';
+    }
+  }
   addWorkProgress(task,'Stopped by user');
   emitWorkTask(task);
   return true;
@@ -2036,6 +2041,24 @@ function connectedTaskModel(provider,source){
 
 function taskModelName(model){
   return String(model?.modelName||model?.name||model?.model||model?.id||'Agent');
+}
+
+function normalizeSuperTeam(input,primary){
+  const out=[];
+  const seen=new Set([String(primary?.source||'browser')+'::'+String(primary?.id||'')]);
+  for(const raw of Array.isArray(input)?input:[]){
+    const source=String(raw?.source||'browser');
+    const id=String(raw?.id||'');
+    if(!id)continue;
+    const key=source+'::'+id;
+    if(seen.has(key))continue;
+    const model=connectedTaskModel(id,source);
+    if(!model)continue;
+    seen.add(key);
+    out.push(model);
+    if(out.length>=3)break;
+  }
+  return out;
 }
 
 function updateTaskAgent(task,id,patch){
@@ -2531,6 +2554,7 @@ async function runWorkTask(task){
     emitWorkTask(task);
   }finally{
     task.currentPromptId=null;
+    if(task.currentPromptIds instanceof Set)task.currentPromptIds.clear();
     task.initialAttachments=[];
   }
 }
@@ -2547,22 +2571,39 @@ async function startWorkTask(input={}){
     throw new Error('The selected API model is not currently connected.');
   }
   const id=String(input.id||crypto.randomUUID());
-  const workspace=String(input.product||'free')==='super'&&input.workspace?.root
+  const product=String(input.product||'free');
+  const primary=connectedTaskModel(provider,source);
+  if(!primary)throw new Error('The selected controller model is not currently connected.');
+  const workspace=product==='super'&&input.workspace?.root
     ? await repositorySummary(input.workspace.root)
     : null;
+  const team=product==='super'?normalizeSuperTeam(input.team,primary):[];
+  const agents=[
+    {id:'controller:'+source+':'+provider,name:taskModelName(primary),role:'Controller',status:'idle',detail:'Ready'},
+    ...team.map(model=>({
+      id:'specialist:'+model.source+':'+model.id,
+      name:taskModelName(model),
+      role:'Specialist',
+      status:'idle',
+      detail:'Ready'
+    }))
+  ];
   const task={
     id,
     provider,
     source,
-    product:String(input.product||'free'),
+    product,
     userText:String(input.text||'').trim(),
     effort:String(input.effort||'default'),
     approvalMode:normalizeWorkApprovalMode(input.approvalMode),
     status:'running',
     step:0,
-    maxSteps:18,
-    detail:'Starting Work task…',
+    maxSteps:product==='super'?24:18,
+    detail:product==='super'?'Starting Super AI task…':'Starting Work task…',
     progress:[],
+    agents,
+    team,
+    specialistNotes:[],
     trace:[],
     approvedScopes:new Set(),
     approval:null,
@@ -2583,7 +2624,7 @@ async function startWorkTask(input={}){
   };
   if(!task.userText&&!task.initialAttachments.length)throw new Error('Describe the Work task first.');
   workTasks.set(id,task);
-  addWorkProgress(task,'Task started');
+  addWorkProgress(task,product==='super'?'Super AI task started':'Task started');
   emitWorkTask(task);
   queueMicrotask(()=>runWorkTask(task));
   return publicWorkTask(task);
