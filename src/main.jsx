@@ -219,6 +219,10 @@ function App(){
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
+  const [mcpConnections,setMcpConnections]=useState([]);
+  const [selectedMcpIds,setSelectedMcpIds]=useState([]);
+  const [mcpDraft,setMcpDraft]=useState({name:'',url:'',token:''});
+  const [mcpError,setMcpError]=useState('');
   const fileRef=useRef(null);
   const photoRef=useRef(null);
   const cameraRef=useRef(null);
@@ -254,6 +258,7 @@ function App(){
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
+    window.desktopApi.listMcpConnections?.().then(items=>active&&setMcpConnections(Array.isArray(items)?items:[])).catch(()=>{});
     return()=>{active=false;offStatus?.();offWork?.();offCommand?.()};
   },[]);
 
@@ -797,6 +802,41 @@ function App(){
     catch(e){setApiError(e?.message||String(e))}
   }
   async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
+  async function addMcpConnection(){
+    if(!isWindowsDesktop)return;
+    setMcpError('');
+    try{
+      const added=await window.desktopApi.addMcpConnection(mcpDraft);
+      setMcpConnections(current=>[...current.filter(item=>item.id!==added.id),added]);
+      setMcpDraft({name:'',url:'',token:''});
+    }catch(error){setMcpError(error?.message||String(error))}
+  }
+  async function removeMcpConnection(id){
+    if(!isWindowsDesktop)return;
+    setMcpError('');
+    try{
+      const items=await window.desktopApi.removeMcpConnection(id);
+      setMcpConnections(Array.isArray(items)?items:[]);
+      setSelectedMcpIds(current=>current.filter(value=>value!==id));
+    }catch(error){setMcpError(error?.message||String(error))}
+  }
+  async function refreshMcpConnections(){
+    if(!isWindowsDesktop)return;
+    setMcpError('');
+    try{
+      const items=await window.desktopApi.refreshAllMcpConnections();
+      setMcpConnections(Array.isArray(items)?items:[]);
+    }catch(error){setMcpError(error?.message||String(error))}
+  }
+  function toggleMcpConnection(id){
+    if(workBusy)return;
+    setSelectedMcpIds(current=>{
+      const key=String(id||'');
+      if(current.includes(key))return current.filter(value=>value!==key);
+      if(current.length>=4)return current;
+      return [...current,key];
+    });
+  }
 
   function clearLocalHistory(){
     localStorage.removeItem('freeai.chats');
