@@ -614,7 +614,7 @@ function Composer(props){
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
           <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
-            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
+            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual'}<ChevronDown size={12}/>
           </button>
           {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
@@ -678,9 +678,9 @@ function EffortMenu({effort,levels,choose}){
 
 function PermissionModeMenu({value,choose}){
   const rows=[
-    ['ask','Ask for approval','Review actions before they go beyond the current workspace.'],
-    ['auto','Approve for me','Automatically approve eligible low-risk actions; typed actions still ask.'],
-    ['full','Full access','Run supported computer actions without asking each time.']
+    ['ask','Manual','Ask before every supported action that can affect your computer or another service.'],
+    ['auto','Automatic','Allow low-risk actions automatically, but still pause for sensitive or consequential actions.'],
+    ['full','Full access','Run supported computer actions without repeated approval prompts. Sensitive actions may still require confirmation.']
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
@@ -920,14 +920,14 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
     await executeAction(action);
   }
 
-  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval';
+  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
       <select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Ask for approval</option>
-        <option value="auto">Approve for me</option>
+        <option value="ask">Manual</option>
+        <option value="auto">Automatic</option>
         <option value="full">Full access</option>
       </select>
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
@@ -976,7 +976,7 @@ function SettingsView(props){
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Approve for me':'Ask for approval'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title="Plugins" text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text={isNative?'Open the managed Free AI browser.':'Open the real browser panel beside your chat.'} status="Available" action={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -991,7 +991,7 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI handle supported computer actions." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Ask for approval</option><option value="auto">Approve for me</option><option value="full">Full access</option></select>}/>} 
+      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI review supported actions." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Manual</option><option value="auto">Automatic</option><option value="full">Full access</option></select>}/>} 
     </div>
     {!isNative&&<><h3>General</h3>
     <div className="settingBlock">
