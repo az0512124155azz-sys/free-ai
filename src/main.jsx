@@ -431,7 +431,15 @@ function App(){
     return list;
   },[chats,sidebarSearch,product,recentsFilter]);
 
-  function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
+  function persistPrefs(next){
+    const normalized={...next,approvalMode:normalizeApprovalMode(next.approvalMode)};
+    setAppPrefs(normalized);localStorage.setItem('freeai.prefs',JSON.stringify(normalized));
+  }
+  function stopActiveWorkTask(){
+    if(isWindowsDesktop&&workTask&&['running','waiting_approval'].includes(workTask.status)){
+      window.desktopApi?.stopWorkTask?.(workTask.id).catch(()=>{});
+    }
+  }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
   function createProject(){
     const name=String(projectDraft.name||'').trim();
@@ -450,6 +458,7 @@ function App(){
   }
   function openProject(project){setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
   function startProjectConversation(projectId,nextMode){
+    stopActiveWorkTask();
     setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -479,6 +488,7 @@ function App(){
     setChatMenuId(null);
   }
   function selectProduct(nextProduct){
+    stopActiveWorkTask();
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -486,16 +496,19 @@ function App(){
   }
   function selectExperience(nextMode){
     if(product!=='free'||nextMode===mode)return;
+    stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
+    stopActiveWorkTask();
     setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
+    stopActiveWorkTask();
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
