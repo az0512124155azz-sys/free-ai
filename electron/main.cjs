@@ -1139,15 +1139,65 @@ async function repositoryList(inputRoot){
   return {...summary,files:listRepositoryFiles(summary.root)};
 }
 
-async function repositoryRead(inputRoot,relativePath){
+async function repositoryRead(inputRoot,relativePath,startLine=1,endLine=null){
   const root=await canonicalRepositoryRoot(inputRoot);
   const target=safeRepositoryPath(root,relativePath);
   const stat=fs.statSync(target.resolved);
   if(!stat.isFile())throw new Error('Repository path is not a file.');
-  if(stat.size>350*1024)throw new Error('Repository file is too large to read in one agent step.');
+  if(stat.size>2*1024*1024)throw new Error('Repository file is too large for the bounded text reader.');
   const buffer=fs.readFileSync(target.resolved);
-  if(buffer.includes(0))throw new Error('Binary repository files are not read as text.');
-  return {path:target.relative,size:stat.size,content:buffer.toString('utf8')};
+  if(buffer.subarray(0,Math.min(buffer.length,8192)).includes(0))throw new Error('Binary repository files are not read as text.');
+  const text=buffer.toString('utf8');
+  const lines=text.split(/\r?\n/);
+  const totalLines=Math.max(1,lines.length);
+  const start=Math.max(1,Math.min(totalLines,Number(startLine)||1));
+  const requestedEnd=endLine===null||endLine===undefined?start+239:Number(endLine)||start+239;
+  let end=Math.max(start,Math.min(totalLines,requestedEnd,start+399));
+  let selected=lines.slice(start-1,end);
+  while(selected.join('\n').length>18000&&end>start){
+    end=Math.max(start,end-Math.max(1,Math.ceil((end-start+1)/8)));
+    selected=lines.slice(start-1,end);
+  }
+  return {
+    path:target.relative,
+    size:stat.size,
+    mtimeMs:Math.round(stat.mtimeMs),
+    totalLines,
+    startLine:start,
+    endLine:end,
+    complete:start===1&&end===totalLines,
+    content:selected.join('\n')
+  };
+}
+
+function recordRepositoryRead(task,result){
+  if(!(task.repositoryReadState instanceof Map))task.repositoryReadState=new Map();
+  const key=String(result?.path||'').toLowerCase();
+  if(!key)return;
+  let state=task.repositoryReadState.get(key);
+  if(!state||state.size!==result.size||state.mtimeMs!==result.mtimeMs||state.totalLines!==result.totalLines){
+    state={size:result.size,mtimeMs:result.mtimeMs,totalLines:result.totalLines,ranges:[]};
+  }
+  state.ranges.push([result.startLine,result.endLine]);
+  state.ranges.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const range of state.ranges){
+    const last=merged[merged.length-1];
+    if(!last||range[0]>last[1]+1)merged.push([...range]);
+    else last[1]=Math.max(last[1],range[1]);
+  }
+  state.ranges=merged;
+  task.repositoryReadState.set(key,state);
+}
+
+function repositoryReadIsComplete(task,target){
+  if(!(task.repositoryReadState instanceof Map))return false;
+  const key=String(target.relative||'').toLowerCase();
+  const state=task.repositoryReadState.get(key);
+  if(!state||!fs.existsSync(target.resolved))return false;
+  const stat=fs.statSync(target.resolved);
+  if(state.size!==stat.size||state.mtimeMs!==Math.round(stat.mtimeMs))return false;
+  return state.ranges.length===1&&state.ranges[0][0]===1&&state.ranges[0][1]>=state.totalLines;
 }
 
 async function repositoryDiff(inputRoot,relativePath=''){
@@ -2166,7 +2216,7 @@ function workToolDescription(task){
       ? 'computer: Windows desktop. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata.'
       : 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.',
     task.product==='super'&&task.workspace?.root
-      ? 'repository: selected local Git repository "'+task.workspace.name+'". Actions: status, list, read(path), diff(path optional), write(path,content). Read before writing. Writes require user approval and cannot access .git or escape the selected repository.'
+      ? 'repository: selected local Git repository "'+task.workspace.name+'". Actions: status, list, read(path,startLine optional,endLine optional), diff(path optional), write(path,content). Read all line ranges of an existing file before writing. Writes require user approval and cannot access .git or escape the selected repository.'
       : 'repository: unavailable because no local Git repository is attached to this task.'
   ];
   return tools.join('\n');
@@ -2381,7 +2431,7 @@ function workModelPrompt(task,observation){
     'For browser_extension page actions, first request snapshot(tabId), then use an elementId from that latest snapshot.',
     'For browser_builtin, use the latest page.elements rect and page.viewport CSS coordinates for clicks and typing. Treat the screenshot as visual context, not as the coordinate system.',
     'For computer actions, first request screenshot and use the returned displayId plus the exact screenshot width/height as viewport dimensions. Do not guess coordinates without a screenshot. A computer type action must include x and y for the target input; Free AI will click that point immediately before typing.',
-    'For repository work, inspect status/list/read/diff before proposing a write. Never invent file contents. Do not use repository write for binary files or secrets.',
+    'For repository work, inspect status/list/read/diff before proposing a write. The read tool returns bounded line ranges with totalLines/startLine/endLine; read the remaining ranges until the complete current file has been observed before writing an existing file. Never invent file contents. Do not use repository write for binary files or secrets.',
     'Keep the task specific and stop when the requested outcome is complete.'
   ].join('\n');
 }
@@ -2444,19 +2494,21 @@ async function executeWorkTool(task,decision){
     if(type==='status')return repositorySummary(task.workspace.root);
     if(type==='list')return repositoryList(task.workspace.root);
     if(type==='read'){
-      const result=await repositoryRead(task.workspace.root,action.path);
-      task.repositoryReads.add(String(result.path||'').toLowerCase());
+      const result=await repositoryRead(task.workspace.root,action.path,action.startLine,action.endLine);
+      recordRepositoryRead(task,result);
       return result;
     }
     if(type==='diff')return repositoryDiff(task.workspace.root,action.path||'');
     if(type==='write'){
       const target=safeRepositoryPath(task.workspace.root,action.path,{allowMissing:true});
       const key=String(target.relative||'').toLowerCase();
-      if(fs.existsSync(target.resolved)&&!task.repositoryReads.has(key)){
-        throw new Error('Read the existing repository file before proposing a write: '+target.relative);
+      if(fs.existsSync(target.resolved)&&!repositoryReadIsComplete(task,target)){
+        const stat=fs.statSync(target.resolved);
+        const totalLines=fs.readFileSync(target.resolved,'utf8').split(/\r?\n/).length;
+        throw new Error('Read the complete current file before proposing a write: '+target.relative+' ('+totalLines+' lines, '+stat.size+' bytes). Continue with repository read line ranges.');
       }
       const result=await repositoryWrite(task.workspace.root,target.relative,action.content);
-      task.repositoryReads.delete(key);
+      if(task.repositoryReadState instanceof Map)task.repositoryReadState.delete(key);
       task.workspace=await repositorySummary(task.workspace.root);
       return {...result,workspace:{name:task.workspace.name,branch:task.workspace.branch,head:task.workspace.head,dirty:task.workspace.dirty,status:task.workspace.status}};
     }
@@ -2661,7 +2713,7 @@ async function startWorkTask(input={}){
     agents,
     team,
     specialistNotes:[],
-    repositoryReads:new Set(),
+    repositoryReadState:new Map(),
     trace:[],
     approvedScopes:new Set(),
     approval:null,
