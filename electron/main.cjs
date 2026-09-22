@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,globalShortcut}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -23,6 +23,8 @@ let browserDownloadHooked=false;
 const browserSiteTools=new Map();
 let siteToolsEnabled=true;
 let appshotWatcher=null;
+let quickWin=null;
+let quickChatEnabled=true;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -846,6 +848,46 @@ async function captureScreens(){
   }));
 }
 
+function createQuickWindow(){
+  if(process.platform!=='win32')return null;
+  if(quickWin&&!quickWin.isDestroyed())return quickWin;
+  quickWin=new BrowserWindow({
+    width:680,height:360,minWidth:520,minHeight:220,
+    frame:false,transparent:false,resizable:true,show:false,
+    alwaysOnTop:true,skipTaskbar:true,backgroundColor:'#181818',
+    webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true}
+  });
+  quickWin.on('blur',()=>{if(quickWin&&!quickWin.isDestroyed())quickWin.hide()});
+  quickWin.on('closed',()=>{quickWin=null});
+  const dev=process.env.VITE_DEV_SERVER_URL;
+  if(dev)quickWin.loadURL(dev+(dev.includes('?')?'&':'?')+'quick=1');
+  else quickWin.loadFile(path.join(__dirname,'..','dist','index.html'),{query:{quick:'1'}});
+  return quickWin;
+}
+
+function showQuickWindow(){
+  if(!quickChatEnabled||process.platform!=='win32')return;
+  const q=createQuickWindow();
+  const display=screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  const area=display.workArea;
+  const bounds=q.getBounds();
+  q.setPosition(
+    Math.round(area.x+(area.width-bounds.width)/2),
+    Math.round(area.y+area.height-bounds.height-28),
+    false
+  );
+  q.show();q.focus();
+}
+
+function registerQuickChatShortcut(){
+  if(process.platform!=='win32')return;
+  try{globalShortcut.unregister('Super+Alt+P')}catch{}
+  if(quickChatEnabled){
+    const ok=globalShortcut.register('Super+Alt+P',showQuickWindow);
+    if(!ok)globalShortcut.register('Alt+Space',showQuickWindow);
+  }
+}
+
 function createWindow(){
   win=new BrowserWindow({
     width:1380,
@@ -916,6 +958,7 @@ app.whenReady().then(()=>{
   startLocalBridge();
   createWindow();
   startAppshotWatcher();
+  registerQuickChatShortcut();
 
   const startupAuthUrl=findAuthUrl(process.argv);
   if(startupAuthUrl)pendingAuthUrl=startupAuthUrl;
@@ -931,6 +974,7 @@ app.whenReady().then(()=>{
 });
 
 app.on('before-quit',()=>{
+  globalShortcut.unregisterAll();
   stopAppshotWatcher();
   hideBrowserView();
   for(const view of browserTabs.values()){try{view.webContents.close()}catch{}}
@@ -944,6 +988,8 @@ app.on('before-quit',()=>{
 
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
+ipcMain.handle('quick-chat:setEnabled',(_e,value)=>{quickChatEnabled=!!value;registerQuickChatShortcut();if(!quickChatEnabled&&quickWin&&!quickWin.isDestroyed())quickWin.hide();return quickChatEnabled});
+ipcMain.handle('quick-chat:hide',()=>{quickWin?.hide();return true});
 ipcMain.handle('appshot:capture',()=>captureForegroundAppshot());
 ipcMain.handle('app:quit',()=>{app.quit();return true});
 ipcMain.handle('app:reload',()=>{win?.webContents.reload();return true});
