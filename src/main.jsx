@@ -31,7 +31,7 @@ const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
-const BRAND_LOGO_SRC='/free-ai-logo.png';
+const BRAND_LOGO_SRC='/free-ai-logo.svg';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 const projectIconOptions=[
   ['folder','Folder',Folder],['briefcase','Briefcase',Briefcase],['code','Code',Code2],
