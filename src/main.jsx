@@ -440,8 +440,12 @@ function App(){
     let id=currentChatId;
     if(!id){id=crypto.randomUUID();setCurrentChatId(id)}
     setChats(prev=>{
-      const chat={id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,updatedAt:Date.now()};
-      const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
+      const existing=prev.find(c=>c.id===id);
+      const chat={
+        ...(existing||{}),id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),
+        projectId:currentProjectId||existing?.projectId||null,messages:nextMessages,updatedAt:Date.now()
+      };
+      const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,100);
       localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
     });
   }
@@ -511,8 +515,34 @@ function App(){
     setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
+  function togglePinChat(chat){
+    if(!chat||chat.archived)return;
+    setChats(prev=>{
+      const next=prev.map(c=>c.id===chat.id?{...c,pinned:!c.pinned}:c);
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
+    });
+    setChatMenuId(null);
+  }
+  function createProject(){
+    const name=projectDraft.trim();
+    if(!name)return;
+    const project={id:crypto.randomUUID(),name,createdAt:Date.now(),updatedAt:Date.now()};
+    const next=[project,...projects];
+    setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next));
+    setCurrentProjectId(project.id);setProjectDraft('');setProjectDialog(false);setMode('chat');newChat();
+  }
+  function openProject(project){
+    setCurrentProjectId(project.id);setPage('chat');setMode('chat');setCurrentChatId(null);setMessages([]);setMobileNavOpen(false);
+  }
+  function leaveProject(){setCurrentProjectId(null);setCurrentChatId(null);setMessages([])}
+  async function deleteImageAssetFromLibrary(id){
+    await removeImageAsset(id).catch(()=>{});
+    setImageAssets(prev=>prev.filter(item=>item.id!==id));
+  }
   function openChat(chat){
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
+    setCurrentProjectId(chat.projectId||null);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     setSelectedTool(null);setPage('chat');
   }
