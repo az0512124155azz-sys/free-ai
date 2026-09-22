@@ -551,7 +551,10 @@ function saveApiConnections(){
 }
 
 function publicApiConnection(c){
-  return {id:c.id,name:c.name,model:c.model,baseUrl:c.baseUrl,source:'api',hasKey:!!c.apiKey,mcps:[]};
+  return {
+    id:c.id,name:c.name,model:c.model,baseUrl:c.baseUrl,source:'api',hasKey:!!c.apiKey,
+    effortLevels:[],effortControl:null,activeEffort:'default',mcps:[]
+  };
 }
 
 function status(){
