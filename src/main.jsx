@@ -406,6 +406,7 @@ function App(){
     const terminalKey=workTask.id+':'+workTask.status;
     if(handledWorkTerminalRef.current===terminalKey)return;
     handledWorkTerminalRef.current=terminalKey;
+    if(activeWorkTaskIdRef.current===workTask.id)activeWorkTaskIdRef.current=null;
     if(workTask.status==='stopped')return;
     const taskModel=workTaskModelRef.current||selected;
     setMessages(prev=>{
@@ -565,6 +566,7 @@ function App(){
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
+    setWorkTask({id:taskId,status:'running',step:0,maxSteps:18,detail:'Starting Work task…',approval:null,progress:[],finalMessage:'',error:''});
     try{
       const state=await window.desktopApi.startWorkTask({
         id:taskId,
@@ -581,6 +583,7 @@ function App(){
       setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
     }catch(e){
       if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
+      setWorkTask(null);
       const failed=[...next,{role:'error',text:e?.message||String(e)}];
       setMessages(failed);saveCurrentChat(failed,selected);
     }
