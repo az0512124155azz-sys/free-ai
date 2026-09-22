@@ -223,6 +223,8 @@ button:disabled{opacity:.42;cursor:default}
 .recentContextMenu{position:absolute;z-index:150;right:2px;top:29px;width:142px;padding:5px;background:var(--popover);border:1px solid var(--border);border-radius:11px;box-shadow:var(--shadow-lg)}
 .recentContextMenu button{width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 8px;background:transparent;border-radius:7px;color:var(--text-secondary);font-size:11.5px;text-align:left}
 .recentContextMenu button:hover{background:var(--hover);color:var(--text)}
+.contextMenuSeparator{height:1px;background:var(--border-soft);margin:4px 3px}
+.recentContextMenu .dangerMenuItem{color:var(--danger)}.recentContextMenu .dangerMenuItem:hover{background:color-mix(in srgb,var(--danger) 10%,transparent);color:var(--danger)}
 .sidebarFooter{
   min-height:47px;
   border-top:1px solid var(--border-soft);
@@ -361,9 +363,10 @@ button:disabled{opacity:.42;cursor:default}
 .teamButton:hover:not(:disabled){background:var(--hover);color:var(--text)}.teamButton:disabled{opacity:.55}
 .teamPicker{right:0;bottom:41px;width:340px;max-height:430px}
 .teamPickerHead{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:6px 7px 9px}.teamPickerHead>span{display:flex;flex-direction:column}.teamPickerHead b{font-size:12px}.teamPickerHead small{font-size:9.5px;color:var(--muted);margin-top:2px}.teamPickerHead>button{width:26px;height:26px;border-radius:50%;background:transparent;display:grid;place-items:center}.teamPickerHead>button:hover{background:var(--hover)}
-.teamControllerRow,.teamModelRow{width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) 20px;gap:8px;align-items:center;padding:8px;border-radius:10px;color:var(--text-secondary)}
-.teamControllerRow{background:var(--surface-secondary)}.teamModelRow{background:transparent;text-align:left}.teamModelRow:hover:not(:disabled),.teamModelRow.active{background:var(--hover);color:var(--text)}.teamModelRow.disabled{opacity:.45;cursor:not-allowed}
-.teamControllerRow>span:nth-child(2),.teamModelRow>span:nth-child(2){display:flex;min-width:0;flex-direction:column}.teamControllerRow b,.teamModelRow b{font-size:11px}.teamControllerRow small,.teamModelRow small{font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.teamSetupStep{display:flex;align-items:flex-start;gap:8px;padding:8px 7px 5px}.teamSetupStep>span{width:19px;height:19px;border-radius:50%;display:grid;place-items:center;background:var(--surface-tertiary);font-size:9px;font-weight:700;flex:none}.teamSetupStep>div{display:flex;flex-direction:column}.teamSetupStep b{font-size:11px}.teamSetupStep small{font-size:9px;color:var(--muted);line-height:1.35;margin-top:2px}
+.teamControllerChoices{display:grid;gap:2px;margin:2px 0 5px}.teamControllerChoice,.teamModelRow{width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) 20px;gap:8px;align-items:center;padding:8px;border-radius:10px;color:var(--text-secondary);background:transparent;text-align:left}
+.teamControllerChoice:hover,.teamControllerChoice.active,.teamModelRow:hover:not(:disabled),.teamModelRow.active{background:var(--hover);color:var(--text)}.teamControllerChoice.active{background:var(--selected)}.teamModelRow.disabled{opacity:.45;cursor:not-allowed}
+.teamControllerChoice>span:nth-child(2),.teamModelRow>span:nth-child(2){display:flex;min-width:0;flex-direction:column}.teamControllerChoice b,.teamModelRow b{font-size:11px}.teamControllerChoice small,.teamModelRow small{font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .teamCheck{width:18px;height:18px;border:1px solid var(--border);border-radius:5px;display:grid;place-items:center}.teamCheck.checked{background:var(--text);color:var(--canvas);border-color:var(--text)}
 .teamPickerFoot{padding:9px 7px 4px;color:var(--muted);font-size:9.5px;border-top:1px solid var(--border-soft);margin-top:5px}
 .workWorkspaceLine,.workAppsLine{display:flex;align-items:center;gap:6px;margin:7px 0 0 32px;color:var(--text-secondary);font-size:9.5px}.workWorkspaceLine small,.workAppsLine small{color:var(--muted);margin-left:2px}
@@ -392,7 +395,11 @@ button:disabled{opacity:.42;cursor:default}
   position:absolute;z-index:100;background:var(--popover);border:1px solid var(--border);border-radius:var(--r-2xl);
   box-shadow:var(--shadow-lg);padding:7px;overflow:auto;animation:popoverIn 140ms var(--ease);transform-origin:bottom right
 }
-.modelPicker{right:0;bottom:41px;width:300px;max-height:390px}
+.modelPicker{right:0;bottom:41px;width:320px;max-height:440px}
+.modelPickerHeader{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-right:4px}
+.modelPickerHeader>button{height:27px;display:flex;align-items:center;gap:5px;padding:0 7px;border-radius:8px;background:transparent;color:var(--muted);font-size:10px}
+.modelPickerHeader>button:hover{background:var(--hover);color:var(--text)}
+.pickerError{padding:12px}.pickerError p{margin:7px 2px 12px;color:var(--muted);font-size:10.5px;line-height:1.45}.pickerError>button{height:31px;padding:0 11px;border-radius:8px;background:var(--surface-secondary);color:var(--text-secondary)}
 .effortPicker{right:0;bottom:41px;width:260px}
 .sliderPicker{padding:15px 16px 13px}
 .effortHead{display:flex;align-items:center;gap:10px;margin-bottom:14px}
@@ -451,6 +458,9 @@ button:disabled{opacity:.42;cursor:default}
 .projectIconGrid button{width:36px;height:36px;border-radius:9px;background:var(--surface-secondary);border:1px solid transparent;display:grid;place-items:center;color:var(--text-tertiary)}.projectIconGrid button:hover{background:var(--surface-tertiary);color:var(--text)}.projectIconGrid button.active{border-color:var(--text-tertiary);color:var(--text)}
 .projectColorGrid button{--project-tone:#3a83f7;width:30px;height:30px;border-radius:999px;background:transparent;display:grid;place-items:center;border:1px solid transparent}.projectColorGrid button[data-color="green"]{--project-tone:#40b76d}.projectColorGrid button[data-color="orange"]{--project-tone:#ee7c37}.projectColorGrid button[data-color="purple"]{--project-tone:#9a77ff}.projectColorGrid button[data-color="pink"]{--project-tone:#e969a6}.projectColorGrid button[data-color="neutral"]{--project-tone:#a9a9a9}.projectColorGrid button span{width:18px;height:18px;border-radius:50%;background:var(--project-tone)}.projectColorGrid button.active{border-color:var(--text-tertiary)}
 .projectDialogActions{display:flex;justify-content:flex-end;gap:7px;margin-top:18px}.projectDialogActions button{height:34px;padding:0 12px;border-radius:9px;background:var(--surface-secondary);color:var(--text-secondary);font-size:11px}.projectDialogActions .primaryProjectAction{background:var(--text);color:var(--canvas);font-weight:600}
+.deleteChatDialog{width:min(430px,calc(100vw - 40px));background:var(--popover);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow-lg);padding:16px}
+.deleteChatDialog>p{margin:2px 0 0;color:var(--text-secondary);font-size:11px;line-height:1.5}
+.projectDialogActions .dangerAction{background:var(--danger);color:#fff;font-weight:650}
 .projectInner{max-width:900px}.projectHero{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:13px;align-items:center;padding:4px 0 20px;border-bottom:1px solid var(--border-soft)}.projectHero h1{margin:0}.projectHero .pageLead{margin:3px 0 0}.projectStartActions{display:flex;gap:7px}.projectStartActions button{height:34px;padding:0 11px;border-radius:9px;background:var(--surface-secondary);border:1px solid var(--border-soft);display:flex;align-items:center;gap:6px;color:var(--text-secondary);font-size:11px}.projectStartActions button:hover{background:var(--surface-tertiary);color:var(--text)}
 .projectSection{margin-top:28px}.projectSection h2{font-size:14px;font-weight:600;margin:0}.projectConversationList{display:grid;gap:3px;margin-top:8px}.projectConversationList>button{min-height:38px;display:grid;grid-template-columns:48px minmax(0,1fr) 18px;align-items:center;gap:8px;text-align:left;background:transparent;border-radius:9px;padding:0 8px;color:var(--text-secondary)}.projectConversationList>button:hover{background:var(--hover);color:var(--text)}.projectConversationList>button>span:nth-child(2){white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.projectConversationMode{font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
 .projectLiveTask{margin:18px 0 2px}.projectLiveTask .workTaskStatus{margin:0}

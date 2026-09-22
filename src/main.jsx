@@ -14,7 +14,7 @@ import {
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MoreHorizontal,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Pin,Plug,
   Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,Square,
-  SquarePen,Table2,Target,SquareTerminal,UserRound,Volume2,X
+  SquarePen,Table2,Target,SquareTerminal,Trash2,UserRound,Volume2,X
 } from 'lucide-react';
 import './styles.css';
 
@@ -31,7 +31,7 @@ const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
-const BRAND_LOGO_SRC='/free-ai-logo.svg';
+const BRAND_LOGO_SRC=new URL('free-ai-logo.svg',document.baseURI).href;
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 const projectIconOptions=[
   ['folder','Folder',Folder],['briefcase','Briefcase',Briefcase],['code','Code',Code2],
@@ -161,6 +161,58 @@ function attachmentMeta(item){
   return {id:item.id,name:item.name,type:item.type,size:item.size,kind:item.kind};
 }
 
+function safeExportFileName(value){
+  const base=String(value||'Free AI chat').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').replace(/\s+/g,' ').trim().slice(0,90)||'Free AI chat';
+  return base+'.md';
+}
+function chatExportMarkdown(chat){
+  const lines=[
+    '# '+String(chat?.title||'Free AI chat'),
+    '',
+    '- Exported from: Free AI',
+    '- Exported at: '+new Date().toISOString(),
+    '- Mode: '+String(chat?.mode||'chat'),
+    '- Model: '+String(chat?.modelName||chat?.providerId||'Unknown'),
+    ...(chat?.isMasterThread?['- Thread: Master']:chat?.isAgentThread?['- Thread: '+String(chat?.agentRole||'Agent')]:[]),
+    '',
+    '---',
+    ''
+  ];
+  for(const message of Array.isArray(chat?.messages)?chat.messages:[]){
+    const role=message?.role==='user'?'You':message?.role==='error'?'Error':'Assistant';
+    lines.push('## '+role,'',String(message?.text||'').trim()||'_(empty message)_');
+    if(Array.isArray(message?.attachments)&&message.attachments.length){
+      lines.push('','Attachments:');
+      for(const item of message.attachments)lines.push('- '+String(item?.name||'attachment'));
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trim()+'\n';
+}
+
+function ChatContextMenu({chat,onPin,onExport,onDelete}){
+  return <div className="recentContextMenu" role="menu" aria-label={'Chat options for '+chat.title}>
+    <button role="menuitem" onClick={()=>onPin?.(chat.id)}><Pin size={14}/><span>{chat.pinned?'Unpin chat':'Pin chat'}</span></button>
+    <button role="menuitem" onClick={()=>onExport?.(chat)}><Download size={14}/><span>Export chat</span></button>
+    <div className="contextMenuSeparator"/>
+    <button className="dangerMenuItem" role="menuitem" onClick={()=>onDelete?.(chat)}><Trash2 size={14}/><span>Delete chat</span></button>
+  </div>;
+}
+
+function DeleteChatDialog({chat,onClose,onConfirm}){
+  if(!chat)return null;
+  return <div className="projectDialogScrim" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose?.()}}>
+    <div className="deleteChatDialog" role="dialog" aria-modal="true" aria-labelledby="delete-chat-title">
+      <div className="projectDialogHeader">
+        <div><b id="delete-chat-title">Delete chat?</b><small>This removes “{chat.title}” from Free AI on this device.</small></div>
+        <button type="button" onClick={onClose} aria-label="Close"><X size={17}/></button>
+      </div>
+      <p>This action cannot be undone. It does not delete the original conversations in ChatGPT, Claude, Gemini, or another connected provider.</p>
+      <div className="projectDialogActions"><button type="button" onClick={onClose}>Cancel</button><button className="dangerAction" type="button" onClick={()=>onConfirm?.(chat)}>Delete</button></div>
+    </div>
+  </div>;
+}
+
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
@@ -169,10 +221,26 @@ function BrandMark({size=22,className=''}) {
 
 function ProviderBadge({model,small=false}){
   const providerId=modelProviderId(model);
-  const icon=model?.source==='browser'?String(model?.favIconUrl||''):'';
+  const [failed,setFailed]=useState(false);
+  const icon=model?.source==='browser'?String(model?.iconDataUrl||model?.favIconUrl||''):'';
+  useEffect(()=>setFailed(false),[icon]);
   return <span className={'providerBadge '+(small?'small ':'')+(model?.source==='api'?'api':providerId)} aria-hidden="true">
-    {icon?<img src={icon} alt="" referrerPolicy="no-referrer"/>:<span>{model?modelLabel(model).slice(0,1).toUpperCase():'+'}</span>}
+    {icon&&!failed?<img src={icon} alt="" referrerPolicy="no-referrer" onError={()=>setFailed(true)}/>:<span>{model?modelLabel(model).slice(0,1).toUpperCase():'+'}</span>}
   </span>;
+}
+
+class MenuErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={error:null}}
+  static getDerivedStateFromError(error){return {error}}
+  componentDidCatch(error,info){console.error('Free AI picker error',error,info)}
+  render(){
+    if(!this.state.error)return this.props.children;
+    return <div className="floatingMenu modelPicker pickerError" role="alert">
+      <div className="floatingTitle">Model picker could not open</div>
+      <p>Free AI kept the rest of the app running. Close this panel and refresh the connected models.</p>
+      <button onClick={()=>this.props.onClose?.()}>Close</button>
+    </div>;
+  }
 }
 
 function ProjectMark({project,size=16}){
@@ -244,6 +312,7 @@ function App(){
   const [recentsFilter,setRecentsFilter]=useState('all');
   const [recentsFilterOpen,setRecentsFilterOpen]=useState(false);
   const [chatMenuId,setChatMenuId]=useState(null);
+  const [deleteChatTarget,setDeleteChatTarget]=useState(null);
   const [responseMenuIndex,setResponseMenuIndex]=useState(null);
   const [copiedMessageIndex,setCopiedMessageIndex]=useState(null);
   const [projects,setProjects]=useState(()=>readJSON('freeai.projects',[]));
@@ -375,11 +444,6 @@ function App(){
   },[connected,selected?.id,selected?.source,selected?.modelName]);
 
   useEffect(()=>{
-    if(!isWindowsDesktop||!isDesktop||!modelMenu)return;
-    window.desktopApi?.scanProviders?.({probeModels:true}).catch(()=>{});
-  },[modelMenu]);
-
-  useEffect(()=>{
     setSuperTeamKeys(current=>{
       const primary=modelKey(selected);
       const eligible=connected.filter(model=>model.connected!==false&&modelKey(model)!==primary).map(modelKey);
@@ -439,6 +503,7 @@ function App(){
   useEffect(()=>{
     const onKey=e=>{
       if(e.key!=='Escape')return;
+      if(deleteChatTarget){setDeleteChatTarget(null);return}
       if(projectDialogOpen){setProjectDialogOpen(false);return}
       if(profileMenu){setProfileMenu(false);return}
       if(responseMenuIndex!==null){setResponseMenuIndex(null);return}
@@ -466,7 +531,7 @@ function App(){
     window.addEventListener('keydown',onKey);
     document.addEventListener('pointerdown',onPointer);
     return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
-  },[projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+  },[deleteChatTarget,projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
 
   useEffect(()=>{
     localStorage.setItem('freeai.product',product);
@@ -721,6 +786,12 @@ function App(){
     if(!sameLiveProject)stopActiveWorkTask();
     setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false);
   }
+  async function refreshProviderModels(){
+    if(!isWindowsDesktop||!isDesktop)return;
+    setAttachmentError('');
+    try{await window.desktopApi.scanProviders({probeModels:true})}
+    catch(error){setAttachmentError(error?.message||String(error))}
+  }
   async function selectProviderModelOption(modelName){
     if(!isWindowsDesktop||!isDesktop||selected?.source!=='browser')return;
     setAttachmentError('');
@@ -787,6 +858,38 @@ function App(){
       return next;
     });
     setChatMenuId(null);
+  }
+  async function exportChat(chat){
+    setChatMenuId(null);
+    const content=chatExportMarkdown(chat);
+    const defaultName=safeExportFileName(chat?.title);
+    if(isDesktop&&window.desktopApi?.saveTextFile){
+      try{await window.desktopApi.saveTextFile({defaultName,content});return}catch(error){console.error('Chat export failed',error)}
+    }
+    const blob=new Blob([content],{type:'text/markdown;charset=utf-8'});
+    const href=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=href;a.download=defaultName;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(href),1500);
+  }
+  function askDeleteChat(chat){
+    setChatMenuId(null);
+    setDeleteChatTarget(chat);
+  }
+  function deleteChat(chat){
+    const id=String(chat?.id||'');
+    if(!id)return;
+    if(activeWorkTaskIdRef.current&&chat?.taskId===activeWorkTaskIdRef.current)stopActiveWorkTask();
+    setChats(prev=>{
+      const next=prev.filter(item=>item.id!==id);
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
+    });
+    if(currentChatId===id){
+      setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+      if(chat?.isMasterThread||chat?.isAgentThread)setPage('chat');
+    }
+    setDeleteChatTarget(null);
   }
   function selectProduct(nextProduct){
     stopActiveWorkTask();
@@ -1500,9 +1603,8 @@ function App(){
                 aria-expanded={chatMenuId===chat.id}
                 onClick={e=>{e.stopPropagation();setChatMenuId(current=>current===chat.id?null:chat.id)}}
               ><MoreHorizontal size={15}/></button>
-              {chatMenuId===chat.id&&<div className="recentContextMenu" role="menu">
-                <button role="menuitem" onClick={()=>togglePinChat(chat.id)}><Pin size={14}/><span>{chat.pinned?'Unpin chat':'Pin chat'}</span></button>
-              </div>}
+              {chatMenuId===chat.id&&<ChatContextMenu chat={chat} onPin={togglePinChat} onExport={exportChat} onDelete={askDeleteChat}/>}
+
             </div>
           )}
         </>:<>
@@ -1525,7 +1627,14 @@ function App(){
           </button>
           <div className="sidebarGroupTitle">Recents</div>
           {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
-            <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
+            <div className={'recentRow '+(currentChatId===chat.id?'active':'')} key={chat.id}>
+              <button className="recentItem" onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>
+                {chat.pinned&&<Pin size={11} className="recentPin"/>}
+                <span>{chat.title}</span>
+              </button>
+              <button className="recentMore" aria-label={'More options for '+chat.title} aria-haspopup="menu" aria-expanded={chatMenuId===chat.id} onClick={e=>{e.stopPropagation();setChatMenuId(current=>current===chat.id?null:chat.id)}}><MoreHorizontal size={15}/></button>
+              {chatMenuId===chat.id&&<ChatContextMenu chat={chat} onPin={togglePinChat} onExport={exportChat} onDelete={askDeleteChat}/>}
+            </div>
           )}
         </>}
       </div>
@@ -1582,7 +1691,7 @@ function App(){
                 attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                 selected={selected} connected={connected} setSelected={setSelected}
-                modelMenu={modelMenu} setModelMenu={setModelMenu}
+                modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                 parallelCount={parallelCount} setParallelCount={setParallelCount}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
@@ -1635,7 +1744,7 @@ function App(){
                   attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
                   compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                   selected={selected} connected={connected} setSelected={setSelected}
-                  modelMenu={modelMenu} setModelMenu={setModelMenu}
+                  modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                   parallelCount={parallelCount} setParallelCount={setParallelCount}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
@@ -1707,6 +1816,7 @@ function App(){
       onClose={()=>setSidePanel(null)}
     />}
 
+    {deleteChatTarget&&<DeleteChatDialog chat={deleteChatTarget} onClose={()=>setDeleteChatTarget(null)} onConfirm={deleteChat}/>}
     {projectDialogOpen&&isWindowsDesktop&&<NewProjectDialog draft={projectDraft} setDraft={setProjectDraft} onCreate={createProject} onClose={()=>setProjectDialogOpen(false)}/>}
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
@@ -1816,7 +1926,7 @@ function ProjectPage({project,chats,task,onApproval,onBack,onStart,onOpenChat,on
 
 function Composer(props){
   const {
-    windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
+    windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,onRefreshModels,onSelectProviderModel,onSelectProviderEffort,
     parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onWorkProject,onWorkAgent,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
@@ -1989,20 +2099,20 @@ function Composer(props){
 
       <div className="composerRight">
         {product==='super'&&windowsDesktop&&mode==='work'&&<div className="menuAnchor">
-          <button className="teamButton" aria-haspopup="menu" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
-            <Bot size={14}/>Team {1+superTeamKeys.length}<ChevronDown size={12}/>
+          <button className="teamButton" aria-haspopup="dialog" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
+            <Bot size={14}/>{selected?'AI team · '+(1+superTeamKeys.length):'Set up AI team'}<ChevronDown size={12}/>
           </button>
-          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>setSuperTeamKeys?.(keys)} onClose={()=>setTeamMenu(false)}/>}
+          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>setSuperTeamKeys?.(keys)} onChooseController={model=>setSelected?.(model)} onClose={()=>setTeamMenu(false)}/>}
         </div>}
         {!isNative&&<div className="menuAnchor">
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
-          {modelMenu&&<ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onSelectProviderModel={selectProviderModelOption} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/>}
+          {modelMenu&&<MenuErrorBoundary onClose={()=>setModelMenu(false)}><ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onRefreshModels={onRefreshModels} onSelectProviderModel={onSelectProviderModel} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/></MenuErrorBoundary>}
         </div>}
         {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
-          {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{selectProviderEffortOption(v);setEffortMenu(false)}}/>}
+          {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{onSelectProviderEffort?.(v);setEffortMenu(false)}}/>}
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'} aria-label={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
         {(busy||prompt.trim()||(windowsDesktop&&attachments.length>0))&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||windowsDesktop&&attachments.length>0)&&selected?'sendReady':'')}
@@ -2057,7 +2167,7 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
   </div>
 }
 
-function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,onSelectProviderModel}){
+function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,onSelectProviderModel,onRefreshModels}){
   const selectedGroupKey=modelGroupKey(selected);
   const matchingInstances=selectedGroupKey
     ? connected.filter(model=>model.connected!==false&&modelGroupKey(model)===selectedGroupKey)
@@ -2065,7 +2175,7 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,o
   const maxParallel=Math.max(1,matchingInstances.length);
   const parallel=Math.max(1,Math.min(Number(parallelCount)||1,maxParallel));
   return <div className="floatingMenu modelPicker" role="listbox" aria-label="Select model">
-    <div className="floatingTitle">Select model</div>
+    <div className="modelPickerHeader"><div className="floatingTitle">Select model</div><button type="button" onClick={onRefreshModels} title="Refresh connected models"><RefreshCw size={13}/>Refresh</button></div>
     {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
       connected.map(model=>{
         const active=selected?.id===model.id&&selected?.source===model.source;
@@ -2102,9 +2212,10 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,o
   </div>
 }
 
-function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
+function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onChooseController,onClose}){
+  const available=connected.filter(model=>model.connected!==false);
   const primary=modelKey(selected);
-  const eligible=connected.filter(model=>model.connected!==false&&modelKey(model)!==primary);
+  const eligible=available.filter(model=>modelKey(model)!==primary);
   const eligibleKeys=eligible.map(modelKey);
   const toggle=key=>{
     const current=Array.isArray(selectedKeys)?selectedKeys:[];
@@ -2113,12 +2224,25 @@ function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
   };
   const allSelected=eligible.length>0&&eligibleKeys.every(key=>selectedKeys.includes(key));
   const useAll=()=>choose(allSelected?[]:eligibleKeys);
-  return <div className="floatingMenu teamPicker" role="menu" aria-label="Super AI team">
-    <div className="teamPickerHead"><span><b>Super AI team</b><small>One controller with parallel specialist/reviewer agents</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
-    {selected&&<div className="teamControllerRow"><ProviderBadge model={selected}/><span><b>{modelLabel(selected)}</b><small>Primary controller · {modelInstanceLabel(selected)}</small></span><Check size={14}/></div>}
-    {eligible.length>0&&<button className={'teamUseAll '+(allSelected?'active':'')} onClick={useAll}><Bot size={14}/><span>{allSelected?'Use controller only':'Use all '+eligible.length+' connected agents'}</span>{allSelected&&<Check size={13}/>}</button>}
-    <div className="floatingTitle section">Specialists / reviewers</div>
-    {eligible.length===0?<div className="menuEmpty compact">Connect another model to build a multi-agent team.</div>:eligible.map(model=>{
+  const teamSize=(selected?1:0)+selectedKeys.filter(key=>eligibleKeys.includes(key)).length;
+  return <div className="floatingMenu teamPicker" role="dialog" aria-label="Set up Super AI team">
+    <div className="teamPickerHead"><span><b>AI team</b><small>Choose one lead model. It coordinates the other selected models and combines their results.</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
+
+    <div className="teamSetupStep"><span>1</span><div><b>Lead model</b><small>The lead plans the task, delegates work and returns the final answer.</small></div></div>
+    {available.length===0?<div className="menuEmpty compact">Open AI chats in your connected browser first.</div>:<div className="teamControllerChoices">
+      {available.map(model=>{
+        const active=modelKey(model)===primary;
+        return <button key={modelKey(model)} className={'teamControllerChoice '+(active?'active':'')} onClick={()=>onChooseController?.(model)}>
+          <ProviderBadge model={model}/>
+          <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
+          {active&&<Check size={14}/>}
+        </button>;
+      })}
+    </div>}
+
+    <div className="teamSetupStep"><span>2</span><div><b>Parallel agents</b><small>Select the additional models that should work behind the scenes in their own child chats.</small></div></div>
+    {selected&&eligible.length>0&&<button className={'teamUseAll '+(allSelected?'active':'')} onClick={useAll}><Bot size={14}/><span>{allSelected?'Use lead model only':'Use all '+eligible.length+' available agents'}</span>{allSelected&&<Check size={13}/>}</button>}
+    {!selected?<div className="menuEmpty compact">Choose the lead model above to finish the team setup.</div>:eligible.length===0?<div className="menuEmpty compact">Open another AI model or another tab to add parallel agents.</div>:eligible.map(model=>{
       const key=modelKey(model),checked=selectedKeys.includes(key);
       return <button key={key} className={'teamModelRow '+(checked?'active ':'')} onClick={()=>toggle(key)}>
         <ProviderBadge model={model}/>
@@ -2126,7 +2250,9 @@ function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
         <span className={'teamCheck '+(checked?'checked':'')}>{checked?<Check size={13}/>:null}</span>
       </button>;
     })}
-    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' parallel agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
+    <div className="teamPickerFoot">{selected
+      ? teamSize+' model'+(teamSize===1?'':'s')+' · sending the task creates a Master project with a separate chat for every agent'
+      : 'A lead model is required before a Super AI task can start'}</div>
   </div>
 }
 
