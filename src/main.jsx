@@ -177,6 +177,20 @@ function ProviderBadge({model,small=false}){
   </span>;
 }
 
+class MenuErrorBoundary extends React.Component{
+  constructor(props){super(props);this.state={error:null}}
+  static getDerivedStateFromError(error){return {error}}
+  componentDidCatch(error,info){console.error('Free AI picker error',error,info)}
+  render(){
+    if(!this.state.error)return this.props.children;
+    return <div className="floatingMenu modelPicker pickerError" role="alert">
+      <div className="floatingTitle">Model picker could not open</div>
+      <p>Free AI kept the rest of the app running. Close this panel and refresh the connected models.</p>
+      <button onClick={()=>this.props.onClose?.()}>Close</button>
+    </div>;
+  }
+}
+
 function ProjectMark({project,size=16}){
   const entry=projectIconOptions.find(([key])=>key===(project?.icon||'folder'))||projectIconOptions[0];
   const Icon=entry[2];
@@ -375,11 +389,6 @@ function App(){
     const count=connected.filter(model=>model.connected!==false&&modelGroupKey(model)===modelGroupKey(selected)).length;
     setParallelCount(current=>Math.max(1,Math.min(Number(current)||1,Math.max(1,count))));
   },[connected,selected?.id,selected?.source,selected?.modelName]);
-
-  useEffect(()=>{
-    if(!isWindowsDesktop||!isDesktop||!modelMenu)return;
-    window.desktopApi?.scanProviders?.({probeModels:true}).catch(()=>{});
-  },[modelMenu]);
 
   useEffect(()=>{
     setSuperTeamKeys(current=>{
@@ -722,6 +731,12 @@ function App(){
     const sameLiveProject=!!activeWorkTaskIdRef.current&&workTaskProjectIdRef.current===project.id;
     if(!sameLiveProject)stopActiveWorkTask();
     setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false);
+  }
+  async function refreshProviderModels(){
+    if(!isWindowsDesktop||!isDesktop)return;
+    setAttachmentError('');
+    try{await window.desktopApi.scanProviders({probeModels:true})}
+    catch(error){setAttachmentError(error?.message||String(error))}
   }
   async function selectProviderModelOption(modelName){
     if(!isWindowsDesktop||!isDesktop||selected?.source!=='browser')return;
@@ -1584,7 +1599,7 @@ function App(){
                 attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                 selected={selected} connected={connected} setSelected={setSelected}
-                modelMenu={modelMenu} setModelMenu={setModelMenu}
+                modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels}
                 parallelCount={parallelCount} setParallelCount={setParallelCount}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                 plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
@@ -1818,7 +1833,7 @@ function ProjectPage({project,chats,task,onApproval,onBack,onStart,onOpenChat,on
 
 function Composer(props){
   const {
-    windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
+    windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,onRefreshModels,
     parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onWorkProject,onWorkAgent,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
@@ -2000,7 +2015,7 @@ function Composer(props){
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
-          {modelMenu&&<ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onSelectProviderModel={selectProviderModelOption} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/>}
+          {modelMenu&&<MenuErrorBoundary onClose={()=>setModelMenu(false)}><ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onRefreshModels={onRefreshModels} onSelectProviderModel={selectProviderModelOption} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/></MenuErrorBoundary>}
         </div>}
         {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
@@ -2059,7 +2074,7 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
   </div>
 }
 
-function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,onSelectProviderModel}){
+function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,onSelectProviderModel,onRefreshModels}){
   const selectedGroupKey=modelGroupKey(selected);
   const matchingInstances=selectedGroupKey
     ? connected.filter(model=>model.connected!==false&&modelGroupKey(model)===selectedGroupKey)
@@ -2067,7 +2082,7 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,o
   const maxParallel=Math.max(1,matchingInstances.length);
   const parallel=Math.max(1,Math.min(Number(parallelCount)||1,maxParallel));
   return <div className="floatingMenu modelPicker" role="listbox" aria-label="Select model">
-    <div className="floatingTitle">Select model</div>
+    <div className="modelPickerHeader"><div className="floatingTitle">Select model</div><button type="button" onClick={onRefreshModels} title="Refresh connected models"><RefreshCw size={13}/>Refresh</button></div>
     {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
       connected.map(model=>{
         const active=selected?.id===model.id&&selected?.source===model.source;
