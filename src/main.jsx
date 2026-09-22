@@ -1901,7 +1901,7 @@ function BrowserSettings({prefs,setPrefs,onBrowser}){
     <h3>Browser</h3>
     <div className="settingBlock">
       <SettingRow title="Enable site tools" desc="Discover WebMCP tools exposed by supported websites in Free AI's built-in browser." control={<Toggle value={prefs.siteToolsEnabled!==false} onChange={v=>setPrefs({...prefs,siteToolsEnabled:v})}/>}/>
-      <SettingRow title="Open built-in browser" desc="Use Free AI's separate browser profile, tabs, sign-ins and downloads." control={<button className="settingsInlineButton" onClick={onBrowser}>Open</button>}/>
+      <SettingRow title="Open built-in browser" desc={isWindowsDesktop?"Use Free AI's separate browser profile. Sign-ins persist across app restarts; open tabs stay only while Free AI is running.":"Use Free AI's separate browser profile, tabs, sign-ins and downloads."} control={<button className="settingsInlineButton" onClick={onBrowser}>Open</button>}/>
       <SettingRow title="Clear browsing data" desc="Clear cookies, signed-in website state, local storage and browser cache for the Free AI browser profile." control={confirmClear
         ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={clearData}>Clear</button></span>
         : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
