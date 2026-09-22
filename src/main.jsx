@@ -1156,7 +1156,7 @@ function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -1272,6 +1272,7 @@ function Composer(props){
   },[listening]);
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
+    {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval}/>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
@@ -1297,10 +1298,10 @@ function Composer(props){
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
-          <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
-            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual'}<ChevronDown size={12}/>
+          <button className={'accessButton '+(approvalMode==='low'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
+            <ShieldCheck size={15}/>{approvalMode==='low'?'Allow low-risk':approvalMode==='read'?'Allow reads':'Always ask'}<ChevronDown size={12}/>
           </button>
-          {approvalMenu&&<PermissionModeMenu value={approvalMode} options={permissionOptions} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
+          {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
       </div>
 
@@ -1395,17 +1396,38 @@ function EffortMenu({effort,levels,choose}){
   </div>
 }
 
-function PermissionModeMenu({value,options={},choose}){
+function PermissionModeMenu({value,choose}){
   const rows=[
-    ['ask','Manual','Ask before each supported action that needs approval.',true],
-    ['auto','Automatic','Automatically continue eligible low-risk actions and pause for sensitive actions.',!!options.auto],
-    ['full','Full access','Run supported computer actions without repeated approval prompts.',!!options.full]
+    ['ask','Always ask','Ask before tool actions. Website and desktop access still require explicit task approval.'],
+    ['read','Allow reads','Allow approved page/screen reads; ask before actions that change state.'],
+    ['low','Allow low-risk','Also allow low-risk navigation, scrolling and pointer movement. Sensitive actions still ask.']
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
-    {rows.map(([id,label,desc,enabled])=><button key={id} disabled={!enabled} className={'permissionRow '+(value===id?'active ':'')+(!enabled?'disabled':'')} onClick={()=>enabled&&choose(id)}>
-      <ShieldCheck size={17}/><span><b>{label}</b><small>{enabled?desc:'Enable this mode in Settings → General first.'}</small></span>{value===id&&<Check size={15}/>}
+    {rows.map(([id,label,desc])=><button key={id} className={'permissionRow '+(value===id?'active ':'')} onClick={()=>choose(id)}>
+      <ShieldCheck size={17}/><span><b>{label}</b><small>{desc}</small></span>{value===id&&<Check size={15}/>}
     </button>)}
+  </div>
+}
+
+function WorkTaskStatus({task,onApproval}){
+  const labels={running:'Running',waiting_approval:'Waiting for approval',completed:'Completed',failed:'Failed',stopped:'Stopped'};
+  const active=task.status==='running'||task.status==='waiting_approval';
+  return <div className={'workTaskStatus '+task.status} role="status" aria-live="polite">
+    <div className="workTaskHead">
+      <span className="workTaskStateIcon">{task.status==='completed'?<Check size={15}/>:task.status==='failed'?<X size={15}/>:task.status==='stopped'?<Square size={13}/>:<RefreshCw className={active?'spin':''} size={14}/>}</span>
+      <span><b>{labels[task.status]||task.status}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
+    </div>
+    {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-4).map(item=><span key={item.id}>{item.text}</span>)}</div>}
+    {task.status==='waiting_approval'&&task.approval&&<div className="workApprovalCard">
+      <ShieldCheck size={18}/>
+      <div><b>{task.approval.title}</b><span>{task.approval.summary}</span>{task.approval.detail&&<small>{task.approval.detail}</small>}</div>
+      <div className="workApprovalActions">
+        <button onClick={()=>onApproval?.(task.id,false)}>Deny</button>
+        <button className="approveAction" onClick={()=>onApproval?.(task.id,true)}>{task.approval.allowLabel||'Allow once'}</button>
+      </div>
+    </div>}
+    {task.status==='failed'&&task.error&&<div className="computerError">{task.error}</div>}
   </div>
 }
 
