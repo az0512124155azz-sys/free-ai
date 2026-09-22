@@ -1313,6 +1313,7 @@ function Composer(props){
   const webRecognition=useRef(null);
   const dictationBase=useRef('');
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'}[effort]||'Reasoning';
+  const selectedMcpConnections=mcpConnections.filter(connection=>selectedMcpIds.includes(connection.id));
 
   async function stopVoice(){
     setDictationError('');
@@ -1422,6 +1423,12 @@ function Composer(props){
     {product==='super'&&windowsDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
+    </div>}
+    {windowsDesktop&&mode==='work'&&selectedMcpConnections.length>0&&<div className="mcpSelectionTray" aria-label="Selected MCP apps">
+      {selectedMcpConnections.map(connection=><div className="mcpSelectionChip" key={connection.id}>
+        <Plug size={12}/><span><b>{connection.name}</b><small>{connection.connected?'Connected':connection.hasToken?'Saved · connects on send':'Saved · connects on send'}</small></span>
+        <button type="button" aria-label={'Remove '+connection.name} disabled={busy} onClick={()=>!busy&&onToggleMcp?.(connection.id)}><X size={11}/></button>
+      </div>)}
     </div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
@@ -1618,7 +1625,7 @@ function WorkTaskStatus({task,onApproval}){
   </div>
 }
 
-function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
+function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode,directMcpConnections=[],selectedMcpIds=[],onToggleMcp}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     {isNative?<>
@@ -1628,9 +1635,26 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
     </>:<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
-    <div className="floatingTitle section">Plugins</div>
-    {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
-      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName} onClick={()=>setSelectedTool(t)}/>
+    {mode==='work'&&isWindowsDesktop&&<>
+      <div className="floatingTitle section">Direct MCP apps</div>
+      {directMcpConnections.length===0
+        ? <div className="menuEmpty compact">No direct MCP apps configured.</div>
+        : directMcpConnections.slice(0,10).map(connection=><button
+            key={connection.id}
+            className={'menuRow mcpMenuRow '+(selectedMcpIds.includes(connection.id)?'active':'')}
+            role="menuitemcheckbox"
+            aria-checked={selectedMcpIds.includes(connection.id)}
+            onClick={()=>onToggleMcp?.(connection.id)}>
+            <Plug size={18}/>
+            <span><b>{connection.name}</b><small>{connection.connected?(connection.tools?.length||0)+' tools · MCP '+connection.protocolVersion:'Saved · connects when task starts'}</small></span>
+            <span className={'teamCheck '+(selectedMcpIds.includes(connection.id)?'checked':'')}>{selectedMcpIds.includes(connection.id)&&<Check size={12}/>}</span>
+          </button>)
+      }
+      <div className="menuHint">Select up to 4 apps for this Work task. Tool calls still follow approval rules.</div>
+    </>}
+    <div className="floatingTitle section">{mode==='work'&&isWindowsDesktop?'Provider hints':'Plugins'}</div>
+    {tools.length===0?<div className="menuEmpty compact">No provider-managed connector hints detected.</div>:tools.slice(0,10).map(t=>
+      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · provider-managed, unverified'} onClick={()=>setSelectedTool(t)}/>
     )}
     <MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>
     {!isNative&&<MenuRow icon={Monitor} label="Computer" sub="View or control your desktop" onClick={onComputer}/>} 
