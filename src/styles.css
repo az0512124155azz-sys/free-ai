@@ -233,6 +233,7 @@ button:disabled{opacity:.42;cursor:default}
 .superHeaderLabel{height:34px;display:flex;align-items:center;gap:7px;padding:0 11px;border:1px solid var(--border-soft);border-radius:999px;background:var(--surface-secondary);color:var(--text);font-size:11.5px;font-weight:580}
 
 .chatStage{flex:1;min-height:0;position:relative;display:flex;flex-direction:column}
+.mobileConversationPicker{display:none}
 .emptyChat{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px 20px 92px}
 .emptyChat h1{
   font-size:24px;line-height:30px;font-weight:450;letter-spacing:-.022em;margin:0 0 17px;color:var(--text);text-align:center
@@ -545,7 +546,23 @@ button:disabled{opacity:.42;cursor:default}
   .headerRight .headerIcon:last-child{display:none}
 
   .chatStage{padding-bottom:max(0px,var(--safe-bottom))}
-  .emptyChat{padding:18px 8px max(88px,calc(72px + var(--safe-bottom)));justify-content:center}
+  .mobileConversationPicker{display:flex;height:46px;flex:none;align-items:center;justify-content:center;position:relative;z-index:105;padding:4px 10px 2px}
+  .mobileModelTrigger{min-width:0;max-width:min(78vw,330px);height:36px;padding:0 10px;border-radius:999px;background:transparent;display:flex;align-items:center;gap:8px;color:var(--text-secondary)}
+  .mobileModelTrigger:active,.mobileModelTrigger[aria-expanded="true"]{background:var(--hover);color:var(--text)}
+  .providerBadge.small{width:22px;height:22px;font-size:10px;flex:none}
+  .mobileModelTriggerText{min-width:0;display:flex;align-items:baseline;gap:6px;overflow:hidden}
+  .mobileModelTriggerText b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mobileModelTriggerText small{font-size:10.5px;color:var(--muted);white-space:nowrap}
+  .mobileTopModelPanel{position:absolute;z-index:180;top:44px;left:10px;right:10px;max-height:min(68vh,560px);overflow:auto;background:var(--popover);border:1px solid var(--border);border-radius:20px;padding:7px;box-shadow:var(--shadow-lg);animation:popoverIn 140ms var(--ease)}
+  .mobilePickerSectionTitle{font-size:11px;color:var(--muted);padding:7px 10px 6px;font-weight:550}
+  .mobileModelList>button,.mobileIntelligenceSection>button{width:100%;min-height:48px;border-radius:12px;background:transparent;display:grid;grid-template-columns:30px minmax(0,1fr) 20px;gap:9px;align-items:center;text-align:left;padding:7px 9px;color:var(--text-secondary)}
+  .mobileIntelligenceSection{border-top:1px solid var(--border-soft);margin-top:6px;padding-top:4px}
+  .mobileIntelligenceSection>button{grid-template-columns:minmax(0,1fr) 20px;padding-left:11px}
+  .mobileModelList>button.active,.mobileIntelligenceSection>button.active,.mobileModelList>button:active,.mobileIntelligenceSection>button:active{background:var(--hover);color:var(--text)}
+  .mobileModelList>button>span:nth-child(2),.mobileIntelligenceSection>button>span:first-child{min-width:0;display:flex;flex-direction:column}
+  .mobileModelList b,.mobileIntelligenceSection b{font-size:13px;font-weight:600}
+  .mobileModelList small,.mobileIntelligenceSection small{font-size:10.5px;color:var(--muted);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .emptyChat{padding:8px 8px max(88px,calc(72px + var(--safe-bottom)));justify-content:center}
   .emptyChat h1,.workEmpty h1{font-size:24px;line-height:30px;margin-bottom:16px}
   .gptComposer,.gptComposer.workComposer,.gptComposer.compact{
     width:calc(100vw - 16px);min-width:0;max-width:none;border-radius:27px;padding:8px 9px;
