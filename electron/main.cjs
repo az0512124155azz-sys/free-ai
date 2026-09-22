@@ -388,7 +388,128 @@ function browserDownloadById(id){
 }
 
 function persistentBrowserSession(){
-  return session.fromPartition(BROWSER_PARTITION);
+  const ses=session.fromPartition(BROWSER_PARTITION);
+  if(process.platform==='win32'&&!browserPermissionsConfigured){
+    browserPermissionsConfigured=true;
+    ses.setPermissionCheckHandler((webContents,permission,requestingOrigin,details={})=>{
+      const origin=browserPermissionOrigin(details.requestingUrl||requestingOrigin||webContents?.getURL?.()||'');
+      return !!origin&&browserPermissionGrants.has(browserPermissionKey(origin,permission));
+    });
+    ses.setPermissionRequestHandler((webContents,permission,callback,details={})=>{
+      const tabId=browserTabIdForWebContents(webContents);
+      const requestingUrl=String(details.requestingUrl||webContents?.getURL?.()||'');
+      const origin=browserPermissionOrigin(requestingUrl);
+      if(!tabId||tabId!==activeBrowserTabId||!browserAttached||!origin){
+        callback(false);
+        return;
+      }
+      const key=browserPermissionKey(origin,permission);
+      if(browserPermissionGrants.has(key)){
+        callback(true);
+        return;
+      }
+      const existing=[...browserPermissionRequests.values()].find(record=>record.tabId===tabId&&record.key===key);
+      if(existing){
+        existing.callbacks.push(callback);
+        emitBrowserState();
+        return;
+      }
+      const id=crypto.randomUUID();
+      browserPermissionRequests.set(id,{
+        id,
+        tabId,
+        permission:String(permission||'unknown'),
+        origin,
+        requestingUrl,
+        userGesture:!!details.isUserGesture,
+        key,
+        callbacks:[callback]
+      });
+      emitBrowserState();
+    });
+  }
+  return ses;
+}
+
+function browserPermissionOrigin(value){
+  try{
+    const parsed=new URL(String(value||''));
+    if(parsed.protocol!=='https:'&&parsed.protocol!=='http:')return '';
+    return parsed.origin;
+  }catch{return ''}
+}
+
+function browserPermissionKey(origin,permission){
+  return String(origin||'')+'\n'+String(permission||'unknown');
+}
+
+function browserTabIdForWebContents(webContents){
+  if(!webContents)return null;
+  for(const [id,view] of browserTabs){
+    if(view.webContents===webContents)return id;
+  }
+  return null;
+}
+
+function resolveBrowserPermission(id,allow){
+  const record=browserPermissionRequests.get(id);
+  if(!record)return browserSnapshot();
+  browserPermissionRequests.delete(id);
+  if(allow)browserPermissionGrants.add(record.key);
+  for(const callback of record.callbacks){
+    try{callback(!!allow)}catch{}
+  }
+  emitBrowserState();
+  return browserSnapshot();
+}
+
+function cancelBrowserPermissionsForTab(tabId){
+  for(const [id,record] of [...browserPermissionRequests]){
+    if(record.tabId!==tabId)continue;
+    browserPermissionRequests.delete(id);
+    for(const callback of record.callbacks){
+      try{callback(false)}catch{}
+    }
+  }
+}
+
+function clearBrowserPermissions(){
+  browserPermissionGrants.clear();
+  for(const [id,record] of [...browserPermissionRequests]){
+    browserPermissionRequests.delete(id);
+    for(const callback of record.callbacks){
+      try{callback(false)}catch{}
+    }
+  }
+}
+
+function browserProtocolInfo(value){
+  try{
+    const parsed=new URL(String(value||''));
+    if(BROWSER_RENDERABLE_PROTOCOLS.has(parsed.protocol))return null;
+    return {
+      scheme:parsed.protocol.replace(/:$/,'')||'unknown',
+      url:parsed.href,
+      canOpenExternal:BROWSER_EXTERNAL_PROTOCOLS.has(parsed.protocol)
+    };
+  }catch{return null}
+}
+
+function setBrowserProtocolError(tabId,value){
+  const info=browserProtocolInfo(value);
+  if(!info||!tabId)return false;
+  browserSiteTools.set(tabId,[]);
+  browserErrors.set(tabId,{
+    type:'protocol',
+    description:info.canOpenExternal
+      ? info.scheme.toUpperCase()+' links open in another app, not inside Free AI.'
+      : 'The '+info.scheme+': protocol is not supported inside Free AI.',
+    url:info.url,
+    scheme:info.scheme,
+    canOpenExternal:info.canOpenExternal
+  });
+  emitBrowserState();
+  return true;
 }
 
 function createBrowserView(webPreferences={}){
