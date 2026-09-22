@@ -339,6 +339,9 @@ button:disabled{opacity:.42;cursor:default}
   border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px;font-size:11px;box-shadow:var(--shadow-md)
 }
 .attachedTool small{color:var(--muted)}.attachedTool button{background:transparent;display:grid;place-items:center}
+.goalChip{position:absolute;bottom:calc(100% + 7px);left:12px;max-width:70%;display:grid;grid-template-columns:16px minmax(0,1fr) 20px;align-items:center;gap:5px;background:var(--popover);border:1px solid var(--border);border-radius:12px;padding:7px 8px;color:var(--text-secondary);font-size:10.5px;box-shadow:var(--shadow-md)}
+.goalChip>span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.goalChip>button{width:20px;height:20px;border-radius:6px;background:transparent;color:var(--muted);display:grid;place-items:center}.goalChip>button:hover{background:var(--hover);color:var(--text)}
+.goalDialog textarea{min-height:100px;resize:vertical;border:1px solid var(--border);background:var(--canvas);color:var(--text);border-radius:9px;padding:9px;font:11px/1.45 inherit}
 .menuAnchor{position:relative}
 
 .floatingMenu{
