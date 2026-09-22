@@ -171,7 +171,7 @@ function App(){
   const [mode,setMode]=useState('chat');
   const [modelMenu,setModelMenu]=useState(false);
   const [effortMenu,setEffortMenu]=useState(false);
-  const [effort,setEffort]=useState('default');
+  const [effort,setEffort]=useState('instant');
   const [plusMenu,setPlusMenu]=useState(false);
   const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
@@ -258,6 +258,7 @@ function App(){
   },[connected]);
 
   useEffect(()=>{
+    if(!isWindowsDesktop)return;
     const levels=Array.isArray(selected?.effortLevels)?selected.effortLevels.filter(Boolean):[];
     if(!levels.length||selected?.effortControl!=='native'){
       setEffort(current=>current==='default'?current:'default');
@@ -493,7 +494,9 @@ function App(){
         content:index===lastUserIndex?routedText:String(message.text||'')
       }));
       const effortLevels=Array.isArray(model.effortLevels)?model.effortLevels.filter(Boolean):[];
-      const routedEffort=model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default';
+      const routedEffort=isWindowsDesktop
+        ? (model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default')
+        : effort;
       const payload={
         requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
@@ -1101,7 +1104,7 @@ function Composer(props){
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
         </div>}
-        {!isNative&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1&&<div className="menuAnchor">
+        {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
