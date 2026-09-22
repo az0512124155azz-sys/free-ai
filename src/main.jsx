@@ -1470,6 +1470,12 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       if(next)setState(next);
     }catch{}
   }
+  async function dismissBrowserError(){
+    try{
+      const next=await window.desktopApi?.browserDismissError?.();
+      if(next)setState(next);
+    }catch{}
+  }
   async function openExternalProtocol(){
     const target=state.error?.url;
     if(!target)return;
@@ -1622,8 +1628,10 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
 
     {isWindowsDesktop&&state.error&&<div className="siteToolsHeader browserErrorBar" role="alert">
       <span><b>{state.error.type==='crash'?'Page stopped':state.error.type==='certificate'?'Certificate error':state.error.type==='protocol'?'Unsupported link':'Page unavailable'}</b><small>{state.error.description||'This page could not be loaded.'}</small></span>
-      {state.error.type==='protocol'&&state.error.canOpenExternal
-        ? <button onClick={openExternalProtocol}><ExternalLink size={14}/>Open externally</button>
+      {state.error.type==='protocol'
+        ? state.error.canOpenExternal
+          ? <button onClick={openExternalProtocol}><ExternalLink size={14}/>Open externally</button>
+          : <button onClick={dismissBrowserError}>Dismiss</button>
         : <button onClick={retryPage}><RefreshCw size={14}/>Retry</button>}
     </div>}
 
