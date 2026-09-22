@@ -221,6 +221,8 @@ function App(){
   const activeRequestRef=useRef(null);
   const streamedTextRef=useRef('');
   const cancelledRequestRef=useRef(null);
+  const activeWorkTaskIdRef=useRef(null);
+  const workTaskModelRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -234,7 +236,10 @@ function App(){
     let active=true;
     window.desktopApi.getStatus().then(s=>active&&setStatus(s)).catch(()=>{});
     const offStatus=window.desktopApi.onStatus(s=>active&&setStatus(s));
-    const offWork=window.desktopApi.onWorkTask?.(state=>active&&setWorkTask(state));
+    const offWork=window.desktopApi.onWorkTask?.(state=>{
+      if(!active||!state?.id||state.id!==activeWorkTaskIdRef.current)return;
+      setWorkTask(state);
+    });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
       if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
@@ -402,12 +407,13 @@ function App(){
     if(handledWorkTerminalRef.current===terminalKey)return;
     handledWorkTerminalRef.current=terminalKey;
     if(workTask.status==='stopped')return;
+    const taskModel=workTaskModelRef.current||selected;
     setMessages(prev=>{
       const entry=workTask.status==='completed'
-        ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:selected?.id}
+        ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:taskModel?.id}
         : {role:'error',text:String(workTask.error||'Work task failed.')};
       const next=[...prev,entry];
-      queueMicrotask(()=>saveCurrentChat(next,selected));
+      queueMicrotask(()=>saveCurrentChat(next,taskModel));
       return next;
     });
   },[workTask?.id,workTask?.status]);
@@ -437,8 +443,11 @@ function App(){
     setAppPrefs(normalized);localStorage.setItem('freeai.prefs',JSON.stringify(normalized));
   }
   function stopActiveWorkTask(){
-    if(isWindowsDesktop&&workTask&&['running','waiting_approval'].includes(workTask.status)){
-      window.desktopApi?.stopWorkTask?.(workTask.id).catch(()=>{});
+    const taskId=activeWorkTaskIdRef.current;
+    if(isWindowsDesktop&&taskId){
+      activeWorkTaskIdRef.current=null;
+      window.desktopApi?.stopWorkTask?.(taskId).catch(()=>{});
+      setWorkTask(null);
     }
   }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
@@ -554,6 +563,8 @@ function App(){
     setPrompt('');
     const taskId=crypto.randomUUID();
     handledWorkTerminalRef.current=null;
+    activeWorkTaskIdRef.current=taskId;
+    workTaskModelRef.current=selected;
     try{
       const state=await window.desktopApi.startWorkTask({
         id:taskId,
@@ -565,10 +576,11 @@ function App(){
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
         attachments:outbound
       });
-      setWorkTask(state);
+      if(activeWorkTaskIdRef.current===taskId)setWorkTask(state);
       for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
       setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
     }catch(e){
+      if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
       const failed=[...next,{role:'error',text:e?.message||String(e)}];
       setMessages(failed);saveCurrentChat(failed,selected);
     }
