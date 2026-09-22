@@ -545,7 +545,6 @@ function App(){
 
   useEffect(()=>{
     if(product!=='super'||!currentChatRecord?.isAgentThread||currentChatRecord.detachedFromTask)return;
-    if(currentChatRecord.taskId!==activeWorkTaskIdRef.current)return;
     setMessages(Array.isArray(currentChatRecord.messages)?currentChatRecord.messages:[]);
   },[product,currentChatRecord?.id,currentChatRecord?.updatedAt,currentChatRecord?.detachedFromTask]);
 
