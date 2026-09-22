@@ -38,6 +38,17 @@ const projectIconOptions=[
   ['sparkles','Ideas',Sparkles],['globe','Research',Globe2],['calendar','Planning',CalendarDays]
 ];
 const projectColorOptions=['blue','green','orange','purple','pink','neutral'];
+const DEFAULT_RESEARCH_PLAN=[
+  'Understand the research question and constraints',
+  'Identify primary and authoritative sources',
+  'Search current information',
+  'Compare conflicting evidence',
+  'Verify important claims against retrieved sources',
+  'Synthesize a cited final report'
+];
+function researchDomains(value){
+  return [...new Set(String(value||'').split(/[\n,]+/).map(item=>item.trim().toLowerCase()).filter(Boolean))].slice(0,20);
+}
 
 const settingsSections=[
   ['personal','General',Settings],['personal','App',AppWindow],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
@@ -340,6 +351,8 @@ function App(){
   const [plusMenu,setPlusMenu]=useState(false);
   const [webSearchEnabled,setWebSearchEnabled]=useState(false);
   const [deepResearchEnabled,setDeepResearchEnabled]=useState(false);
+  const [researchSetupOpen,setResearchSetupOpen]=useState(false);
+  const [pendingResearch,setPendingResearch]=useState(null);
   const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [settingsSection,setSettingsSection]=useState('General');
@@ -360,7 +373,7 @@ function App(){
     const saved=readJSON('freeai.prefs',{});
     return {
       appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,voiceLanguage:'auto',
-      customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,showBottomPanel:true,
+      customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,showBottomPanel:true,researchSearchUrl:'',
       ...saved,
       approvalMode:normalizeApprovalMode(saved.approvalMode)
     };
@@ -1118,7 +1131,7 @@ function App(){
     }
   }
 
-  async function runParallelGeneration(text){
+  async function runParallelGeneration(text,researchConfigOverride=null){
     const userText=String(text||'').trim();
     if(!isWindowsDesktop||!isDesktop||busy||!selected||!userText)return runGeneration(text,messages,selected);
     const groupKey=modelGroupKey(selected);
@@ -1154,9 +1167,10 @@ function App(){
       const instructions=projectInstructions||globalInstructions;
       const instructionsLabel=projectInstructions?'Free AI project instructions for this request:':'Free AI user preferences for this request:';
       const userRequestText=attachmentContext?[userText,'',attachmentContext].join('\n'):userText;
-      const routedText=instructions
-        ? [instructionsLabel,instructions,'','User request:',userRequestText].join('\n')
-        : userRequestText;
+      const researchPlanText=researchConfigOverride?.plan?.length
+        ? ['User-reviewed research plan:',...researchConfigOverride.plan.map((step,index)=>(index+1)+'. '+step)].join('\n')
+        : '';
+      const routedText=[instructions?[instructionsLabel,instructions].join('\n'):'',researchPlanText,userRequestText].filter(Boolean).join('\n\n');
       const historyMessages=withUser.filter(message=>message.role==='user'||message.role==='assistant');
       const lastUserIndex=historyMessages.map(message=>message.role).lastIndexOf('user');
       const history=historyMessages.map((message,index)=>{
@@ -1184,6 +1198,7 @@ function App(){
           attachments:outboundAttachments,
           mode,product,approvalMode:'ask',
           nativeTool:deepResearchEnabled?'deep-research':webSearchEnabled?'search':null,
+          researchConfig:researchConfigOverride||undefined,
           toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
         });
       }));
@@ -1191,7 +1206,7 @@ function App(){
       const responses=settled.map((result,index)=>{
         const model=targets[index];
         const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
-        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,deepResearch:deepResearchEnabled,researchCompleted:deepResearchEnabled,...meta};
+        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,deepResearch:deepResearchEnabled,researchCompleted:deepResearchEnabled,research:deepResearchEnabled?{status:'complete',mode:'provider-native',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'}}:null,...meta};
         return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
       });
       const next=[...withUser,...responses];
@@ -1204,7 +1219,7 @@ function App(){
     }
   }
 
-  async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null){
+  async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null,researchConfigOverride=null){
     const userText=String(text||'').trim();
     const hasAttachmentIntent=isWindowsDesktop&&(
       (!retryContext&&attachments.length>0)||
@@ -1214,10 +1229,13 @@ function App(){
     if(!model){setModelMenu(true);return}
     const nativeSearch=isWindowsDesktop&&mode==='chat'&&webSearchEnabled;
     const nativeDeepResearch=isWindowsDesktop&&mode==='chat'&&deepResearchEnabled;
-    if((nativeSearch||nativeDeepResearch)&&model.source!=='browser'){
-      setAttachmentError(nativeDeepResearch
-        ? 'Deep Research currently requires a connected browser AI with its native Deep Research tool available.'
-        : 'Web Search currently requires a connected browser AI with its live Search tool available.');
+    const ownedResearch=nativeDeepResearch&&model.source==='api'&&researchConfigOverride?.owned===true;
+    if(nativeSearch&&model.source!=='browser'){
+      setAttachmentError('Web Search currently requires a connected browser AI with its live Search tool available.');
+      return;
+    }
+    if(nativeDeepResearch&&model.source==='api'&&!ownedResearch){
+      setAttachmentError('Independent Deep Research for API models requires a reviewed research plan and a configured SearXNG Search API.');
       return;
     }
     const activeAttachments=isWindowsDesktop&&!retryContext?attachments:[];
@@ -1261,9 +1279,10 @@ function App(){
       const instructions=projectInstructions||globalInstructions;
       const instructionsLabel=projectInstructions?'Free AI project instructions for this request:':'Free AI user preferences for this request:';
       const userRequestText=attachmentContext?[userText,'',attachmentContext].join('\n'):userText;
-      const routedText=instructions
-        ? [instructionsLabel,instructions,'','User request:',userRequestText].join('\n')
-        : userRequestText;
+      const researchPlanText=researchConfigOverride?.plan?.length
+        ? ['User-reviewed research plan:',...researchConfigOverride.plan.map((step,index)=>(index+1)+'. '+step)].join('\n')
+        : '';
+      const routedText=[instructions?[instructionsLabel,instructions].join('\n'):'',researchPlanText,userRequestText].filter(Boolean).join('\n\n');
       const historyMessages=withUser.filter(message=>message.role==='user'||message.role==='assistant');
       const lastUserIndex=historyMessages.map(message=>message.role).lastIndexOf('user');
       const history=historyMessages.map((message,index)=>{
@@ -1284,13 +1303,20 @@ function App(){
         requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
         attachments:outboundAttachments,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
-        nativeTool:nativeDeepResearch?'deep-research':nativeSearch?'search':null,
+        nativeTool:nativeDeepResearch&&model.source==='browser'?'deep-research':nativeSearch?'search':null,
+        researchConfig:ownedResearch?researchConfigOverride:undefined,
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
       const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
-      const resultSources=Array.isArray(result?.sources)?result.sources.filter(item=>item?.url).slice(0,12).map(item=>({title:String(item.title||''),url:String(item.url||''),domain:String(item.domain||'')})):[];
-      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch}];
+      const resultSources=Array.isArray(result?.sources)?result.sources.filter(item=>item?.url).slice(0,12).map(item=>({
+        title:String(item.title||''),url:String(item.url||''),domain:String(item.domain||''),
+        retrievedAt:String(item.retrievedAt||''),excerpt:String(item.excerpt||'')
+      })):[];
+      const researchMeta=nativeDeepResearch
+        ? (result?.research||{status:'complete',mode:'provider-native',title:userText.slice(0,96)||'Research report',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'},completedAt:new Date().toISOString()})
+        : null;
+      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch,research:researchMeta}];
       setMessages(next);saveCurrentChat(next,model);
       if(isWindowsDesktop&&!retryContext){
         for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
@@ -1305,8 +1331,26 @@ function App(){
       setBusy(false);
     }
   }
+  function openResearchSetup(){
+    const userText=String(prompt||'').trim();
+    if(!deepResearchEnabled||busy||!selected||(!userText&&attachments.length===0))return;
+    setPendingResearch({text:prompt,baseMessages:messages,model:selected});
+    setResearchSetupOpen(true);
+  }
+  async function startReviewedResearch(config){
+    const pending=pendingResearch;
+    if(!pending)return;
+    setResearchSetupOpen(false);
+    setPendingResearch(null);
+    if(config?.owned&&config?.searchBackend?.url){
+      persistPrefs({...appPrefs,researchSearchUrl:String(config.searchBackend.url).trim()});
+    }
+    if(pending.model?.source==='browser'&&parallelCount>1)return runParallelGeneration(pending.text,config);
+    return runGeneration(pending.text,pending.baseMessages,pending.model,null,config);
+  }
   async function send(){
     if(isWindowsDesktop&&mode==='work')return runWorkGeneration(prompt);
+    if(isWindowsDesktop&&mode==='chat'&&deepResearchEnabled)return openResearchSetup();
     if(isWindowsDesktop&&selected?.source==='browser'&&parallelCount>1)return runParallelGeneration(prompt);
     return runGeneration(prompt,messages,selected);
   }
@@ -1358,6 +1402,24 @@ function App(){
     const value=String(url||'');
     if(!/^https:\/\//i.test(value))return;
     try{await window.desktopApi?.openExternal?.(value)}catch{}
+  }
+  async function exportResearchMessage(message,format){
+    if(!isWindowsDesktop||!message?.deepResearch||message?.streaming)return;
+    const chat=chats.find(item=>item.id===currentChatId);
+    const research=message.research||{};
+    try{
+      await window.desktopApi?.researchExportReport?.({
+        format,
+        report:{
+          title:research.title||chat?.title||'Research report',
+          content:String(message.text||''),
+          mode:research.mode||'provider-native',
+          plan:Array.isArray(research.plan)?research.plan:[],
+          completedAt:research.completedAt||new Date().toISOString(),
+          sources:Array.isArray(message.sources)?message.sources:[]
+        }
+      });
+    }catch(error){setAttachmentError(error?.message||String(error))}
   }
   async function copyMessage(text,index){
     try{
@@ -1455,10 +1517,6 @@ function App(){
 
   function toggleDeepResearch(){
     if(!isWindowsDesktop||mode!=='chat')return;
-    if(selected?.source==='api'){
-      setAttachmentError('Deep Research currently requires a connected browser AI that exposes a native Deep Research tool.');
-      return;
-    }
     setAttachmentError('');
     setSelectedTool(null);
     setWebSearchEnabled(false);
@@ -1793,7 +1851,14 @@ function App(){
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
-                    {isWindowsDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}><Sparkles size={13}/><span>{m.streaming?(m.activity||'Deep research in progress…'):'Deep research report'}</span>{!m.streaming&&<Check size={13}/>}</div>}
+                    {isWindowsDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
+                      <Sparkles size={13}/><span>{m.streaming?(m.activity||'Deep research in progress…'):'Deep research report'}</span>{!m.streaming&&<Check size={13}/>}
+                      {!m.streaming&&<div className="researchReportActions" aria-label="Export research report">
+                        <button onClick={()=>exportResearchMessage(m,'md')}>Markdown</button>
+                        <button onClick={()=>exportResearchMessage(m,'pdf')}>PDF</button>
+                        <button onClick={()=>exportResearchMessage(m,'docx')}>Word</button>
+                      </div>}
+                    </div>}
                     {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<MessageSources sources={m.sources} onOpen={openWebSource}/>} 
                     {isWindowsDesktop&&m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
                       {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
@@ -1892,6 +1957,13 @@ function App(){
     />}
 
     {deleteChatTarget&&<DeleteChatDialog chat={deleteChatTarget} onClose={()=>setDeleteChatTarget(null)} onConfirm={deleteChat}/>}
+    {researchSetupOpen&&pendingResearch&&<ResearchSetupDialog
+      model={pendingResearch.model}
+      attachments={attachments}
+      defaultSearchUrl={appPrefs.researchSearchUrl||''}
+      onClose={()=>{setResearchSetupOpen(false);setPendingResearch(null)}}
+      onStart={startReviewedResearch}
+    />}
     {projectDialogOpen&&isWindowsDesktop&&<NewProjectDialog draft={projectDraft} setDraft={setProjectDraft} onCreate={createProject} onClose={()=>setProjectDialogOpen(false)}/>}
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
@@ -1908,6 +1980,78 @@ function App(){
 
 function NavItem({icon:Icon,label,active,onClick}){
   return <button className={'navItem '+(active?'active':'')} onClick={onClick}><Icon size={16}/><span>{label}</span></button>
+}
+
+function ResearchSetupDialog({model,attachments=[],defaultSearchUrl='',onClose,onStart}){
+  const owned=model?.source==='api';
+  const [plan,setPlan]=useState(()=>[...DEFAULT_RESEARCH_PLAN]);
+  const [scopeMode,setScopeMode]=useState('web');
+  const [sites,setSites]=useState('');
+  const [exclude,setExclude]=useState('');
+  const [searchUrl,setSearchUrl]=useState(defaultSearchUrl);
+  const [error,setError]=useState('');
+  function updateStep(index,value){setPlan(current=>current.map((step,i)=>i===index?value:step))}
+  function moveStep(index,direction){
+    setPlan(current=>{
+      const target=index+direction;
+      if(target<0||target>=current.length)return current;
+      const next=[...current];[next[index],next[target]]=[next[target],next[index]];return next;
+    });
+  }
+  function start(){
+    const cleanPlan=plan.map(step=>String(step||'').trim()).filter(Boolean);
+    const siteList=researchDomains(sites),excludeList=researchDomains(exclude);
+    if(!cleanPlan.length){setError('Add at least one research-plan step.');return}
+    if(owned&&!String(searchUrl||'').trim()){setError('Enter a SearXNG Search API URL for independent API-model research.');return}
+    if(owned&&scopeMode==='only'&&!siteList.length){setError('Add at least one site for Only these sites.');return}
+    onStart?.({
+      owned,
+      plan:cleanPlan,
+      sourceScope:owned?{mode:scopeMode,sites:siteList,exclude:excludeList}:{mode:'provider-managed',sites:[],exclude:[]},
+      searchBackend:owned?{kind:'searxng',url:String(searchUrl||'').trim()}:null
+    });
+  }
+  return <div className="projectDialogScrim researchSetupScrim" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose?.()}}>
+    <div className="researchSetupDialog" role="dialog" aria-modal="true" aria-labelledby="research-setup-title">
+      <div className="projectDialogHeader">
+        <div><b id="research-setup-title">Research plan</b><small>Review the plan and source access before research starts.</small></div>
+        <button onClick={onClose} aria-label="Close"><X size={17}/></button>
+      </div>
+      <section className="researchSetupSection">
+        <div className="researchSetupHeading"><span><b>Plan</b><small>Free AI sends this reviewed plan with the research request.</small></span><button onClick={()=>setPlan(current=>[...current,''])}><Plus size={13}/>Add step</button></div>
+        <div className="researchPlanEditor">{plan.map((step,index)=><div className="researchPlanRow" key={index}>
+          <span className="researchStepNumber">{index+1}</span>
+          <input value={step} onChange={e=>updateStep(index,e.target.value)} aria-label={'Research step '+(index+1)}/>
+          <button disabled={index===0} onClick={()=>moveStep(index,-1)} aria-label="Move step up">↑</button>
+          <button disabled={index===plan.length-1} onClick={()=>moveStep(index,1)} aria-label="Move step down">↓</button>
+          <button disabled={plan.length<=1} onClick={()=>setPlan(current=>current.filter((_,i)=>i!==index))} aria-label="Remove step"><Trash2 size={13}/></button>
+        </div>)}</div>
+      </section>
+      <section className="researchSetupSection">
+        <div className="researchSetupHeading"><span><b>Sources</b><small>{owned?'Free AI enforces these controls in its own retrieval runtime.':'This browser provider manages its own research sources.'}</small></span></div>
+        {owned?<>
+          <div className="researchScopeChoices">
+            <button className={scopeMode==='web'?'active':''} onClick={()=>setScopeMode('web')}><Globe2 size={14}/><span><b>Public web</b><small>Search broadly, minus excluded sites.</small></span></button>
+            <button className={scopeMode==='only'?'active':''} onClick={()=>setScopeMode('only')}><Target size={14}/><span><b>Only these sites</b><small>Results outside the entered domains are rejected.</small></span></button>
+            <button className={scopeMode==='prioritize'?'active':''} onClick={()=>setScopeMode('prioritize')}><Pin size={14}/><span><b>Prioritize sites</b><small>Rank entered domains first, while allowing the wider web.</small></span></button>
+          </div>
+          {scopeMode!=='web'&&<label className="researchField"><span>{scopeMode==='only'?'Allowed sites':'Priority sites'}</span><textarea value={sites} onChange={e=>setSites(e.target.value)} placeholder={'openai.com\nmicrosoft.com'}/><small>One domain per line or comma-separated.</small></label>}
+          <label className="researchField"><span>Exclude sites</span><textarea value={exclude} onChange={e=>setExclude(e.target.value)} placeholder="reddit.com"/><small>Excluded domains are filtered after search as well as added to the query.</small></label>
+          <label className="researchField"><span>SearXNG Search API</span><input value={searchUrl} onChange={e=>setSearchUrl(e.target.value)} placeholder="https://search.example.com"/><small>Use your own SearXNG instance with JSON search enabled. Free AI does not silently route through a random public instance.</small></label>
+        </>:<div className="researchProviderNotice">
+          <ProviderBadge model={model}/><span><b>{modelLabel(model)} · provider-managed sources</b><small>Free AI will pass the reviewed plan to the provider's native Deep Research mode. Website allow/prioritize/exclude controls are not shown because Free AI cannot prove it can enforce them in that provider UI.</small></span>
+        </div>}
+        <div className="researchCapabilityGrid">
+          <span><Check size={12}/>Public web: {owned?'Free AI retrieval':'Provider managed'}</span>
+          <span><FileText size={12}/>Uploaded files: {attachments.length?attachments.length+' attached':'none attached'}</span>
+          <span><Plug size={12}/>Connected apps: {owned?'not available in owned runtime':'provider managed where available'}</span>
+          <span><ShieldCheck size={12}/>Citations: {owned?'only from pages Free AI read':'provider returned sources'}</span>
+        </div>
+      </section>
+      {error&&<div className="formError">{error}</div>}
+      <div className="projectDialogActions"><button onClick={onClose}>Cancel</button><button className="primaryProjectAction" onClick={start}>Start research</button></div>
+    </div>
+  </div>
 }
 
 function NewProjectDialog({draft,setDraft,onCreate,onClose}){
@@ -2139,7 +2283,7 @@ function Composer(props){
       </div>)}
     </div>}
     {webSearchEnabled&&<div className="attachedTool searchModeChip"><Globe2 size={13}/><span>Search</span><small>Live web sources via the selected browser AI</small><button onClick={()=>onToggleWebSearch?.()} aria-label="Turn off web search"><X size={12}/></button></div>}
-    {deepResearchEnabled&&<div className="attachedTool deepResearchModeChip"><Sparkles size={13}/><span>Deep research</span><small>Long-running provider research with live activity and sources</small><button onClick={()=>onToggleDeepResearch?.()} aria-label="Turn off deep research"><X size={12}/></button></div>}
+    {deepResearchEnabled&&<div className="attachedTool deepResearchModeChip"><Sparkles size={13}/><span>Deep research</span><small>{selected?.source==='api'?'Free AI-owned research with reviewed plan and retrieved sources':'Provider-native research with a reviewed Free AI plan'}</small><button onClick={()=>onToggleDeepResearch?.()} aria-label="Turn off deep research"><X size={12}/></button></div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
@@ -2406,7 +2550,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
     </>:!(mode==='work'&&isWindowsDesktop)&&<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Globe2} label="Search the web" sub={webSearchEnabled?'Live Search is enabled for the next message':'Use the selected browser AI’s live Search tool and return sources'} active={webSearchEnabled} onClick={onToggleWebSearch}/>}
-    {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Sparkles} label="Deep research" sub={deepResearchEnabled?'Deep Research is enabled for the next message':'Use the selected browser AI’s native Deep Research mode with live progress'} active={deepResearchEnabled} onClick={onToggleDeepResearch}/>}
+    {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Sparkles} label="Deep research" sub={deepResearchEnabled?'Deep Research is enabled for the next message':'Review a plan first; browser models use native research and API models can use configured Free AI retrieval'} active={deepResearchEnabled} onClick={onToggleDeepResearch}/>}
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
     {mode==='work'&&isWindowsDesktop&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
@@ -3365,9 +3509,14 @@ function DataControlsSettings({onExportData,onClearHistory}){
   </div>
 }
 function ConfigurationSettings({prefs,setPrefs}){
-  return <div className="settingsPane"><h3>Work</h3><div className="settingBlock">
-    <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
-  </div></div>
+  return <div className="settingsPane">
+    <h3>Work</h3><div className="settingBlock">
+      <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
+    </div>
+    {isWindowsDesktop&&<><h3>Independent research</h3><div className="settingBlock">
+      <label className="formLabel">SearXNG Search API<input value={prefs.researchSearchUrl||''} onChange={e=>setPrefs({...prefs,researchSearchUrl:e.target.value})} placeholder="https://search.example.com"/><small>Used only when an API model runs Free AI-owned Deep Research. The instance must allow JSON search responses.</small></label>
+    </div></>}
+  </div>
 }
 function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<span className="valuePill">{b}</span>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}

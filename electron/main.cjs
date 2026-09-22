@@ -5,6 +5,7 @@ const fs=require('fs');
 const crypto=require('crypto');
 const {execFile}=require('child_process');
 const {WebSocketServer,WebSocket}=require('ws');
+const {runOwnedResearch,exportResearchReport}=require('./research.cjs');
 
 let win;
 let extensionSocket=null;
@@ -2207,6 +2208,15 @@ async function routeDirect(msg,onStream){
   if(msg.source==='api'){
     const cfg=apiConnections.find(c=>c.id===msg.provider);
     if(!cfg) throw new Error('That API connection is not available on the desktop.');
+    if(msg.researchConfig?.owned===true){
+      return runOwnedResearch({
+        cfg,
+        msg,
+        onStream,
+        emitActivity:text=>emitPromptActivity(msg.requestId,text),
+        activePrompts
+      });
+    }
     return openAICompatibleChat(cfg,msg,onStream);
   }
   return routeToBrowser(msg,onStream);
@@ -3801,6 +3811,7 @@ ipcMain.handle('shell:saveTextFile',async(_e,payload={})=>{
   await fs.promises.writeFile(result.filePath,content,'utf8');
   return {saved:true,filePath:result.filePath};
 });
+ipcMain.handle('research:exportReport',(_e,payload={})=>exportResearchReport(win,payload));
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',(_e,options={})=>{sendExtension({type:'scanProviders',probeModels:!!options.probeModels,probeTools:!!options.probeTools});return status()});
 ipcMain.handle('bridge:setProviderModel',async(_e,{id,modelName}={})=>{const provider=browserProviders.find(item=>item.id===String(id||''));if(!provider)throw new Error('That browser model is not currently connected.');const result=await requestExtensionBrowser('setProviderModel',{tabId:provider.tabId,providerId:provider.providerId||String(provider.id||'').split(':')[0],modelName:String(modelName||'')},20000);sendExtension({type:'scanProviders',probeModels:true});return result;});
