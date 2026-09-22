@@ -2352,6 +2352,8 @@ function workModelPrompt(task,observation){
 async function callWorkModel(task,observation,attachments=[]){
   if(task.stopped)throw new Error('Task stopped.');
   task.detail='Thinking about the next step…';
+  const controllerId='controller:'+task.source+':'+task.provider;
+  updateTaskAgent(task,controllerId,{status:'running',detail:'Choosing the next step…'});
   emitWorkTask(task);
   const controller=connectedTaskModel(task.provider,task.source);
   if(!controller)throw new Error('The controller model disconnected during the task.');
@@ -2375,10 +2377,11 @@ async function executeWorkTool(task,decision){
     return result;
   }
   if(decision.tool==='browser_extension'){
-    const providerTab=browserProviders.find(item=>item.id===task.provider)?.tabId;
+    const protectedProviderIds=new Set([task.provider,...(Array.isArray(task.team)?task.team.filter(model=>model.source==='browser').map(model=>model.id):[])]);
+    const protectedTabs=new Set(browserProviders.filter(item=>protectedProviderIds.has(item.id)).map(item=>Number(item.tabId)).filter(Number.isFinite));
     const targetTab=Number(action.tabId);
-    if(Number.isFinite(targetTab)&&Number(providerTab)===targetTab){
-      throw new Error('Free AI will not control the Chromium tab that hosts the selected AI model. Open or select a different tab for Browser Use.');
+    if(Number.isFinite(targetTab)&&protectedTabs.has(targetTab)){
+      throw new Error('Free AI will not control a Chromium tab that hosts a model participating in this Super AI task. Open or select a different tab for Browser Use.');
     }
     if(type==='list_tabs')return requestExtensionBrowser('listTabs');
     if(type==='activate_tab')return requestExtensionBrowser('activateTab',{tabId:action.tabId});
@@ -2405,7 +2408,11 @@ async function executeWorkTool(task,decision){
     if(type==='list')return repositoryList(task.workspace.root);
     if(type==='read')return repositoryRead(task.workspace.root,action.path);
     if(type==='diff')return repositoryDiff(task.workspace.root,action.path||'');
-    if(type==='write')return repositoryWrite(task.workspace.root,action.path,action.content);
+    if(type==='write'){
+      const result=await repositoryWrite(task.workspace.root,action.path,action.content);
+      task.workspace=await repositorySummary(task.workspace.root);
+      return {...result,workspace:{name:task.workspace.name,branch:task.workspace.branch,head:task.workspace.head,dirty:task.workspace.dirty,status:task.workspace.status}};
+    }
     throw new Error('Unsupported repository action: '+String(action.type||'unknown'));
   }
   if(decision.tool==='computer'){
@@ -2492,6 +2499,7 @@ async function runWorkTask(task){
         task.status='completed';
         task.finalMessage=finalMessage;
         task.detail='Completed';
+        updateTaskAgent(task,'controller:'+task.source+':'+task.provider,{status:'completed',detail:'Task complete'});
         addWorkProgress(task,'Completed');
         emitWorkTask(task);
         return;
@@ -2551,6 +2559,7 @@ async function runWorkTask(task){
     task.status='failed';
     task.error=error?.message||String(error);
     task.detail='Task failed';
+    updateTaskAgent(task,'controller:'+task.source+':'+task.provider,{status:'failed',detail:task.error.slice(0,180)});
     addWorkProgress(task,'Failed: '+task.error);
     emitWorkTask(task);
   }finally{
