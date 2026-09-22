@@ -304,9 +304,10 @@ function App(){
       if(command==='open-browser')openBrowser();
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
     });
+    const offAppshot=window.desktopApi.onAppshot?.(data=>applyAppshot(data));
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
-    return()=>{active=false;offStatus?.();offCommand?.()};
+    return()=>{active=false;offStatus?.();offCommand?.();offAppshot?.()};
   },[]);
 
   useEffect(()=>{
@@ -725,6 +726,19 @@ function App(){
       else if(isNative)await Browser.open({url,presentationStyle:'popover'});
       else window.open(url,'_blank','noopener,noreferrer');
     }catch{}
+  }
+
+  function applyAppshot(data){
+    if(!data?.image)return;
+    const title=data.title||'Appshot';
+    setSelectedFile({name:title+'.png',type:'image/png',size:0,kind:'image',url:data.image});
+    setSidePanel('file');setPage('chat');
+    const block=['[Appshot: '+title+']',data.text?.trim()?'Accessible text:\n'+data.text.trim():''].filter(Boolean).join('\n');
+    setPrompt(current=>(current?current+'\n\n':'')+block);
+  }
+  async function captureAppshot(){
+    try{applyAppshot(await window.desktopApi.captureAppshot())}
+    catch(e){setPrompt(current=>(current?current+'\n\n':'')+'[Appshot error] '+(e?.message||String(e)))}
   }
 
   async function attachFiles(event){
