@@ -15,9 +15,10 @@
     "desktop:dist": "npm run validate && node scripts/prepare-branding.mjs && npm run build:web && electron-builder --publish never",
     "relay": "node relay/server.mjs",
     "android:add": "cap add android",
-    "android:sync": "npm run build:web && cap sync android && npm run android:configure-deeplink && npm run android:configure-branding",
+    "android:sync": "npm run build:web && cap sync android && npm run android:configure-deeplink && npm run android:configure-branding && npm run android:configure-signing",
     "android:configure-deeplink": "node scripts/configure-android-deeplink.mjs",
-    "android:configure-branding": "node scripts/configure-android-branding.mjs"
+    "android:configure-branding": "node scripts/configure-android-branding.mjs",
+    "android:configure-signing": "node scripts/configure-android-signing.mjs"
   },
   "dependencies": {
     "ws": "^8.18.3"
