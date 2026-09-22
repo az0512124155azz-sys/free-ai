@@ -203,6 +203,7 @@ function App(){
   const [screens,setScreens]=useState([]);
   const [workTask,setWorkTask]=useState(null);
   const [repositoryWorkspace,setRepositoryWorkspace]=useState(null);
+  const [localFolderWorkspace,setLocalFolderWorkspace]=useState(null);
   const [superTeamKeys,setSuperTeamKeys]=useState(()=>readJSON('freeai.super.team',[]));
   const handledWorkTerminalRef=useRef(null);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
