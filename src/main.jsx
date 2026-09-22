@@ -2006,10 +2006,10 @@ function Composer(props){
 
       <div className="composerRight">
         {product==='super'&&windowsDesktop&&mode==='work'&&<div className="menuAnchor">
-          <button className="teamButton" aria-haspopup="menu" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
-            <Bot size={14}/>Team {1+superTeamKeys.length}<ChevronDown size={12}/>
+          <button className="teamButton" aria-haspopup="dialog" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
+            <Bot size={14}/>{selected?'AI team · '+(1+superTeamKeys.length):'Set up AI team'}<ChevronDown size={12}/>
           </button>
-          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>setSuperTeamKeys?.(keys)} onClose={()=>setTeamMenu(false)}/>}
+          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>setSuperTeamKeys?.(keys)} onChooseController={model=>setSelected?.(model)} onClose={()=>setTeamMenu(false)}/>}
         </div>}
         {!isNative&&<div className="menuAnchor">
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
@@ -2119,9 +2119,10 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,o
   </div>
 }
 
-function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
+function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onChooseController,onClose}){
+  const available=connected.filter(model=>model.connected!==false);
   const primary=modelKey(selected);
-  const eligible=connected.filter(model=>model.connected!==false&&modelKey(model)!==primary);
+  const eligible=available.filter(model=>modelKey(model)!==primary);
   const eligibleKeys=eligible.map(modelKey);
   const toggle=key=>{
     const current=Array.isArray(selectedKeys)?selectedKeys:[];
@@ -2130,12 +2131,25 @@ function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
   };
   const allSelected=eligible.length>0&&eligibleKeys.every(key=>selectedKeys.includes(key));
   const useAll=()=>choose(allSelected?[]:eligibleKeys);
-  return <div className="floatingMenu teamPicker" role="menu" aria-label="Super AI team">
-    <div className="teamPickerHead"><span><b>Super AI team</b><small>One controller with parallel specialist/reviewer agents</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
-    {selected&&<div className="teamControllerRow"><ProviderBadge model={selected}/><span><b>{modelLabel(selected)}</b><small>Primary controller · {modelInstanceLabel(selected)}</small></span><Check size={14}/></div>}
-    {eligible.length>0&&<button className={'teamUseAll '+(allSelected?'active':'')} onClick={useAll}><Bot size={14}/><span>{allSelected?'Use controller only':'Use all '+eligible.length+' connected agents'}</span>{allSelected&&<Check size={13}/>}</button>}
-    <div className="floatingTitle section">Specialists / reviewers</div>
-    {eligible.length===0?<div className="menuEmpty compact">Connect another model to build a multi-agent team.</div>:eligible.map(model=>{
+  const teamSize=(selected?1:0)+selectedKeys.filter(key=>eligibleKeys.includes(key)).length;
+  return <div className="floatingMenu teamPicker" role="dialog" aria-label="Set up Super AI team">
+    <div className="teamPickerHead"><span><b>AI team</b><small>Choose one lead model. It coordinates the other selected models and combines their results.</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
+
+    <div className="teamSetupStep"><span>1</span><div><b>Lead model</b><small>The lead plans the task, delegates work and returns the final answer.</small></div></div>
+    {available.length===0?<div className="menuEmpty compact">Open AI chats in your connected browser first.</div>:<div className="teamControllerChoices">
+      {available.map(model=>{
+        const active=modelKey(model)===primary;
+        return <button key={modelKey(model)} className={'teamControllerChoice '+(active?'active':'')} onClick={()=>onChooseController?.(model)}>
+          <ProviderBadge model={model}/>
+          <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
+          {active&&<Check size={14}/>}
+        </button>;
+      })}
+    </div>}
+
+    <div className="teamSetupStep"><span>2</span><div><b>Parallel agents</b><small>Select the additional models that should work behind the scenes in their own child chats.</small></div></div>
+    {selected&&eligible.length>0&&<button className={'teamUseAll '+(allSelected?'active':'')} onClick={useAll}><Bot size={14}/><span>{allSelected?'Use lead model only':'Use all '+eligible.length+' available agents'}</span>{allSelected&&<Check size={13}/>}</button>}
+    {!selected?<div className="menuEmpty compact">Choose the lead model above to finish the team setup.</div>:eligible.length===0?<div className="menuEmpty compact">Open another AI model or another tab to add parallel agents.</div>:eligible.map(model=>{
       const key=modelKey(model),checked=selectedKeys.includes(key);
       return <button key={key} className={'teamModelRow '+(checked?'active ':'')} onClick={()=>toggle(key)}>
         <ProviderBadge model={model}/>
@@ -2143,7 +2157,9 @@ function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
         <span className={'teamCheck '+(checked?'checked':'')}>{checked?<Check size={13}/>:null}</span>
       </button>;
     })}
-    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' parallel agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
+    <div className="teamPickerFoot">{selected
+      ? teamSize+' model'+(teamSize===1?'':'s')+' · sending the task creates a Master project with a separate chat for every agent'
+      : 'A lead model is required before a Super AI task can start'}</div>
   </div>
 }
 
