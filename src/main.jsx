@@ -1086,7 +1086,7 @@ function App(){
       <div className="mobileQuickStart">
         <button className="mobileNewChat" onClick={()=>{setProduct('free');setMode('chat');newChat()}}><SquarePen size={17}/><span>New chat</span></button>
         <div className="mobileExperienceRail" aria-label="Experiences">
-          <button className={product==='super'&&page==='chat'?'active':''} onClick={()=>{selectProduct('super');setPage('chat');setMobileNavOpen(false)}}><Monitor size={18}/><span>Remote</span></button>
+          <button className={product==='super'&&page==='chat'?'active':''} onClick={()=>{selectProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><Monitor size={18}/><span>Remote</span></button>
           <button className={page==='plugins'?'active':''} onClick={()=>{selectProduct('free');openPluginsPage()}}><Plug size={18}/><span>Apps</span></button>
           <button className={page==='explore'?'active':''} onClick={()=>{selectProduct('free');stopActiveWorkTask();setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
         </div>
