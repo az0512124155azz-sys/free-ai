@@ -285,6 +285,11 @@ async function performBuiltInBrowserAction(payload={}){
 
   const view=activeBrowserEntry();
   if(!view||view.webContents.isDestroyed())throw new Error('No built-in browser tab is active.');
+  if(win&&!win.isDestroyed()){
+    if(win.isMinimized())win.restore();
+    win.show();
+    win.focus();
+  }
   const wc=view.webContents;
   const before=await builtInBrowserAgentSnapshot(activeBrowserTabId);
   const point=['click','double_click','move','scroll','type'].includes(type)?builtInBrowserPoint(action,before.page):null;
@@ -1843,6 +1848,12 @@ function workSerializable(value){
   }));
 }
 
+function workCanSeeImages(task){
+  if(task.source!=='browser')return false;
+  const provider=browserProviders.find(item=>item.id===task.provider);
+  return provider?.fileUpload===true;
+}
+
 function workObservationAttachments(result){
   const attachments=[];
   const screens=Array.isArray(result?.screens)?result.screens:[];
@@ -1867,8 +1878,7 @@ function workObservationAttachments(result){
 }
 
 function workToolDescription(task){
-  const provider=browserProviders.find(item=>item.id===task.provider);
-  const computerAvailable=process.platform==='win32'&&task.source==='browser'&&provider?.fileUpload===true;
+  const computerAvailable=process.platform==='win32'&&workCanSeeImages(task);
   const tools=[
     'browser_builtin: Free AI built-in browser. Actions: snapshot, navigate(url), back, forward, reload, wait(ms), new_tab(url), switch_tab(tabId), close_tab(tabId), click(x,y,button), double_click(x,y,button), move(x,y), scroll(x,y,deltaX,deltaY), type(x,y,text), keypress(keys).',
     extensionSocket&&extensionSocket.readyState===WebSocket.OPEN
@@ -1910,7 +1920,8 @@ function workModelPrompt(task,observation){
     '{"kind":"ask","message":"one concise question if the task cannot continue without user input"}',
     '',
     'For browser_extension page actions, first request snapshot(tabId), then use an elementId from that latest snapshot.',
-    'For computer actions, first request screenshot and use the returned displayId and viewport dimensions. Do not guess coordinates without a screenshot.',
+    'For browser_builtin, use the latest page.elements rect and page.viewport CSS coordinates for clicks and typing. Treat the screenshot as visual context, not as the coordinate system.',
+    'For computer actions, first request screenshot and use the returned displayId plus the exact screenshot width/height as viewport dimensions. Do not guess coordinates without a screenshot.',
     'Keep the task specific and stop when the requested outcome is complete.'
   ].join('\n');
 }
@@ -2065,7 +2076,7 @@ async function runWorkTask(task){
         const postAccess=await approvePostNavigationIfNeeded(task,decision,result);
         if(task.stopped)return;
         observation=postAccess.result;
-        observationAttachments=postAccess.allowed?workObservationAttachments(result):[];
+        observationAttachments=postAccess.allowed&&workCanSeeImages(task)?workObservationAttachments(result):[];
         task.trace.push(label+' — completed');
         addWorkProgress(task,'Done: '+label);
         task.detail='Step completed';
