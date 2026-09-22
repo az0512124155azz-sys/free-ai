@@ -42,7 +42,7 @@ const settingsSections=[
   ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
   ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
-  ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
+  ['integrations','Computer use',Monitor],['integrations','Files',Folder],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
   ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',SquareTerminal]
 ];
 
@@ -203,6 +203,7 @@ function App(){
   const [screens,setScreens]=useState([]);
   const [workTask,setWorkTask]=useState(null);
   const [repositoryWorkspace,setRepositoryWorkspace]=useState(null);
+  const [localFolderWorkspace,setLocalFolderWorkspace]=useState(null);
   const [superTeamKeys,setSuperTeamKeys]=useState(()=>readJSON('freeai.super.team',[]));
   const handledWorkTerminalRef=useRef(null);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
@@ -492,6 +493,22 @@ function App(){
     if(workBusy)return;
     setRepositoryWorkspace(null);
   }
+  async function chooseLocalFolderWorkspace(){
+    if(!isWindowsDesktop||workBusy)return;
+    stopActiveWorkTask();
+    setMode('work');setPage('chat');setMobileNavOpen(false);
+    setAttachmentError('');
+    try{
+      const folder=await window.desktopApi.chooseLocalFolder();
+      if(folder)setLocalFolderWorkspace(folder);
+    }catch(error){
+      setAttachmentError(error?.message||'Could not open local folder.');
+    }
+  }
+  function clearLocalFolderWorkspace(){
+    if(workBusy)return;
+    setLocalFolderWorkspace(null);
+  }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
   function createProject(){
     stopActiveWorkTask();
@@ -509,11 +526,11 @@ function App(){
       return next;
     });
   }
-  function openProject(project){stopActiveWorkTask();setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openProject(project){stopActiveWorkTask();setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
   function openPluginsPage(){stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false)}
   function startProjectConversation(projectId,nextMode){
     stopActiveWorkTask();
-    setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setLocalFolderWorkspace(null);
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function saveCurrentChat(nextMessages,model=selected){
@@ -529,6 +546,7 @@ function App(){
         mode:product==='super'?'work':mode,pinned:!!existing?.pinned,
         projectId:existing?.projectId||activeProjectId||null,
         workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:null,
+        localFolder:mode==='work'&&localFolderWorkspace?localFolderWorkspace:null,
         superTeamKeys:product==='super'?superTeamKeys:[],
         updatedAt:Date.now()
       };
@@ -547,6 +565,7 @@ function App(){
   function selectProduct(nextProduct){
     stopActiveWorkTask();
     setSelectedMcpIds([]);
+    setLocalFolderWorkspace(null);
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -556,12 +575,12 @@ function App(){
     if(product!=='free'||nextMode===mode)return;
     stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
-    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
     stopActiveWorkTask();
-    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);
+    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -575,6 +594,7 @@ function App(){
       setRepositoryWorkspace(chat.workspace||null);
       setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
     }
+    setLocalFolderWorkspace((chat.mode==='work'||product==='super')?(chat.localFolder||null):null);
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
@@ -616,7 +636,7 @@ function App(){
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
-    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,finalMessage:'',error:''});
+    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,folder:localFolderWorkspace?{name:localFolderWorkspace.name}:null,finalMessage:'',error:''});
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
@@ -624,6 +644,11 @@ function App(){
       if(product==='super'&&workspace?.root){
         workspace=await window.desktopApi.repositorySummary(workspace.root);
         setRepositoryWorkspace(workspace);
+      }
+      let localFolder=localFolderWorkspace;
+      if(localFolder?.root){
+        localFolder=await window.desktopApi.localFolderSummary(localFolder.root);
+        setLocalFolderWorkspace(localFolder);
       }
       const team=product==='super'
         ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>modelKey(model)!==modelKey(selected)).slice(0,3).map(model=>({
@@ -640,6 +665,7 @@ function App(){
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
         attachments:outbound,
         workspace:product==='super'?workspace:null,
+        localFolder,
         team,
         mcpConnectionIds:selectedMcpIds,
         instructions:projectInstructions||globalInstructions,
@@ -1149,6 +1175,7 @@ function App(){
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
+                localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
@@ -1197,6 +1224,7 @@ function App(){
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
+                localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
@@ -1305,7 +1333,7 @@ function Composer(props){
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
-    repositoryWorkspace,onChooseRepository,onClearRepository,superTeamKeys=[],setSuperTeamKeys,
+    repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
     mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
@@ -1429,6 +1457,10 @@ function Composer(props){
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
     </div>}
+    {windowsDesktop&&mode==='work'&&localFolderWorkspace&&<div className="repositoryContextChip localFolderContextChip">
+      <Folder size={13}/><span><b>{localFolderWorkspace.name}</b><small>Local folder · access confirmed per task</small></span>
+      <button type="button" aria-label="Remove local folder" disabled={busy} onClick={()=>!busy&&onClearLocalFolder?.()}><X size={12}/></button>
+    </div>}
     {windowsDesktop&&mode==='work'&&selectedMcpConnections.length>0&&<div className="mcpSelectionTray" aria-label="Selected MCP apps">
       {selectedMcpConnections.map(connection=><div className="mcpSelectionChip" key={connection.id}>
         <Plug size={12}/><span><b>{connection.name}</b><small>{connection.connected?'Connected':connection.hasToken?'Saved · connects on send':'Saved · connects on send'}</small></span>
@@ -1458,6 +1490,7 @@ function Composer(props){
             fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
             directMcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={onToggleMcp}
+            localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={onChooseLocalFolder} onClearLocalFolder={onClearLocalFolder}
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
@@ -1500,7 +1533,8 @@ function Composer(props){
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      <button onClick={product==='super'&&windowsDesktop?onChooseRepository:()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?(repositoryWorkspace?.name||'Choose repository'):windowsDesktop?'Attach project files':'Choose project'}</button>
+      {product==='super'&&windowsDesktop&&<button onClick={onChooseRepository}><GitBranch size={15}/>{repositoryWorkspace?.name||'Choose repository'}</button>}
+      {windowsDesktop?<button onClick={onChooseLocalFolder}><Folder size={15}/>{localFolderWorkspace?.name||'Open local folder'}</button>:<button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>}
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
@@ -1614,6 +1648,7 @@ function WorkTaskStatus({task,onApproval}){
       <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
     </div>
     {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
+    {task.folder&&<div className="workWorkspaceLine"><Folder size={12}/><span>{task.folder.name}</span><small>Local Files</small></div>}
     {Array.isArray(task.apps)&&task.apps.length>0&&<div className="workAppsLine"><Plug size={12}/><span>{task.apps.map(app=>app.name).join(' · ')}</span><small>{task.apps.reduce((sum,app)=>sum+(Number(app.toolCount)||0),0)} direct MCP tools</small></div>}
     {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
       <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
@@ -1631,16 +1666,17 @@ function WorkTaskStatus({task,onApproval}){
   </div>
 }
 
-function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode,directMcpConnections=[],selectedMcpIds=[],onToggleMcp}){
+function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     {isNative?<>
       <MenuRow icon={Camera} label="Camera" onClick={()=>cameraRef.current?.click()}/>
       <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
-    </>:<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
+    </>:!(mode==='work'&&isWindowsDesktop)&&<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
-    {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
+    {mode==='work'&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
+    {mode==='work'&&isWindowsDesktop&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
     {mode==='work'&&isWindowsDesktop&&<>
       <div className="floatingTitle section">Direct MCP apps</div>
       {directMcpConnections.length===0
@@ -2196,8 +2232,12 @@ function SettingsView(props){
   const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
-  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
-  const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
+  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Files','Configuration','Browser','Git','Environments']);
+  const visibleSettings=settingsSections.filter(([,label])=>
+    (!isNative||!hiddenOnMobile.has(label))&&
+    (label!=='Files'||isWindowsDesktop)&&
+    (!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase()))
+  );
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
@@ -2222,6 +2262,7 @@ function SettingsView(props){
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
+      {section==='Files'&&isWindowsDesktop&&<SimpleSettings title="Files" rows={[['Local folder access','Windows Work/Super AI · user-selected folder per conversation'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -2243,8 +2284,8 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      <SettingRow title="Work approvals" desc="Choose how much low-risk browser and computer activity Work can continue without repeated prompts. Website access and sensitive actions still require explicit approval." control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
-      <SettingRow title="Sensitive actions" desc="Typing, clicks that may change data, keyboard shortcuts, drag operations and closing tabs always pause for approval in the current Work loop." control={<span className="valuePill">Always confirm</span>}/>
+      <SettingRow title="Work approvals" desc={isWindowsDesktop?"Choose how much low-risk browser, computer, local-file and app activity Work can continue without repeated prompts. New website/app/folder scopes and sensitive actions still require explicit approval.":"Choose how much low-risk browser and computer activity Work can continue without repeated prompts. Website access and sensitive actions still require explicit approval."} control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
+      <SettingRow title="Sensitive actions" desc={isWindowsDesktop?"Typing, state-changing clicks, keyboard shortcuts, drag operations, tab closes, local file writes and non-read-only MCP calls remain confirmation-gated.":"Typing, clicks that may change data, keyboard shortcuts, drag operations and closing tabs always pause for approval in the current Work loop."} control={<span className="valuePill">Always confirm</span>}/>
     </div>
     <h3>General</h3>
     <div className="settingBlock">
