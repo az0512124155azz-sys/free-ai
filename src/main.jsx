@@ -479,12 +479,12 @@ function App(){
         content:index===lastUserIndex?routedText:String(message.text||'')
       }));
       const payload={
-        requestId,provider:model.id,source:model.source||'browser',text:routedText,history,effort,
+        requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
-      const finalText=String(result?.text??result??streamedTextRef.current??'');
+      const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
       const next=[...withUser,{role:'assistant',text:finalText,provider:model.id}];
       setMessages(next);saveCurrentChat(next,model);
     }catch(e){
@@ -1091,11 +1091,11 @@ function Composer(props){
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
         {(busy||prompt.trim())&&<button className={'voiceOrb '+(!busy&&prompt.trim()&&selected?'sendReady':'')}
-          onClick={busy?stopGeneration:prompt.trim()?send:undefined}
-          disabled={!busy&&(!selected&&!!prompt.trim())}
-          aria-label={busy?'Stop generating':'Send message'}
-          title={busy?'Stop generating':'Send'}>
-          {busy?<Square size={15}/>:<ArrowUp size={18}/>}
+          onClick={busy?(windowsDesktop?stopGeneration:undefined):prompt.trim()?send:undefined}
+          disabled={busy?!windowsDesktop:(!selected&&!!prompt.trim())}
+          aria-label={busy?(windowsDesktop?'Stop generating':'Generating response'):'Send message'}
+          title={busy?(windowsDesktop?'Stop generating':'Generating response'):'Send'}>
+          {busy?(windowsDesktop?<Square size={15}/>:<RefreshCw className="spin" size={17}/>):<ArrowUp size={18}/>} 
         </button>}
       </div>
     </div>
