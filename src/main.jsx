@@ -493,6 +493,22 @@ function App(){
     if(workBusy)return;
     setRepositoryWorkspace(null);
   }
+  async function chooseLocalFolderWorkspace(){
+    if(!isWindowsDesktop||workBusy)return;
+    stopActiveWorkTask();
+    setMode('work');setPage('chat');setMobileNavOpen(false);
+    setAttachmentError('');
+    try{
+      const folder=await window.desktopApi.chooseLocalFolder();
+      if(folder)setLocalFolderWorkspace(folder);
+    }catch(error){
+      setAttachmentError(error?.message||'Could not open local folder.');
+    }
+  }
+  function clearLocalFolderWorkspace(){
+    if(workBusy)return;
+    setLocalFolderWorkspace(null);
+  }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
   function createProject(){
     stopActiveWorkTask();
