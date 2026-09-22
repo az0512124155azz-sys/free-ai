@@ -170,24 +170,25 @@ jobs:
       - name: Apply Free AI Android branding
         run: npm run android:configure-branding
 
-      - name: Configure stable Android OAuth signing
-        run: npm run android:configure-signing
-
-      - name: Configure native Google login MainActivity
-        run: npm run android:configure-social-login
-
-      - name: Verify Android signing fingerprint
-        run: chmod +x android/gradlew && cd android && ./gradlew signingReport && cd .. && cat android-oauth-info.txt
-
       - name: Build APK
-        run: cd android && ./gradlew assembleDebug
+        run: chmod +x android/gradlew && cd android && ./gradlew assembleDebug
+
+      - name: Record installed APK signing certificate
+        run: |
+          {
+            echo "Free AI Android OAuth registration"
+            echo "Package: com.freeai.mobile"
+            echo
+            keytool -printcert -jarfile android/app/build/outputs/apk/debug/app-debug.apk
+          } > android/google-oauth-certificate.txt
+          cat android/google-oauth-certificate.txt
 
       - uses: actions/upload-artifact@v4
         with:
           name: free-ai-android
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
-            android-oauth-info.txt
+            android/google-oauth-certificate.txt
           if-no-files-found: error
 
   extension:
@@ -257,18 +258,11 @@ jobs:
           TAG="v$VERSION"
           TITLE="Free AI v$VERSION"
 
-          mapfile -d '' ASSETS < <(find release-assets -type f -print0)
-
-          if [ "${#ASSETS[@]}" -eq 0 ]; then
-            echo "No release assets found."
-            exit 1
-          fi
-
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release-assets/* --clobber
+          else
+            gh release create "$TAG" release-assets/* \
               --target "$GITHUB_SHA" \
               --title "$TITLE" \
               --notes "Free AI desktop, Android and Chrome extension builds."
           fi
-
-          gh release upload "$TAG" "${ASSETS[@]}" --clobber
