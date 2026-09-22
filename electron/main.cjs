@@ -2226,6 +2226,9 @@ app.on('before-quit',()=>{
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
   pending.clear();
+  for(const task of workTasks.values())stopWorkTask(task.id);
+  pendingWorkApprovals.clear();
+  workTasks.clear();
   for(const active of activePrompts.values())active.controller.abort();
   activePrompts.clear();
 });
@@ -2238,6 +2241,9 @@ ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',()=>{sendExtension({type:'scanProviders'});return status()});
 ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{},true));
 ipcMain.handle('bridge:cancelPrompt',(_e,id)=>cancelPrompt(id));
+ipcMain.handle('work:start',(_e,input)=>startWorkTask(input||{}));
+ipcMain.handle('work:stop',(_e,id)=>stopWorkTask(id));
+ipcMain.handle('work:resolveApproval',(_e,{taskId,allow}={})=>resolveWorkApproval(taskId,!!allow));
 ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{
   relayConfig={relayUrl:String(cfg?.relayUrl||'').trim(),pairKey:String(cfg?.pairKey||'').trim()};
   connectRelay();
