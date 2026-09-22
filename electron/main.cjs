@@ -1785,6 +1785,7 @@ function normalizeWorkApprovalMode(value){
 function publicWorkTask(task){
   return {
     id:task.id,
+    product:task.product,
     status:task.status,
     step:task.step,
     maxSteps:task.maxSteps,
