@@ -1346,6 +1346,18 @@ function startLocalBridge(){
         sendStatus();
         return;
       }
+      if(m.type==='browserState'){
+        extensionBrowserState=m.state&&typeof m.state==='object'?m.state:{tabs:[],activeTabId:null,activeWindowId:null};
+        sendStatus();
+        return;
+      }
+      if(m.type==='browserResponse'&&extensionBrowserPending.has(m.id)){
+        const request=extensionBrowserPending.get(m.id);
+        clearTimeout(request.timer);
+        extensionBrowserPending.delete(m.id);
+        m.error?request.reject(new Error(m.error)):request.resolve(m.result);
+        return;
+      }
       if(m.type==='stream'&&pending.has(m.id)){
         pending.get(m.id)?.onStream?.(String(m.text||''));
         return;
@@ -1361,6 +1373,12 @@ function startLocalBridge(){
       if(ws===extensionSocket){
         extensionSocket=null;
         browserProviders=[];
+        extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
+        for(const [id,request] of extensionBrowserPending){
+          clearTimeout(request.timer);
+          request.reject(new Error('Browser extension disconnected.'));
+          extensionBrowserPending.delete(id);
+        }
       }
       sendStatus();
     });
