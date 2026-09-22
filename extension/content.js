@@ -805,11 +805,31 @@
     throw new Error('Unsupported Browser Use page action: '+String(action.type||'unknown'));
   }
 
-  async function waitForAnswer(c,before,requestId){
+  function researchActivityText(){
+    const candidates=[...document.querySelectorAll('[role="status"],[aria-live],button,[data-testid*="status"],[data-test-id*="status"]')].filter(visible);
+    const patterns=/\b(planning|searching|browsing|reading|researching|analyzing|analysing|synthesizing|synthesising|reviewing|collecting|checking sources|working)\b/i;
+    for(const el of candidates.reverse()){
+      const label=cleanLabel(controlLabel(el));
+      if(label&&patterns.test(label)&&label.length<=180)return label;
+    }
+    return '';
+  }
+
+  async function waitForAnswer(c,before,requestId,{deepResearch=false}={}){
     let stable='';
     let stableCount=0;
-    for(let i=0;i<360;i++){
+    let lastActivity='';
+    const iterations=deepResearch?3600:360;
+    const requiredStable=deepResearch?24:8;
+    for(let i=0;i<iterations;i++){
       await sleep(500);
+      if(deepResearch&&requestId&&i%4===0){
+        const activity=researchActivityText();
+        if(activity&&activity!==lastActivity){
+          lastActivity=activity;
+          chrome.runtime.sendMessage({type:'freeai:activity',id:requestId,text:activity}).catch(()=>{});
+        }
+      }
       const now=lastText(c.answers);
       if(now&&now!==before){
         if(now===stable) stableCount++;
@@ -817,10 +837,11 @@
           stable=now;stableCount=0;
           if(requestId)chrome.runtime.sendMessage({type:'freeai:stream',id:requestId,text:now}).catch(()=>{});
         }
-        if(stableCount>=8) return now;
+        const stop=first(c.stop||[]);
+        if(stableCount>=requiredStable&&!stop) return now;
       }
     }
-    throw new Error('Timed out waiting for the AI response.');
+    throw new Error(deepResearch?'Deep Research timed out before the provider finished.':'Timed out waiting for the AI response.');
   }
 
   async function prompt(provider,text,toolRequest,effort,requestId,attachments,nativeTool){
@@ -833,6 +854,7 @@
     if(effort&&effort!=='default') await selectProviderEffort(effort);
     if(toolRequest?.mcp)await activateProviderTool(toolRequest.mcp);
     if(nativeTool==='search')await activateProviderNativeTool('search');
+    if(nativeTool==='deep-research')await activateProviderNativeTool('deep-research');
     const finalText=[...prefixes,String(text||'')].filter(Boolean).join('\n\n');
 
     const before=lastText(c.answers);
@@ -849,12 +871,13 @@
       else throw new Error('Could not find the send control for '+provider+' on '+location.hostname+'. The provider UI may have changed.');
     }
 
-    const answer=await waitForAnswer(c,before,requestId);
+    if(nativeTool==='deep-research'&&requestId)chrome.runtime.sendMessage({type:'freeai:activity',id:requestId,text:'Deep research started'}).catch(()=>{});
+    const answer=await waitForAnswer(c,before,requestId,{deepResearch:nativeTool==='deep-research'});
     return {
       text:answer,
       requestedTool:toolRequest?.mcp||null,
       requestedNativeTool:nativeTool||null,
-      sources:nativeTool==='search'?extractResponseSources(c):[]
+      sources:(nativeTool==='search'||nativeTool==='deep-research')?extractResponseSources(c):[]
     };
   }
 
