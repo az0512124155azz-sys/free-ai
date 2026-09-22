@@ -105,7 +105,7 @@ has(research,'reportDocx','DOCX report export is missing.');
 has(source,"readJSON('freeai.chats.free'",'Free AI chat restart persistence is missing.');
 has(source,"readJSON('freeai.prefs'",'Preferences restart persistence is missing.');
 has(source,'function openChat','Old chat loading path is missing.');
-has(source,'if(!fresh){setSelected(null)','Disconnected/stale selected-provider cleanup is missing.');
+ok(source.includes('if(!fresh){setSelected(null)')||source.includes('if(!fresh||fresh.connected===false){setSelected(null)'),'Disconnected/stale selected-provider cleanup is missing.');
 has(source,"onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey)",'Composer keyboard submit behavior is missing.');
 
 has(main,'contextIsolation:true','Electron context isolation must stay enabled.');

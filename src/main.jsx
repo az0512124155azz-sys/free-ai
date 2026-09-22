@@ -150,6 +150,11 @@ function modelInstanceLabel(model){
   const provider=model?.name||providerNames[modelProviderId(model)]||'Browser';
   return 'Browser · '+provider+(Number.isFinite(Number(model?.tabId))?' · Tab '+model.tabId:'')+(title&&title!==provider?' · '+title:'');
 }
+function modelConnectionDetail(model){
+  if(model?.connected!==false)return '';
+  if(model?.adapterReady===false)return ' · adapter unavailable';
+  return ' · reconnecting…';
+}
 function initials(session){
   const value=session?.user?.user_metadata?.full_name||session?.user?.email||'Free AI';
   return value.split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();
@@ -461,7 +466,7 @@ function App(){
   useEffect(()=>{
     if(!selected)return;
     const fresh=connected.find(p=>p.id===selected.id&&p.source===selected.source);
-    if(!fresh){setSelected(null);setSelectedTool(null);setParallelCount(1)}
+    if(!fresh||fresh.connected===false){setSelected(null);setSelectedTool(null);setParallelCount(1)}
     else if(fresh!==selected)setSelected(fresh);
   },[connected]);
 
@@ -2374,9 +2379,15 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
     {open&&<div className="mobileTopModelPanel" role="dialog" aria-label="Model and intelligence">
       <div className="mobilePickerSectionTitle">Models</div>
       <div className="mobileModelList">
-        {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Connect your desktop or add an API model first.</span></div>:connected.map(model=><button key={(model.source||'browser')+model.id} className={(selected?.id===model.id&&selected?.source===model.source)?'active':''} onClick={()=>choose(model)}>
+        {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Connect your desktop or add an API model first.</span></div>:connected.map(model=><button
+          key={(model.source||'browser')+model.id}
+          className={((selected?.id===model.id&&selected?.source===model.source)?'active ':'')+(model.connected===false?'disconnected':'')}
+          disabled={model.connected===false}
+          title={model.adapterIssue||undefined}
+          onClick={()=>model.connected!==false&&choose(model)}
+        >
           <ProviderBadge model={model}/>
-          <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
+          <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}{modelConnectionDetail(model)}</small></span>
           {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
         </button>)}
       </div>
@@ -2411,12 +2422,13 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,o
           disabled={model.connected===false}
           key={(model.source||'browser')+model.id}
           className={'pickerRow '+(model.connected===false?'disconnected':'')}
+          title={model.adapterIssue||undefined}
           onClick={()=>choose(model)}
         >
           <ProviderBadge model={model}/>
           <span className="pickerText">
             <b>{modelLabel(model)}</b>
-            <small>{modelInstanceLabel(model)}{siblings>1?' · '+siblings+' matching tabs':''}{model.connected===false?' · reconnecting…':''}</small>
+            <small>{modelInstanceLabel(model)}{siblings>1?' · '+siblings+' matching tabs':''}{modelConnectionDetail(model)}</small>
           </span>
           {active&&<Check size={16}/>}
         </button>;

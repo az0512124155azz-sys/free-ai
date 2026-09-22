@@ -118,7 +118,12 @@ async function scanProviders(options={}){
         if(!ok)continue;
         const instanceId=providerId+':'+tab.id;
         const previous=lastProviders.find(item=>item.id===instanceId)||null;
-        const capabilities=await sendToTab(tab.id,{type:'freeai:scanCapabilities',provider:providerId,probeModels,probeTools}).catch(()=>({mcps:[],modelOptions:[]}));
+        const capabilities=await sendToTab(tab.id,{type:'freeai:scanCapabilities',provider:providerId,probeModels,probeTools}).catch(()=>({
+          mcps:[],
+          modelOptions:[],
+          adapterReady:false,
+          adapterIssue:'Free AI could not inspect the provider UI.'
+        }));
         const modelOptions=Array.isArray(capabilities?.modelOptions)&&capabilities.modelOptions.length?capabilities.modelOptions:(Array.isArray(previous?.modelOptions)?previous.modelOptions:[]);
         const mcps=Array.isArray(capabilities?.mcps)&&capabilities.mcps.length?capabilities.mcps:(Array.isArray(previous?.mcps)?previous.mcps:[]);
         const effortLevels=Array.isArray(capabilities?.effortLevels)&&capabilities.effortLevels.length?capabilities.effortLevels:(Array.isArray(previous?.effortLevels)?previous.effortLevels:[]);
@@ -134,6 +139,8 @@ async function scanProviders(options={}){
           favIconUrl:tab.favIconUrl||'',
           iconDataUrl,
           source:'browser',
+          adapterReady:capabilities?.adapterReady===true,
+          adapterIssue:String(capabilities?.adapterIssue||''),
           modelName:typeof capabilities?.modelName==='string'&&capabilities.modelName.trim()?capabilities.modelName.trim():(previous?.modelName||p.name),
           modelOptions,
           effortLevels,

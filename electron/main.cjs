@@ -2032,10 +2032,11 @@ function publicApiConnection(c){
 }
 
 function status(){
+  const extensionConnected=!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN);
   return {
-    extension:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
+    extension:extensionConnected,
     browserExtension:{
-      connected:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
+      connected:extensionConnected,
       tabCount:Array.isArray(extensionBrowserState.tabs)?extensionBrowserState.tabs.length:0
     },
     relay:!!(relaySocket&&relaySocket.readyState===WebSocket.OPEN),
@@ -2048,7 +2049,7 @@ function status(){
       actions:[]
     },
     providers:[
-      ...browserProviders.map(p=>({...p,source:'browser',connected:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN)})),
+      ...browserProviders.map(p=>({...p,source:'browser',connected:extensionConnected&&p.adapterReady!==false})),
       ...apiConnections.map(p=>({...publicApiConnection(p),connected:true}))
     ]
   };
@@ -2105,8 +2106,12 @@ function routeToBrowser(msg,onStream){
     if(!extensionSocket||extensionSocket.readyState!==WebSocket.OPEN){
       return reject(new Error('Chrome extension is not connected.'));
     }
-    if(!browserProviders.some(p=>p.id===msg.provider)){
+    const provider=browserProviders.find(p=>p.id===msg.provider);
+    if(!provider){
       return reject(new Error('That browser model is not currently connected.'));
+    }
+    if(provider.adapterReady===false){
+      return reject(new Error(provider.adapterIssue||'The provider adapter is unavailable because the provider UI may have changed.'));
     }
     const id=msg.requestId||msg.id||crypto.randomUUID();
     const timeoutMs=msg.nativeTool==='deep-research'?30*60*1000:180000;

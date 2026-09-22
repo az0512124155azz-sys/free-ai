@@ -65,6 +65,21 @@
     }
   };
 
+  function providerAdapterHealth(provider){
+    const config=configs[provider];
+    if(!config){
+      return {adapterReady:false,adapterIssue:'This provider adapter is not supported by the installed Free AI Browser Bridge.'};
+    }
+    const input=first(config.inputs||[]);
+    if(!input){
+      return {
+        adapterReady:false,
+        adapterIssue:'Free AI could not find the provider chat input. Open a chat and wait for it to finish loading. If this persists, the provider UI may have changed.'
+      };
+    }
+    return {adapterReady:true,adapterIssue:''};
+  }
+
   function cleanLabel(s){
     return String(s||'').replace(/\s+/g,' ').trim().replace(/^[-•]\s*/,'').slice(0,160);
   }
@@ -895,6 +910,7 @@
           const effort=m.probeModels?await probeEffortState():detectEffortState();
           const mcps=m.probeTools?await probeMcps():scanMcps();
           sendResponse({
+            ...providerAdapterHealth(provider),
             mcps,
             modelName:detectActiveModel(provider),
             modelOptions,
@@ -903,7 +919,15 @@
             effortControl:effort.levels.length>1?'native':null,
             fileUpload:detectFileUpload()
           });
-        }catch(e){sendResponse({error:e?.message||String(e),mcps:scanMcps(),modelName:detectActiveModel(provider),modelOptions:detectModelOptions(provider),fileUpload:detectFileUpload()})}
+        }catch(e){sendResponse({
+          adapterReady:false,
+          adapterIssue:e?.message||'Free AI could not inspect this provider UI.',
+          error:e?.message||String(e),
+          mcps:scanMcps(),
+          modelName:detectActiveModel(provider),
+          modelOptions:detectModelOptions(provider),
+          fileUpload:detectFileUpload()
+        })}
       })();
       return true;
     }

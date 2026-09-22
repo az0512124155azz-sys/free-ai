@@ -2,6 +2,8 @@ import fs from 'node:fs';
 
 const main=fs.readFileSync('electron/main.cjs','utf8');
 const source=fs.readFileSync('src/main.jsx','utf8');
+const background=fs.readFileSync('extension/background.js','utf8');
+const contentScript=fs.readFileSync('extension/content.js','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
@@ -70,6 +72,20 @@ has(installerSmoke,'/S _?=$installDir','Installer smoke must silently uninstall 
 ok(/extensionSocket=null;\s*browserProviders=\[\];\s*extensionBrowserState=\{tabs:\[\],activeTabId:null,activeWindowId:null\};/.test(main),'Extension disconnect must clear stale browser provider and tab state.');
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
 has(main,"for(const [id,request] of pending)",'Extension disconnect must drain pending browser prompts.');
-has(source,"if(!fresh){setSelected(null);setSelectedTool(null);setParallelCount(1)}",'Renderer must clear a selected provider after disconnect.');
+has(source,"if(!fresh||fresh.connected===false){setSelected(null);setSelectedTool(null);setParallelCount(1)}",'Renderer must clear a selected provider after disconnect or adapter failure.');
+
+// Windows 7.6 provider-adapter contract coverage.
+has(contentScript,'function providerAdapterHealth(provider)','Provider DOM health detection is missing.');
+has(contentScript,"adapterReady:false",'Provider capability scan must expose an unavailable adapter state.');
+has(contentScript,"adapterReady:true",'Provider capability scan must expose a healthy adapter state.');
+has(background,"adapterReady:capabilities?.adapterReady===true",'Browser Bridge must preserve live adapter health.');
+has(background,"adapterIssue:String(capabilities?.adapterIssue||'')",'Browser Bridge must preserve adapter failure details.');
+has(main,"connected:extensionConnected&&p.adapterReady!==false",'Desktop provider status must disable unhealthy adapters.');
+has(main,"if(provider.adapterReady===false)",'Browser routing must reject an unhealthy provider adapter.');
+has(source,"if(!fresh||fresh.connected===false)",'Selected provider must clear when its adapter becomes unavailable.');
+has(source,"function modelConnectionDetail(model)",'Model picker must distinguish adapter failure from reconnecting state.');
+has(source,"return ' · adapter unavailable';",'Model picker must label provider adapter failures truthfully.');
+has(source,"title={model.adapterIssue||undefined}",'Provider adapter failure reason must be available in the picker.');
+has(source,"onClick={()=>model.connected!==false&&choose(model)}",'Compact model picker must not select an unavailable adapter.');
 
 console.log('Windows 7 QA regression checks passed.');
