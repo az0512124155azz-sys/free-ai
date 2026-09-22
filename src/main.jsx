@@ -42,7 +42,7 @@ const settingsSections=[
   ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
   ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
-  ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
+  ['integrations','Computer use',Monitor],['integrations','Files',Folder],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
   ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',SquareTerminal]
 ];
 
@@ -2232,7 +2232,7 @@ function SettingsView(props){
   const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
-  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
+  const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Files','Configuration','Browser','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
@@ -2258,6 +2258,7 @@ function SettingsView(props){
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
+      {section==='Files'&&!isNative&&<SimpleSettings title="Files" rows={[['Local folder access','Windows Work/Super AI · user-selected folder per conversation'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -2279,8 +2280,8 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      <SettingRow title="Work approvals" desc="Choose how much low-risk browser and computer activity Work can continue without repeated prompts. Website access and sensitive actions still require explicit approval." control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
-      <SettingRow title="Sensitive actions" desc="Typing, clicks that may change data, keyboard shortcuts, drag operations and closing tabs always pause for approval in the current Work loop." control={<span className="valuePill">Always confirm</span>}/>
+      <SettingRow title="Work approvals" desc="Choose how much low-risk browser, computer, local-file and app activity Work can continue without repeated prompts. New website/app/folder scopes and sensitive actions still require explicit approval." control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
+      <SettingRow title="Sensitive actions" desc="Typing, state-changing clicks, keyboard shortcuts, drag operations, tab closes, local file writes and non-read-only MCP calls remain confirmation-gated." control={<span className="valuePill">Always confirm</span>}/>
     </div>
     <h3>General</h3>
     <div className="settingBlock">
