@@ -1184,7 +1184,6 @@ ipcMain.handle('browser:clearData',async()=>{
     await ses.clearStorageData();
     await ses.clearCache();
   }
-  browserDownloads=[];
   for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
   emitBrowserState();
   return {ok:true};
