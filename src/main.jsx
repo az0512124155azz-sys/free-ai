@@ -502,16 +502,32 @@ function App(){
     if(handledWorkTerminalRef.current===terminalKey)return;
     handledWorkTerminalRef.current=terminalKey;
     if(activeWorkTaskIdRef.current===workTask.id)activeWorkTaskIdRef.current=null;
+    syncWorkTaskAgentChats(workTask);
     if(workTask.status==='stopped')return;
     const taskModel=workTaskModelRef.current||selected;
-    setMessages(prev=>{
-      const entry=workTask.status==='completed'
-        ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:taskModel?.id}
-        : {role:'error',text:String(workTask.error||'Work task failed.')};
-      const next=[...prev,entry];
-      queueMicrotask(()=>saveCurrentChat(next,taskModel));
-      return next;
+    if(!taskModel)return;
+    const masterChatId=workTask.masterChatId||workTaskMasterChatIdRef.current||currentChatId;
+    const projectId=workTask.projectId||workTaskProjectIdRef.current||activeProjectId||null;
+    const masterRecord=chats.find(chat=>chat.id===masterChatId)||null;
+    const baseMessages=Array.isArray(masterRecord?.messages)
+      ? masterRecord.messages
+      : (currentChatId===masterChatId?messages:[]);
+    const entry=workTask.status==='completed'
+      ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:taskModel.id,masterResult:true}
+      : {role:'error',text:String(workTask.error||'Work task failed.'),masterResult:true};
+    const next=[...baseMessages,entry];
+    saveCurrentChat(next,taskModel,{
+      chatId:masterChatId||undefined,
+      projectId,
+      mode:'work',
+      meta:workTask.product==='super'?{
+        isMasterThread:true,
+        orchestration:true,
+        taskId:workTask.id,
+        agentCount:Array.isArray(workTask.agents)?workTask.agents.length:0
+      }:{}
     });
+    if(!masterChatId||currentChatId===masterChatId)setMessages(next);
   },[workTask?.id,workTask?.status]);
 
   useEffect(()=>{
