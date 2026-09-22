@@ -651,6 +651,7 @@ function App(){
 
   async function openBrowser(){
     setPlusMenu(false);
+    if(isWindowsDesktop)setSettingsOpen(false);
     if(isNative){
       try{
         await InAppBrowser.openWebView({
