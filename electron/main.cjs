@@ -1248,7 +1248,7 @@ async function canonicalLocalFolderRoot(input){
 function sensitiveLocalFile(relativePath){
   const normalized=String(relativePath||'').replace(/\\/g,'/').toLowerCase();
   const base=path.posix.basename(normalized);
-  if(normalized==='.git'||normalized.startsWith('.git/'))return true;
+  if(normalized.split('/').includes('.git'))return true;
   if(['.env','.env.local','.env.production','.env.development','.npmrc','.pypirc','.netrc','credentials','credentials.json'].includes(base))return true;
   if(/^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/.test(base))return true;
   if(/\.(pem|p12|pfx|key)$/i.test(base))return true;
@@ -2521,7 +2521,7 @@ function workApprovalFor(task,decision){
   }else if(tool==='files'&&task.localFolder?.root&&!task.approvedScopes.has('files:'+task.localFolder.root)){
     scope='files:'+task.localFolder.root;
     scopeTitle='Allow local folder access for this task?';
-    scopeDetail='Free AI will access files inside the selected local folder "'+task.localFolder.name+'" for this task. Credential and private-key files remain blocked.';
+    scopeDetail='Free AI will list and read files inside the selected local folder "'+task.localFolder.name+'" for this task and may send a file you explicitly opened through the Files tool to the selected AI model. Writes are approved separately. Credential and private-key files remain blocked.';
   }
 
   const resolvedMcp=tool==='mcp'&&type!=='list'?workMcpTool(task,action):null;
@@ -2584,7 +2584,8 @@ function workApprovalFor(task,decision){
         previousBytes=fs.statSync(fileTargetPath.resolved).size;
       }
     }catch{}
-    localFileWrite=operation+'. Previous size: '+previousBytes+' bytes. New size: '+newBytes+' bytes.';
+    const preview=String(action.content??'').replace(/\s+/g,' ').trim().slice(0,220);
+    localFileWrite=operation+'. Previous size: '+previousBytes+' bytes. New size: '+newBytes+' bytes.'+(preview?' Content preview: "'+preview+(String(action.content??'').length>220?'…':'')+'"':'');
   }
   const detail=[
     scopeDetail,
