@@ -213,6 +213,19 @@ function DeleteChatDialog({chat,onClose,onConfirm}){
   </div>;
 }
 
+function MessageSources({sources,onOpen}){
+  const items=Array.isArray(sources)?sources.filter(item=>item?.url).slice(0,8):[];
+  if(!items.length)return null;
+  return <div className="messageSources" aria-label="Web sources">
+    <div className="messageSourcesLabel"><Globe2 size={12}/><span>Sources</span><small>{items.length}</small></div>
+    <div className="messageSourceList">{items.map((source,index)=><button type="button" key={source.url+'::'+index} onClick={()=>onOpen?.(source.url)} title={source.url}>
+      <span className="sourceIndex">{index+1}</span>
+      <span className="sourceText"><b>{source.title||source.domain||'Web source'}</b><small>{source.domain||(()=>{try{return new URL(source.url).hostname.replace(/^www\./,'')}catch{return ''}})()}</small></span>
+      <ExternalLink size={12}/>
+    </button>)}</div>
+  </div>;
+}
+
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
@@ -325,6 +338,7 @@ function App(){
   const [effortMenu,setEffortMenu]=useState(false);
   const [effort,setEffort]=useState('instant');
   const [plusMenu,setPlusMenu]=useState(false);
+  const [webSearchEnabled,setWebSearchEnabled]=useState(false);
   const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [settingsSection,setSettingsSection]=useState('General');
@@ -895,6 +909,7 @@ function App(){
     stopActiveWorkTask();
     setSelectedMcpIds([]);
     setLocalFolderWorkspace(null);
+    setWebSearchEnabled(false);
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -904,12 +919,12 @@ function App(){
     if(product!=='free'||nextMode===mode)return;
     stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
-    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);setPage('chat');
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setWebSearchEnabled(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
     stopActiveWorkTask();
-    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);
+    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setWebSearchEnabled(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -1152,6 +1167,7 @@ function App(){
           effort:routedEffort,
           attachments:outboundAttachments,
           mode,product,approvalMode:'ask',
+          nativeTool:webSearchEnabled?'search':null,
           toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
         });
       }));
@@ -1159,7 +1175,7 @@ function App(){
       const responses=settled.map((result,index)=>{
         const model=targets[index];
         const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
-        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),...meta};
+        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,...meta};
         return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
       });
       const next=[...withUser,...responses];
@@ -1180,6 +1196,11 @@ function App(){
     );
     if((!userText&&!hasAttachmentIntent)||busy)return;
     if(!model){setModelMenu(true);return}
+    const nativeSearch=isWindowsDesktop&&mode==='chat'&&webSearchEnabled;
+    if(nativeSearch&&model.source!=='browser'){
+      setAttachmentError('Web Search currently requires a connected browser AI with its live Search tool available.');
+      return;
+    }
     const activeAttachments=isWindowsDesktop&&!retryContext?attachments:[];
     const retryAttachmentContext=String(retryContext?.attachmentContext||'');
     const retryAttachmentMeta=Array.isArray(retryContext?.attachments)?retryContext.attachments:[];
@@ -1209,7 +1230,7 @@ function App(){
     streamedTextRef.current='';
     cancelledRequestRef.current=null;
     activeRequestRef.current=requestId;
-    const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true}]:withUser;
+    const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true,activity:nativeSearch?'Searching the web…':''}]:withUser;
     const currentChatMeta=chats.find(chat=>chat.id===currentChatId)||null;
     const directAgentMeta=currentChatMeta?.isAgentThread
       ? {isAgentThread:true,parentChatId:currentChatMeta.parentChatId,agentId:currentChatMeta.agentId,agentRole:currentChatMeta.agentRole,taskId:currentChatMeta.taskId,detachedFromTask:true}
@@ -1244,11 +1265,13 @@ function App(){
         requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
         attachments:outboundAttachments,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
+        nativeTool:nativeSearch?'search':null,
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
       const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
-      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id}];
+      const resultSources=Array.isArray(result?.sources)?result.sources.filter(item=>item?.url).slice(0,12).map(item=>({title:String(item.title||''),url:String(item.url||''),domain:String(item.domain||'')})):[];
+      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,sources:resultSources}];
       setMessages(next);saveCurrentChat(next,model);
       if(isWindowsDesktop&&!retryContext){
         for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
@@ -1312,6 +1335,11 @@ function App(){
     });
   }
   function retryFrom(index){regenerateFrom(index)}
+  async function openWebSource(url){
+    const value=String(url||'');
+    if(!/^https:\/\//i.test(value))return;
+    try{await window.desktopApi?.openExternal?.(value)}catch{}
+  }
   async function copyMessage(text,index){
     try{
       await navigator.clipboard.writeText(String(text||''));
@@ -1391,6 +1419,18 @@ function App(){
     const a=document.createElement('a');
     a.href=href;a.download='free-ai-export.json';document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(href),1500);
+  }
+
+  function toggleWebSearch(){
+    if(!isWindowsDesktop||mode!=='chat')return;
+    if(selected?.source==='api'){
+      setAttachmentError('Web Search currently uses the selected browser AI\'s live Search tool. Choose a connected browser model first.');
+      return;
+    }
+    setAttachmentError('');
+    setSelectedTool(null);
+    setPlusMenu(false);
+    setWebSearchEnabled(value=>!value);
   }
 
   async function openBrowser(){
@@ -1694,7 +1734,7 @@ function App(){
                 modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                 parallelCount={parallelCount} setParallelCount={setParallelCount}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
-                plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
+                plusMenu={plusMenu} setPlusMenu={setPlusMenu} webSearchEnabled={webSearchEnabled} onToggleWebSearch={toggleWebSearch} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                 spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
@@ -1719,7 +1759,8 @@ function App(){
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
-                    <div className="messageBody">{m.streaming&&!m.text?<RefreshCw className="spin" size={16}/>:m.text}</div>
+                    <div className="messageBody">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
+                    {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<MessageSources sources={m.sources} onOpen={openWebSource}/>} 
                     {isWindowsDesktop&&m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
                       {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
                     </div>}
@@ -1747,7 +1788,7 @@ function App(){
                   modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                   parallelCount={parallelCount} setParallelCount={setParallelCount}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
-                  plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
+                  plusMenu={plusMenu} setPlusMenu={setPlusMenu} webSearchEnabled={webSearchEnabled} onToggleWebSearch={toggleWebSearch} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                   product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                   spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
@@ -1927,7 +1968,7 @@ function ProjectPage({project,chats,task,onApproval,onBack,onStart,onOpenChat,on
 function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,onRefreshModels,onSelectProviderModel,onSelectProviderEffort,
-    parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
+    parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,webSearchEnabled=false,onToggleWebSearch,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onWorkProject,onWorkAgent,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
     mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
@@ -2063,6 +2104,7 @@ function Composer(props){
         <button type="button" aria-label={'Remove '+connection.name} disabled={busy} onClick={()=>!busy&&onToggleMcp?.(connection.id)}><X size={11}/></button>
       </div>)}
     </div>}
+    {webSearchEnabled&&<div className="attachedTool searchModeChip"><Globe2 size={13}/><span>Search</span><small>Live web sources via the selected browser AI</small><button onClick={()=>onToggleWebSearch?.()} aria-label="Turn off web search"><X size={12}/></button></div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
@@ -2084,7 +2126,8 @@ function Composer(props){
           <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} disabled={busy} onClick={()=>!busy&&setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
             fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
-            tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
+            tools={mcpTools} setSelectedTool={tool=>{if(tool&&webSearchEnabled)onToggleWebSearch?.();setSelectedTool(tool)}} mode={mode}
+            webSearchEnabled={webSearchEnabled} onToggleWebSearch={onToggleWebSearch}
             directMcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={onToggleMcp}
             localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={onChooseLocalFolder} onClearLocalFolder={onClearLocalFolder}
           />}
@@ -2318,7 +2361,7 @@ function WorkTaskStatus({task,onApproval,onOpenProject,onOpenAgent}){
   </div>
 }
 
-function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder}){
+function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode,webSearchEnabled=false,onToggleWebSearch,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     {isNative?<>
@@ -2326,6 +2369,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
       <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
     </>:!(mode==='work'&&isWindowsDesktop)&&<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
+    {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Globe2} label="Search the web" sub={webSearchEnabled?'Live Search is enabled for the next message':'Use the selected browser AI’s live Search tool and return sources'} active={webSearchEnabled} onClick={onToggleWebSearch}/>}
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
     {mode==='work'&&isWindowsDesktop&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
@@ -2355,10 +2399,10 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
   </div>
 }
 
-function MenuRow({icon:Icon,label,sub,onClick}){
-  const body=<><Icon size={18}/><span><b>{label}</b>{sub&&<small>{sub}</small>}</span></>;
-  if(!onClick)return <div className="menuRow staticRow">{body}</div>;
-  return <button className="menuRow" role="menuitem" onClick={onClick}>{body}</button>
+function MenuRow({icon:Icon,label,sub,onClick,active=false}){
+  const body=<><Icon size={18}/><span><b>{label}</b>{sub&&<small>{sub}</small>}</span>{active&&<Check size={14}/>}</>;
+  if(!onClick)return <div className={'menuRow staticRow '+(active?'active':'')}>{body}</div>;
+  return <button className={'menuRow '+(active?'active':'')} role="menuitem" aria-checked={active||undefined} onClick={onClick}>{body}</button>
 }
 
 function ProfileMenu({session,onSettings}){

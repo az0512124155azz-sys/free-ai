@@ -331,6 +331,7 @@ async function handlePrompt(m){
         provider:providerId,
         text:m.text,
         toolRequest:m.toolRequest||null,
+        nativeTool:m.nativeTool||null,
         effort:m.effort||'default',
         attachments:Array.isArray(m.attachments)?m.attachments:[]
       });
@@ -413,7 +414,9 @@ function connect(){
         type:'response',
         id:m.id,
         text:result?.text||'',
-        requestedTool:result?.requestedTool||null
+        requestedTool:result?.requestedTool||null,
+        requestedNativeTool:result?.requestedNativeTool||null,
+        sources:Array.isArray(result?.sources)?result.sources:[]
       });
       await scanProviders();
     }catch(err){
