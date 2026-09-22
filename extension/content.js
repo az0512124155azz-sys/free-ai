@@ -81,6 +81,29 @@
     return [...found].slice(0,40);
   }
 
+  function detectFileUpload(){
+    return !!document.querySelector('input[type="file"]');
+  }
+  async function uploadAttachments(attachments){
+    if(!Array.isArray(attachments)||!attachments.length)return;
+    const input=document.querySelector('input[type="file"]');
+    if(!input)throw new Error('This provider does not expose a file-upload input in the current chat.');
+    if(!input.multiple&&attachments.length>1)throw new Error('This provider currently accepts one file at a time in this chat.');
+    const transfer=new DataTransfer();
+    for(const item of attachments){
+      const match=String(item.dataUrl||'').match(/^data:([^;,]*)(?:;charset=[^;,]*)?;base64,(.*)$/s);
+      if(!match)throw new Error('Could not prepare '+String(item.name||'attachment')+' for upload.');
+      const binary=atob(match[2]);
+      const bytes=new Uint8Array(binary.length);
+      for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+      transfer.items.add(new File([bytes],String(item.name||'attachment'),{type:String(item.type||match[1]||'application/octet-stream')}));
+    }
+    input.files=transfer.files;
+    input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.dispatchEvent(new Event('change',{bubbles:true}));
+    await sleep(450);
+  }
+
   function detectActiveModel(){
     const candidates=[...document.querySelectorAll('button,[role="button"],[aria-label],[data-testid]')].filter(visible);
     const patterns=[
@@ -137,7 +160,7 @@
     throw new Error('Timed out waiting for the AI response.');
   }
 
-  async function prompt(provider,text,toolRequest,effort,requestId){
+  async function prompt(provider,text,toolRequest,effort,requestId,attachments){
     const c=configs[provider];
     if(!c) throw new Error('Unsupported provider.');
     const input=first(c.inputs);
@@ -151,6 +174,7 @@
     const finalText=[...prefixes,String(text||'')].filter(Boolean).join('\n\n');
 
     const before=lastText(c.answers);
+    await uploadAttachments(attachments);
     await setInput(input,finalText);
     await sleep(180);
 
@@ -169,7 +193,7 @@
     }
 
     if(m?.type==='freeai:scanCapabilities'){
-      sendResponse({mcps:scanMcps(),modelName:detectActiveModel()});
+      sendResponse({mcps:scanMcps(),modelName:detectActiveModel(),fileUpload:detectFileUpload()});
       return;
     }
 
@@ -184,7 +208,7 @@
     if(m?.type!=='freeai:prompt') return;
 
     (async()=>{
-      try{sendResponse(await prompt(m.provider,m.text,m.toolRequest,m.effort,m.id))}
+      try{sendResponse(await prompt(m.provider,m.text,m.toolRequest,m.effort,m.id,m.attachments||[]))}
       catch(e){sendResponse({error:e?.message||String(e)})}
     })();
 

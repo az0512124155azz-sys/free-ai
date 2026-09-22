@@ -68,6 +68,7 @@ async function scanProviders(){
       effortLevels:[],
       effortControl:null,
       activeEffort:'default',
+      fileUpload:!!capabilities?.fileUpload,
       mcps:Array.isArray(capabilities?.mcps)?capabilities.mcps:[]
     });
   }
@@ -114,7 +115,8 @@ async function handlePrompt(m){
         provider:m.provider,
         text:m.text,
         toolRequest:m.toolRequest||null,
-        effort:m.effort||'default'
+        effort:m.effort||'default',
+        attachments:Array.isArray(m.attachments)?m.attachments:[]
       });
       if(result?.error)throw new Error(result.error);
       return result||{};

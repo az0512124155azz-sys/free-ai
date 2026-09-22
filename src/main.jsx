@@ -83,6 +83,17 @@ function humanSize(bytes){
   if(bytes<1024*1024)return (bytes/1024).toFixed(1)+' KB';
   return (bytes/1024/1024).toFixed(1)+' MB';
 }
+function readFileDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result||''));
+    reader.onerror=()=>reject(reader.error||new Error('Could not read file.'));
+    reader.readAsDataURL(file);
+  });
+}
+function attachmentMeta(item){
+  return {id:item.id,name:item.name,type:item.type,size:item.size,kind:item.kind};
+}
 
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
@@ -178,6 +189,9 @@ function App(){
   const [settingsSection,setSettingsSection]=useState('General');
   const [sidePanel,setSidePanel]=useState(null);
   const [selectedFile,setSelectedFile]=useState(null);
+  const [attachments,setAttachments]=useState([]);
+  const [attachmentError,setAttachmentError]=useState('');
+  const [dragActive,setDragActive]=useState(false);
   const [screens,setScreens]=useState([]);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
@@ -458,21 +472,45 @@ function App(){
   }
   function newChat(){
     setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setAttachments([]);setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
+    setAttachments([]);setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     if(product==='free')setMode(chat.mode||'chat');
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
-  async function runGeneration(text,baseMessages=messages,model=selected){
+  async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null){
     const userText=String(text||'').trim();
     if(!userText||busy)return;
     if(!model){setModelMenu(true);return}
+    const activeAttachments=isWindowsDesktop&&!retryContext?attachments:[];
+    const retryAttachmentContext=String(retryContext?.attachmentContext||'');
+    const retryAttachmentMeta=Array.isArray(retryContext?.attachments)?retryContext.attachments:[];
+    const canUploadFiles=isWindowsDesktop&&model.source==='browser'&&model.fileUpload===true;
+    const inlineTextParts=[];
+    if(isWindowsDesktop){
+      if(retryAttachmentContext)inlineTextParts.push(retryAttachmentContext);
+      if(!retryContext&&!canUploadFiles){
+        for(const item of activeAttachments){
+          if(item.kind==='text'&&item.content)inlineTextParts.push('[File: '+item.name+']\n'+item.content);
+          else{
+            setAttachmentError(model.source==='api'
+              ? 'This API connection does not advertise binary file upload support. Use a text file or a browser model with file upload available.'
+              : 'The connected browser tab does not expose a real file-upload control right now. Open the provider chat and make sure file upload is available.');
+            return;
+          }
+        }
+      }
+    }
     if(isNative&&appPrefs.hapticsEnabled!==false)Haptics.impact({style:ImpactStyle.Light}).catch(()=>{});
+    setAttachmentError('');
     setBusy(true);setPrompt('');setResponseMenuIndex(null);
-    const withUser=[...baseMessages,{role:'user',text:userText}];
+    const userAttachmentMeta=retryContext?retryAttachmentMeta:activeAttachments.map(attachmentMeta);
+    const attachmentContext=inlineTextParts.join('\n\n');
+    const withUser=[...baseMessages,{role:'user',text:userText,attachments:userAttachmentMeta,attachmentContext}];
     const requestId=isWindowsDesktop&&isDesktop?crypto.randomUUID():null;
     streamedTextRef.current='';
     cancelledRequestRef.current=null;
@@ -484,21 +522,24 @@ function App(){
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
       const instructions=projectInstructions||globalInstructions;
       const instructionsLabel=projectInstructions?'Free AI project instructions for this request:':'Free AI user preferences for this request:';
+      const userRequestText=attachmentContext?[userText,'',attachmentContext].join('\n'):userText;
       const routedText=instructions
-        ? [instructionsLabel,instructions,'','User request:',userText].join('\n')
-        : userText;
+        ? [instructionsLabel,instructions,'','User request:',userRequestText].join('\n')
+        : userRequestText;
       const historyMessages=withUser.filter(message=>message.role==='user'||message.role==='assistant');
       const lastUserIndex=historyMessages.map(message=>message.role).lastIndexOf('user');
-      const history=historyMessages.map((message,index)=>({
-        role:message.role,
-        content:index===lastUserIndex?routedText:String(message.text||'')
-      }));
+      const history=historyMessages.map((message,index)=>{
+        const priorAttachmentContext=message.role==='user'?String(message.attachmentContext||''):'';
+        const priorText=priorAttachmentContext?[String(message.text||''),'',priorAttachmentContext].join('\n'):String(message.text||'');
+        return {role:message.role,content:index===lastUserIndex?routedText:priorText};
+      });
       const effortLevels=Array.isArray(model.effortLevels)?model.effortLevels.filter(Boolean):[];
       const routedEffort=isWindowsDesktop
         ? (model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default')
         : effort;
       const payload={
         requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
+        attachments:isWindowsDesktop&&canUploadFiles&&!retryContext?activeAttachments.map(item=>({name:item.name,type:item.type,size:item.size,dataUrl:item.dataUrl})):[],
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
@@ -506,6 +547,7 @@ function App(){
       const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
       const next=[...withUser,{role:'assistant',text:finalText,provider:model.id}];
       setMessages(next);saveCurrentChat(next,model);
+      if(isWindowsDesktop&&!retryContext){setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current)}
     }catch(e){
       if(requestId&&cancelledRequestRef.current===requestId)return;
       const next=[...withUser,{role:'error',text:e?.message||String(e)}];
@@ -541,7 +583,11 @@ function App(){
     if(busy)return;
     const userIndex=findUserIndexBefore(index);
     if(userIndex<0)return;
-    runGeneration(messages[userIndex].text,messages.slice(0,userIndex),selected);
+    const original=messages[userIndex];
+    runGeneration(original.text,messages.slice(0,userIndex),selected,{
+      attachments:Array.isArray(original.attachments)?original.attachments:[],
+      attachmentContext:String(original.attachmentContext||'')
+    });
   }
   function retryFrom(index){regenerateFrom(index)}
   async function copyMessage(text,index){
@@ -623,8 +669,29 @@ function App(){
     }catch{}
   }
 
+  async function addWindowsAttachments(files){
+    const list=[...files].filter(Boolean);if(!list.length)return;
+    setAttachmentError('');
+    const next=[];
+    for(const file of list){
+      const textLike=file.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
+      const item={id:crypto.randomUUID(),name:file.name,type:file.type,size:file.size,kind:'binary',content:'',dataUrl:'',url:''};
+      if(file.type.startsWith('image/'))item.kind='image';
+      else if(textLike&&file.size<=2*1024*1024)item.kind='text';
+      else if(/\.(zip|rar|7z|tar|gz)$/i.test(file.name))item.kind='archive';
+      try{
+        item.dataUrl=await readFileDataUrl(file);
+        if(item.kind==='image')item.url=item.dataUrl;
+        if(item.kind==='text')item.content=await file.text();
+      }catch(e){setAttachmentError(e?.message||('Could not read '+file.name));return}
+      next.push(item);
+    }
+    setAttachments(current=>[...current,...next]);
+    if(next[0]){setSelectedFile(next[0]);setSidePanel('file')}
+  }
   async function attachFiles(event){
     const files=[...(event.target.files||[])];if(!files.length)return;
+    if(isWindowsDesktop){await addWindowsAttachments(files);event.target.value='';return}
     const file=files[0];
     const preview={name:file.name,type:file.type,size:file.size,kind:'binary',content:'',url:''};
     const textLike=file.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
@@ -641,6 +708,11 @@ function App(){
     if(chunks.length)setPrompt(p=>(p?p+'\n\n':'')+chunks.join('\n\n'));
     event.target.value='';
   }
+  function removeAttachment(id){
+    setAttachments(current=>current.filter(item=>item.id!==id));
+    if(selectedFile?.id===id){setSelectedFile(null);setSidePanel(current=>current==='file'?null:current)}
+    setAttachmentError('');
+  }
 
   if(!authReady)return <div className="splash"><BrandMark size={34}/><span>Free AI</span></div>;
   if(!session&&supabase)return <Auth/>;
@@ -650,7 +722,13 @@ function App(){
     ? (isNative?'Continue on your desktop':'What should we build?')
     : mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
-  return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
+  return <div
+    className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')+' '+(dragActive?'dragActive':'')}
+    onDragEnter={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();setDragActive(true)}}:undefined}
+    onDragOver={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';setDragActive(true)}}:undefined}
+    onDragLeave={isWindowsDesktop?e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragActive(false)}:undefined}
+    onDrop={isWindowsDesktop?async e=>{e.preventDefault();setDragActive(false);await addWindowsAttachments(e.dataTransfer.files)}:undefined}
+  >
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
     <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={attachFiles}/>
     <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={attachFiles}/>
@@ -807,6 +885,7 @@ function App(){
               <Composer
                 windowsDesktop={isWindowsDesktop}
                 stopGeneration={stopGeneration}
+                attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
@@ -829,6 +908,9 @@ function App(){
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     <div className="messageBody">{m.streaming&&!m.text?<RefreshCw className="spin" size={16}/>:m.text}</div>
+                    {isWindowsDesktop&&m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
+                      {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
+                    </div>}
                     {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<div className="messageActions headerLeft">
                       <button className="headerIcon" aria-label={copiedMessageIndex===i?'Copied':'Copy response'} title={copiedMessageIndex===i?'Copied':'Copy'} onClick={()=>copyMessage(m.text,i)}>{copiedMessageIndex===i?<Check size={15}/>:<Copy size={15}/>}</button>
                       <div className="menuAnchor">
@@ -847,6 +929,7 @@ function App(){
                 <Composer
                   windowsDesktop={isWindowsDesktop}
                   stopGeneration={stopGeneration}
+                  attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
                   compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
@@ -956,12 +1039,13 @@ function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
 
 function Composer(props){
   const {
-    windowsDesktop,stopGeneration,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
+    windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
+  const [dictationNotice,setDictationNotice]=useState('');
   const [approvalMenu,setApprovalMenu]=useState(false);
   const textareaRef=useRef(null);
   const nativeSpeechHandles=useRef([]);
@@ -1001,6 +1085,8 @@ function Composer(props){
         textareaRef.current?.focus();
         await new Promise(r=>setTimeout(r,60));
         await window.desktopApi.startSystemDictation();
+        setDictationNotice('Windows voice typing opened. Review or edit the text before sending.');
+        setTimeout(()=>setDictationNotice(''),3500);
       }catch(e){setDictationError(e?.message||'Windows voice typing could not start.')}
       return;
     }
@@ -1072,6 +1158,12 @@ function Composer(props){
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
+    {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
+      {attachments.map(item=><div className="attachmentChip" key={item.id}>
+        <button className="attachmentOpen" type="button" onClick={()=>onOpenAttachment?.(item)}><File size={13}/><span>{item.name}</span><small>{humanSize(item.size)}</small></button>
+        <button type="button" aria-label={'Remove '+item.name} onClick={()=>onRemoveAttachment?.(item.id)}><X size={12}/></button>
+      </div>)}
+    </div>}
     <textarea
       ref={textareaRef}
       value={prompt} onChange={e=>setPrompt(e.target.value)}
@@ -1108,7 +1200,7 @@ function Composer(props){
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
-        {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
+        {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'} aria-label={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
         {(busy||prompt.trim())&&<button className={'voiceOrb '+(!busy&&prompt.trim()&&selected?'sendReady':'')}
           onClick={busy?(windowsDesktop?stopGeneration:undefined):prompt.trim()?send:undefined}
           disabled={busy?!windowsDesktop:(!selected&&!!prompt.trim())}
@@ -1118,10 +1210,12 @@ function Composer(props){
         </button>}
       </div>
     </div>
+    {attachmentError&&windowsDesktop&&<div className="dictationError" role="alert">{attachmentError}</div>}
     {dictationError&&<div className="dictationError">{dictationError}</div>}
+    {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':'Choose project'}</button>
+      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':'Attach project files'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
@@ -1207,7 +1301,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
       <MenuRow icon={Camera} label="Camera" onClick={()=>cameraRef.current?.click()}/>
       <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
-    </>:<MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>} 
+    </>:<MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
