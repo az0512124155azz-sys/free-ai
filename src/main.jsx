@@ -27,6 +27,7 @@ const supabase=supabaseUrl&&supabaseKey
 const isDesktop=!!window.desktopApi;
 const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
+const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
@@ -1206,7 +1207,6 @@ function GeneralSettings({prefs,setPrefs}){
     <div className="settingBlock">
       <SettingRow title="App language" desc="Free AI currently follows the Android system language." control={<span className="valuePill">{navigator.language||'System'}</span>}/>
       <SettingRow title="Auto-correct spelling" desc="Allow Android keyboard spelling and correction in the message composer." control={<Toggle value={prefs.spellCheckEnabled!==false} onChange={v=>setPrefs({...prefs,spellCheckEnabled:v})}/>}/>
-      <SettingRow title="Haptic feedback" desc="Use subtle vibration feedback for send and dictation controls." control={<Toggle value={prefs.hapticsEnabled!==false} onChange={v=>setPrefs({...prefs,hapticsEnabled:v})}/>}/>
     </div>
   </div>;
   return <div className="settingsPane">
@@ -1276,6 +1276,7 @@ function PersonalizationSettings({prefs,setPrefs}){
     <h3>Personalization</h3>
     <div className="settingBlock">
       <SettingRow title="Enable customization" desc="Apply your instructions to requests sent through Free AI." control={<Toggle value={prefs.customizationEnabled!==false} onChange={v=>setPrefs({...prefs,customizationEnabled:v})}/>}/>
+      {isNative&&androidMajor>=12&&<SettingRow title="Haptic feedback" desc="Use subtle vibration feedback for supported actions on this Android device." control={<Toggle value={prefs.hapticsEnabled!==false} onChange={v=>setPrefs({...prefs,hapticsEnabled:v})}/>}/>}
       <label className="customInstructionsField">
         <span>Custom instructions</span>
         <small>These instructions are sent as request context to the connected model you choose.</small>
