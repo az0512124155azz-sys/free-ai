@@ -300,7 +300,7 @@ function App(){
     const offStatus=window.desktopApi.onStatus(s=>active&&setStatus(s));
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
-      if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
+      if(command==='about'||command==='settings'){setSettingsSection('General');setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
     });
