@@ -1219,7 +1219,7 @@ function App(){
         mcpDraft={mcpDraft} setMcpDraft={setMcpDraft} mcpError={mcpError}
         onAddMcp={addMcpConnection} onRemoveMcp={removeMcpConnection} onRefreshMcp={refreshMcpConnections}
         onBack={()=>setPage('chat')} onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
-      />}}
+      />}
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
 
