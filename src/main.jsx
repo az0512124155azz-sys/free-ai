@@ -354,6 +354,7 @@ function App(){
     setChats(readJSON('freeai.chats.'+product,[]));
     setCurrentChatId(null);
     setMessages([]);
+    setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setSelectedTool(null);
     setSidePanel(null);
     setRecentsFilter('all');
@@ -472,11 +473,11 @@ function App(){
   }
   function newChat(){
     setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
-    setAttachments([]);setAttachmentError('');setSelectedFile(null);
+    setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
-    setAttachments([]);setAttachmentError('');setSelectedFile(null);
+    setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     if(product==='free')setMode(chat.mode||'chat');
