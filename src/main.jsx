@@ -31,6 +31,7 @@ const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
+const BRAND_LOGO_SRC='/free-ai-logo.png';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 const projectIconOptions=[
   ['folder','Folder',Folder],['briefcase','Briefcase',Briefcase],['code','Code',Code2],
@@ -146,10 +147,7 @@ function attachmentMeta(item){
 
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
-    <svg viewBox="0 0 512 512" focusable="false">
-      <path className="markArc" d="M154 112 A182 182 0 0 1 400 358"/>
-      <path className="markArc" d="M358 400 A182 182 0 0 1 112 154"/>
-    </svg>
+    <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
   </span>;
 }
 
@@ -2711,7 +2709,7 @@ function Auth(){
     if(!isNative||nativeGoogleReady.current)return;
     if(!GOOGLE_WEB_CLIENT_ID)throw new Error('Google native sign-in is not configured.');
     await SocialLogin.initialize({
-      google:{webClientId:GOOGLE_WEB_CLIENT_ID,mode:'online'}
+      google:{webClientId:GOOGLE_WEB_CLIENT_ID}
     });
     nativeGoogleReady.current=true;
   }
@@ -2741,10 +2739,24 @@ function Auth(){
     return()=>{cancelled=true;desktopOff?.();nativeHandle?.remove?.()};
   },[]);
 
+  async function readAuthSettings(){
+    const response=await fetch(supabaseUrl+'/auth/v1/settings',{headers:{apikey:supabaseKey}});
+    if(!response.ok)throw new Error('Could not reach Free AI authentication. Check your internet connection and try again.');
+    return response.json();
+  }
+  async function assertAuthProvider(provider,{signup=false}={}){
+    const settings=await readAuthSettings();
+    if(settings?.external?.[provider]!==true)throw new Error((provider==='google'?'Google':'Email/password')+' sign-in is not enabled for Free AI yet.');
+    if(signup&&settings?.disable_signup===true)throw new Error('New account creation is currently disabled.');
+  }
   async function submit(e){
     e.preventDefault();setWorking(true);setMessage('');
     try{
-      const result=mode==='signup'?await supabase.auth.signUp({email,password}):await supabase.auth.signInWithPassword({email,password});
+      const cleanEmail=email.trim().toLowerCase();
+      await assertAuthProvider('email',{signup:mode==='signup'});
+      const result=mode==='signup'
+        ? await supabase.auth.signUp({email:cleanEmail,password})
+        : await supabase.auth.signInWithPassword({email:cleanEmail,password});
       if(result.error)throw result.error;
       if(mode==='signup'&&!result.data.session)setMessage('Account created. Check your email if confirmation is enabled.');
     }catch(e){setMessage(e?.message||String(e))}finally{setWorking(false)}
@@ -2753,15 +2765,9 @@ function Auth(){
     setWorking(true);setMessage('');
     try{
       if(isNative){
+        await assertAuthProvider('google');
         await initNativeGoogle();
-        const login=await SocialLogin.login({
-          provider:'google',
-          options:{
-            scopes:['openid','email','profile'],
-            style:'bottom',
-            filterByAuthorizedAccounts:false
-          }
-        });
+        const login=await SocialLogin.login({provider:'google',options:{}});
         const idToken=login?.result?.idToken;
         if(!idToken)throw new Error('Google did not return an ID token.');
         const {error}=await supabase.auth.signInWithIdToken({provider:'google',token:idToken});
@@ -2782,8 +2788,8 @@ function Auth(){
       }
     }catch(e){
       const raw=e?.message||String(e);
-      const setup=/28444|developer console|configuration/i.test(raw)
-        ? 'Google sign-in needs one Android OAuth client for com.freeai.mobile with this APK signing SHA-1 in Google Cloud.'
+      const setup=/28444|developer console|configuration|credential/i.test(raw)
+        ? 'Google sign-in is not configured for this Android build. Verify the Android OAuth client for com.freeai.mobile, this APK signing SHA-1, and the Web client ID in the same Google Cloud project.'
         : raw;
       setMessage(setup);setWorking(false);
     }
