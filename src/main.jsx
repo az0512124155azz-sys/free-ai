@@ -1027,9 +1027,9 @@ function App(){
           )}
         </>:<>
           <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-          <button className="projectItem" onClick={()=>{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}>
+          <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
             {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
-            {product==='super'?'Repository workspace':'Free AI Workspace'}
+            {product==='super'?(repositoryWorkspace?.name||'Choose repository'):'Free AI Workspace'}
           </button>
           <div className="sidebarGroupTitle">Recents</div>
           {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
@@ -1099,6 +1099,8 @@ function App(){
                 approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+                repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={openPluginsPage}
@@ -1144,7 +1146,9 @@ function App(){
                   approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
-                    onBrowser={openBrowser}
+                repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={openPluginsPage}
                 />
@@ -1244,12 +1248,14 @@ function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
+    repositoryWorkspace,onChooseRepository,onClearRepository,superTeamKeys=[],setSuperTeamKeys,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
   const [dictationNotice,setDictationNotice]=useState('');
   const [approvalMenu,setApprovalMenu]=useState(false);
+  const [teamMenu,setTeamMenu]=useState(false);
   const textareaRef=useRef(null);
   const nativeSpeechHandles=useRef([]);
   const webRecognition=useRef(null);
@@ -1361,6 +1367,10 @@ function Composer(props){
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
     {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval}/>}
+    {product==='super'&&windowsDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
+      <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
+      <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
+    </div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
@@ -1394,6 +1404,12 @@ function Composer(props){
       </div>
 
       <div className="composerRight">
+        {product==='super'&&windowsDesktop&&<div className="menuAnchor">
+          <button className="teamButton" aria-haspopup="menu" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
+            <Bot size={14}/>Team {1+superTeamKeys.length}<ChevronDown size={12}/>
+          </button>
+          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>{setSuperTeamKeys?.(keys);setTeamMenu(false)}}/>}
+        </div>}
         {!isNative&&<div className="menuAnchor">
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
@@ -1419,7 +1435,7 @@ function Composer(props){
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add repository files':windowsDesktop?'Attach project files':'Choose project'}</button>
+      <button onClick={product==='super'&&windowsDesktop?onChooseRepository:()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?(repositoryWorkspace?.name||'Choose repository'):windowsDesktop?'Attach project files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
