@@ -546,6 +546,7 @@ function App(){
   }
   function selectProduct(nextProduct){
     stopActiveWorkTask();
+    setSelectedMcpIds([]);
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -555,12 +556,12 @@ function App(){
     if(product!=='free'||nextMode===mode)return;
     stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
-    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setPage('chat');
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
     stopActiveWorkTask();
-    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -574,7 +575,7 @@ function App(){
       setRepositoryWorkspace(chat.workspace||null);
       setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
     }
-    setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
+    setActiveProjectId(chat.projectId||null);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
 
@@ -640,6 +641,7 @@ function App(){
         attachments:outbound,
         workspace:product==='super'?workspace:null,
         team,
+        mcpConnectionIds:selectedMcpIds,
         instructions:projectInstructions||globalInstructions,
         history:messages.slice(-12).filter(message=>message?.role==='user'||message?.role==='assistant').map(message=>({
           role:message.role,
@@ -648,7 +650,7 @@ function App(){
       });
       if(activeWorkTaskIdRef.current===taskId)setWorkTask(state);
       for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
-      setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
+      setAttachments([]);setSelectedMcpIds([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
     }catch(e){
       if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
       setWorkTask(null);
