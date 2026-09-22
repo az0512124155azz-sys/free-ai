@@ -410,7 +410,9 @@ button:disabled{opacity:.42;cursor:default}
 .pickerText,.menuRow span{min-width:0;display:flex;flex-direction:column;flex:1}
 .pickerText b,.menuRow b{font-size:12.5px;font-weight:570;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pickerText small,.menuRow small{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
-.providerBadge{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:#ececec;color:#111;font-weight:800;font-size:12px;flex:none}
+.providerBadge{width:28px;height:28px;border-radius:9px;display:grid;place-items:center;background:#ececec;color:#111;font-weight:800;font-size:12px;flex:none;overflow:hidden}
+.providerBadge>img{width:100%;height:100%;object-fit:contain;background:#fff}
+.providerBadge>span{display:grid;place-items:center;width:100%;height:100%}
 .providerBadge.claude{background:#d97757;color:#fff}.providerBadge.gemini{background:#6f8cff;color:#fff}.providerBadge.deepseek{background:#536dfe;color:#fff}
 .providerBadge.grok{background:#111;color:#fff;border:1px solid #777}.providerBadge.manus{background:#777;color:#fff}.providerBadge.api{background:linear-gradient(135deg,#5ec7ff,#876dff);color:#fff}
 .menuEmpty{display:flex;flex-direction:column;gap:4px;padding:12px;color:var(--muted);font-size:11px;line-height:1.45}
