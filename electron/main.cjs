@@ -908,22 +908,96 @@ function displayPoint(displayId,nx,ny){
   return {x,y,displayId:display.id};
 }
 
-async function clickWindowsPoint(x,y){
-  const script=`
+function windowsInputPreamble(){
+  return `
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class FreeAIMouse {
+public static class FreeAIInput {
   [DllImport("user32.dll")] public static extern bool SetPhysicalCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
+  [DllImport("user32.dll")] public static extern void keybd_event(byte vk,byte scan,uint flags,UIntPtr extra);
 }
 '@
-if(-not [FreeAIMouse]::SetPhysicalCursorPos(${x},${y})) { throw "SetPhysicalCursorPos failed." }
-Start-Sleep -Milliseconds 80
-[FreeAIMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
-[FreeAIMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
 `;
-  await runPowerShell(script);
+}
+
+function windowsMouseButton(button){
+  switch(String(button||'left').toLowerCase()){
+    case 'right':return {down:8,up:16,data:0};
+    case 'wheel':
+    case 'middle':return {down:32,up:64,data:0};
+    case 'back':return {down:128,up:256,data:1};
+    case 'forward':return {down:128,up:256,data:2};
+    default:return {down:2,up:4,data:0};
+  }
+}
+
+function windowsKeyCode(key){
+  const name=String(key||'').trim().toUpperCase();
+  if(/^[A-Z]$/.test(name))return name.charCodeAt(0);
+  if(/^[0-9]$/.test(name))return name.charCodeAt(0);
+  const codes={
+    CTRL:0x11,CONTROL:0x11,SHIFT:0x10,ALT:0x12,META:0x5B,WIN:0x5B,WINDOWS:0x5B,
+    ENTER:0x0D,RETURN:0x0D,TAB:0x09,ESC:0x1B,ESCAPE:0x1B,SPACE:0x20,
+    BACKSPACE:0x08,DELETE:0x2E,INSERT:0x2D,HOME:0x24,END:0x23,
+    PAGEUP:0x21,PAGEDOWN:0x22,ARROWLEFT:0x25,LEFT:0x25,ARROWUP:0x26,UP:0x26,
+    ARROWRIGHT:0x27,RIGHT:0x27,ARROWDOWN:0x28,DOWN:0x28
+  };
+  if(/^F(?:[1-9]|1[0-2])$/.test(name))return 0x70+Number(name.slice(1))-1;
+  return codes[name]??null;
+}
+
+async function moveWindowsPoint(x,y){
+  await runPowerShell(windowsInputPreamble()+`
+if(-not [FreeAIInput]::SetPhysicalCursorPos(${Math.round(x)},${Math.round(y)})) { throw "SetPhysicalCursorPos failed." }
+`);
+}
+
+async function clickWindowsPoint(x,y,button='left',count=1){
+  const b=windowsMouseButton(button);
+  const clicks=Math.max(1,Math.min(2,Math.round(Number(count)||1)));
+  let body=`if(-not [FreeAIInput]::SetPhysicalCursorPos(${Math.round(x)},${Math.round(y)})) { throw "SetPhysicalCursorPos failed." }\nStart-Sleep -Milliseconds 60\n`;
+  for(let i=0;i<clicks;i++){
+    body+=`[FreeAIInput]::mouse_event(${b.down},0,0,${b.data},[UIntPtr]::Zero)\n[FreeAIInput]::mouse_event(${b.up},0,0,${b.data},[UIntPtr]::Zero)\n`;
+    if(i+1<clicks)body+='Start-Sleep -Milliseconds 90\n';
+  }
+  await runPowerShell(windowsInputPreamble()+body);
+}
+
+async function scrollWindowsPoint(x,y,scrollX,scrollY){
+  const sx=Math.max(-4000,Math.min(4000,Math.round(Number(scrollX)||0)));
+  const sy=Math.max(-4000,Math.min(4000,Math.round(Number(scrollY)||0)));
+  let body=`if(-not [FreeAIInput]::SetPhysicalCursorPos(${Math.round(x)},${Math.round(y)})) { throw "SetPhysicalCursorPos failed." }\n`;
+  if(sy){
+    const signed=(-sy)|0;
+    body+=`[FreeAIInput]::mouse_event(0x0800,0,0,${signed>>>0},[UIntPtr]::Zero)\n`;
+  }
+  if(sx){
+    const signed=sx|0;
+    body+=`[FreeAIInput]::mouse_event(0x1000,0,0,${signed>>>0},[UIntPtr]::Zero)\n`;
+  }
+  await runPowerShell(windowsInputPreamble()+body);
+}
+
+async function keypressWindows(keys){
+  const list=Array.isArray(keys)?keys:[keys];
+  const codes=list.map(windowsKeyCode);
+  if(!codes.length||codes.some(code=>code===null))throw new Error('Computer Use requested an unsupported keyboard key.');
+  let body='';
+  for(const code of codes)body+=`[FreeAIInput]::keybd_event(${code},0,0,[UIntPtr]::Zero)\n`;
+  body+='Start-Sleep -Milliseconds 45\n';
+  for(const code of [...codes].reverse())body+=`[FreeAIInput]::keybd_event(${code},0,2,[UIntPtr]::Zero)\n`;
+  await runPowerShell(windowsInputPreamble()+body);
+}
+
+async function dragWindowsPath(points){
+  if(!Array.isArray(points)||points.length<2)throw new Error('Drag requires at least two valid points.');
+  const safe=points.map(point=>({x:Math.round(Number(point.x)||0),y:Math.round(Number(point.y)||0)}));
+  let body=`if(-not [FreeAIInput]::SetPhysicalCursorPos(${safe[0].x},${safe[0].y})) { throw "SetPhysicalCursorPos failed." }\n[FreeAIInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero)\n`;
+  for(const point of safe.slice(1))body+=`Start-Sleep -Milliseconds 45\nif(-not [FreeAIInput]::SetPhysicalCursorPos(${point.x},${point.y})) { throw "SetPhysicalCursorPos failed." }\n`;
+  body+='[FreeAIInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero)\n';
+  await runPowerShell(windowsInputPreamble()+body);
 }
 
 async function pasteWindowsText(text){
@@ -1314,10 +1388,13 @@ async function captureScreens(){
       : null;
     const legacyDisplay=process.platform==='win32'?null:(displays[index]||null);
     const display=reliableWindowsDisplay||legacyDisplay;
+    const size=source.thumbnail.getSize();
     return {
       id:source.id,
       name:display?.label||source.name||('Screen '+(index+1)),
       thumbnail:source.thumbnail.toDataURL(),
+      width:Number(size?.width)||800,
+      height:Number(size?.height)||450,
       displayId:display?.id??null,
       interactive:process.platform==='win32'?!!reliableWindowsDisplay:process.platform==='darwin'?!!display:false,
       scaleFactor:Number(display?.scaleFactor)||1,
@@ -1325,6 +1402,49 @@ async function captureScreens(){
       mapping:process.platform==='win32'?(reliableWindowsDisplay?'display_id':'unavailable'):'legacy'
     };
   });
+}
+
+function computerViewportPoint(displayId,x,y,width,height){
+  const w=Math.max(1,Number(width)||1);
+  const h=Math.max(1,Number(height)||1);
+  return displayPoint(displayId,Number(x)/Math.max(1,w-1),Number(y)/Math.max(1,h-1));
+}
+
+async function performWindowsComputerAction(payload={}){
+  if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows.');
+  const action=payload.action||{};
+  const type=String(action.type||'').toLowerCase();
+  const displayId=payload.displayId;
+  const viewport=payload.viewport||{};
+  const point=()=>computerViewportPoint(displayId,action.x,action.y,viewport.width,viewport.height);
+
+  if(type==='screenshot')return {ok:true,action:type,screens:await captureScreens()};
+  if(type==='wait'){
+    await new Promise(resolve=>setTimeout(resolve,Math.max(250,Math.min(3000,Number(action.ms)||1000))));
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='type'){
+    await pasteWindowsText(String(action.text||''));
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='keypress'){
+    await keypressWindows(action.keys);
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='drag'){
+    const path=Array.isArray(action.path)?action.path.map(item=>computerViewportPoint(displayId,item?.x,item?.y,viewport.width,viewport.height)):[];
+    await dragWindowsPath(path);
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+
+  const target=point();
+  if(type==='move')await moveWindowsPoint(target.x,target.y);
+  else if(type==='click')await clickWindowsPoint(target.x,target.y,action.button||'left',1);
+  else if(type==='double_click')await clickWindowsPoint(target.x,target.y,action.button||'left',2);
+  else if(type==='scroll')await scrollWindowsPoint(target.x,target.y,action.scroll_x,action.scroll_y);
+  else throw new Error('Unsupported Computer Use action: '+String(action.type||'unknown'));
+
+  return {ok:true,action:type,point:target,screens:await captureScreens()};
 }
 
 function createWindow(){
@@ -1633,13 +1753,14 @@ ipcMain.handle('browser:reload',()=>{
 });
 ipcMain.handle('browser:close',()=>{hideBrowserView();return true});
 
+ipcMain.handle('computer:performAction',(_e,payload)=>performWindowsComputerAction(payload));
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
   if(process.platform!=='win32'&&process.platform!=='darwin'){
     throw new Error('Interactive desktop control is available on Windows and macOS. Linux currently supports screen preview and browser actions.');
   }
   const point=displayPoint(displayId,nx,ny);
   if(process.platform==='darwin')await clickMacPoint(point.x,point.y);
-  else await clickWindowsPoint(point.x,point.y);
+  else await clickWindowsPoint(point.x,point.y,'left',1);
   return point;
 });
 ipcMain.handle('computer:clickAndType',async(_e,{displayId,nx,ny,text}={})=>{
