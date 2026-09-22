@@ -417,7 +417,7 @@ function App(){
           const next=prev.flatMap(message=>{
             if(message.requestId!==task.id)return [message];
             if(String(message.text||'').trim())return [{...message,streaming:false,stopped:true,requestId:undefined}];
-            return [];
+            return [{...message,text:String(task.statusText||'Work task stopped.'),streaming:false,stopped:true,requestId:undefined}];
           });
           queueMicrotask(()=>saveCurrentChat(next,selected));
           return next;
@@ -503,7 +503,14 @@ function App(){
     });
     setChatMenuId(null);
   }
+  function stopActiveWorkForNavigation(){
+    const id=activeRequestRef.current;
+    if(isWindowsDesktop&&id&&workTask?.id===id&&['running','waiting_approval'].includes(workTask.state)){
+      window.desktopApi?.stopWorkTask?.(id).catch(()=>{});
+    }
+  }
   function selectProduct(nextProduct){
+    stopActiveWorkForNavigation();
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -511,16 +518,19 @@ function App(){
   }
   function selectExperience(nextMode){
     if(product!=='free'||nextMode===mode)return;
+    stopActiveWorkForNavigation();
     const hasThread=!!currentChatId||messages.length>0;
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
+    stopActiveWorkForNavigation();
     setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
+    stopActiveWorkForNavigation();
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
@@ -598,7 +608,7 @@ function App(){
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
-      if(isWindowsDesktop&&isDesktop&&mode==='work'){
+      if(isWindowsDesktop&&isDesktop&&mode==='work'&&!selectedTool){
         const started=await window.desktopApi.startWorkTask({
           taskId:requestId,
           provider:model.id,
