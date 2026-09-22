@@ -526,6 +526,7 @@ function App(){
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
       saveSettings={saveSettings} connected={connected} apiDraft={apiDraft} setApiDraft={setApiDraft}
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
+      onExportData={exportLocalData} onClearHistory={clearLocalHistory}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
       onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
       onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
@@ -986,7 +987,7 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
   const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
@@ -1010,6 +1011,8 @@ function SettingsView(props){
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Personalization'&&<PersonalizationSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Approve for me':'Ask for approval'} action={onComputer}/>}
@@ -1085,6 +1088,31 @@ function VoiceSettings({prefs,setPrefs}){
       {isDesktop&&desktopPlatform!=='win32'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
       {!isDesktop&&<SettingRow title="Language" desc="Language used by the microphone dictation button." control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Device language</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
       {isNative&&<SettingRow title="Microphone permission" desc="Required for native Android dictation." control={<button className="settingsInlineButton" onClick={request}>{permission==='granted'?'Granted':'Request access'}</button>}/>}
+    </div>
+  </div>
+}
+function PersonalizationSettings({prefs,setPrefs}){
+  return <div className="settingsPane">
+    <h3>Personalization</h3>
+    <div className="settingBlock">
+      <SettingRow title="Enable customization" desc="Apply your instructions to requests sent through Free AI." control={<Toggle value={prefs.customizationEnabled!==false} onChange={v=>setPrefs({...prefs,customizationEnabled:v})}/>}/>
+      <label className="customInstructionsField">
+        <span>Custom instructions</span>
+        <small>These instructions are sent as request context to the connected model you choose.</small>
+        <textarea value={prefs.customInstructions||''} onChange={e=>setPrefs({...prefs,customInstructions:e.target.value})} placeholder="What should connected models know about how you want them to respond?"/>
+      </label>
+    </div>
+  </div>
+}
+function DataControlsSettings({onExportData,onClearHistory}){
+  const [confirmClear,setConfirmClear]=useState(false);
+  return <div className="settingsPane">
+    <h3>Local data</h3>
+    <div className="settingBlock">
+      <SettingRow title="Export Free AI data" desc="Export locally stored chats and preferences as JSON." control={<button className="settingsInlineButton" onClick={onExportData}>Export</button>}/>
+      <SettingRow title="Clear local chat history" desc="Delete locally stored Free AI and Super AI chats on this device." control={confirmClear
+        ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={()=>{onClearHistory();setConfirmClear(false)}}>Clear</button></span>
+        : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
     </div>
   </div>
 }
