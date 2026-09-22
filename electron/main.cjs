@@ -1431,10 +1431,11 @@ function loadMcpConnections(){
 }
 
 function saveMcpConnections(){
-  try{
-    fs.mkdirSync(path.dirname(mcpStorePath()),{recursive:true});
-    fs.writeFileSync(mcpStorePath(),JSON.stringify(encodeSecret(mcpConnections)),'utf8');
-  }catch(error){console.error('Failed to save MCP connections',error)}
+  if(mcpConnections.some(item=>item.token)&&!safeStorage.isEncryptionAvailable()){
+    throw new Error('Secure credential storage is unavailable. Free AI will not save an MCP bearer token in plaintext.');
+  }
+  fs.mkdirSync(path.dirname(mcpStorePath()),{recursive:true});
+  fs.writeFileSync(mcpStorePath(),JSON.stringify(encodeSecret(mcpConnections)),'utf8');
 }
 
 function publicMcpTool(tool){
@@ -1478,7 +1479,7 @@ function mcpRequestHeaders(connection,{sessionId='',method='',name=''}={}){
   };
   if(connection.token)headers.authorization='Bearer '+connection.token;
   if(sessionId)headers['mcp-session-id']=sessionId;
-  if(sessionId)headers['mcp-protocol-version']=MCP_PROTOCOL_VERSION;
+  if(method&&method!=='initialize')headers['mcp-protocol-version']=MCP_PROTOCOL_VERSION;
   return headers;
 }
 
@@ -1638,6 +1639,45 @@ function mcpToolIsReadOnly(connectionId,name){
   return !!tool&&tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint!==true;
 }
 
+function boundedMcpJson(value,limit=60000){
+  if(value===undefined||value===null)return value??null;
+  try{
+    const json=JSON.stringify(value);
+    if(Buffer.byteLength(json,'utf8')<=limit)return value;
+    return {truncated:true,json:json.slice(0,limit)};
+  }catch{return {unavailable:true}}
+}
+
+function sanitizeMcpContent(content){
+  const out=[];
+  for(const item of Array.isArray(content)?content.slice(0,24):[]){
+    if(!item||typeof item!=='object')continue;
+    const type=String(item.type||'');
+    if(type==='text'){
+      out.push({type:'text',text:String(item.text||'').slice(0,50000)});
+      continue;
+    }
+    if(type==='image'||type==='audio'){
+      const data=String(item.data||'');
+      out.push({type,mimeType:String(item.mimeType||''),binaryOmitted:true,encodedBytes:data.length});
+      continue;
+    }
+    if(type==='resource'&&item.resource&&typeof item.resource==='object'){
+      const resource=item.resource;
+      out.push({
+        type:'resource',
+        uri:String(resource.uri||'').slice(0,2000),
+        mimeType:String(resource.mimeType||''),
+        text:resource.text!==undefined?String(resource.text).slice(0,50000):undefined,
+        blobOmitted:resource.blob!==undefined
+      });
+      continue;
+    }
+    out.push(boundedMcpJson(item,30000));
+  }
+  return out;
+}
+
 async function callMcpTool(connectionId,name,args={}){
   const connection=mcpConnections.find(item=>item.id===String(connectionId||''));
   if(!connection)throw new Error('MCP connection was not found.');
@@ -1670,8 +1710,8 @@ async function callMcpTool(connectionId,name,args={}){
     connectionName:connection.name,
     tool:String(name),
     isError:result.isError===true,
-    content:Array.isArray(result.content)?result.content:[],
-    structuredContent:result.structuredContent??null
+    content:sanitizeMcpContent(result.content),
+    structuredContent:boundedMcpJson(result.structuredContent??null,60000)
   };
 }
 
@@ -3270,7 +3310,12 @@ ipcMain.handle('mcp:addConnection',async(_e,input)=>{
   };
   const tested=await listMcpTools(connection,{forceSession:true});
   mcpConnections.push(connection);
-  saveMcpConnections();
+  try{saveMcpConnections()}
+  catch(error){
+    mcpConnections=mcpConnections.filter(item=>item.id!==connection.id);
+    mcpSessions.delete(connection.id);
+    throw error;
+  }
   return tested;
 });
 ipcMain.handle('mcp:removeConnection',(_e,id)=>{
