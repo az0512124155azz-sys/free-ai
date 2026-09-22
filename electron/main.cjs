@@ -1238,6 +1238,224 @@ async function chooseRepository(){
   return repositorySummary(result.filePaths[0]);
 }
 
+async function canonicalLocalFolderRoot(input){
+  if(process.platform!=='win32')throw new Error('Local folder access is currently available on Windows.');
+  const requested=path.resolve(String(input||''));
+  if(!requested||!fs.existsSync(requested)||!fs.statSync(requested).isDirectory())throw new Error('Local folder is not available.');
+  return fs.realpathSync(requested);
+}
+
+function sensitiveLocalFile(relativePath){
+  const normalized=String(relativePath||'').replace(/\\/g,'/').toLowerCase();
+  const base=path.posix.basename(normalized);
+  if(normalized==='.git'||normalized.startsWith('.git/'))return true;
+  if(['.env','.env.local','.env.production','.env.development','.npmrc','.pypirc','.netrc','credentials','credentials.json'].includes(base))return true;
+  if(/^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/.test(base))return true;
+  if(/\.(pem|p12|pfx|key)$/i.test(base))return true;
+  return false;
+}
+
+function safeLocalFolderPath(root,relativePath,{allowMissing=false,allowRoot=false}={}){
+  const realRoot=fs.realpathSync(root);
+  const rel=String(relativePath||'').replace(/\\/g,'/').trim().replace(/^\.\//,'');
+  if(!rel){
+    if(allowRoot)return {resolved:realRoot,relative:''};
+    throw new Error('Local file path is required.');
+  }
+  if(path.isAbsolute(rel)||rel.split('/').some(part=>part==='..'||part===''))throw new Error('Local file path must stay inside the selected folder.');
+  if(sensitiveLocalFile(rel))throw new Error('Automated access to credential or private-key files is blocked. Attach the specific file manually only if you intentionally want to share it.');
+  const resolved=path.resolve(realRoot,...rel.split('/'));
+  if(!repositoryContainsPath(realRoot,resolved))throw new Error('Local file path escapes the selected folder.');
+  if(fs.existsSync(resolved)){
+    const realTarget=fs.realpathSync(resolved);
+    if(!repositoryContainsPath(realRoot,realTarget))throw new Error('Local file path resolves through a symlink outside the selected folder.');
+  }else{
+    if(!allowMissing)throw new Error('Local file does not exist: '+rel);
+    const ancestor=nearestExistingRepositoryAncestor(path.dirname(resolved));
+    const realAncestor=fs.realpathSync(ancestor);
+    if(!repositoryContainsPath(realRoot,realAncestor))throw new Error('Local file path resolves through a symlink outside the selected folder.');
+  }
+  return {resolved,relative:rel};
+}
+
+async function localFolderSummary(inputRoot){
+  const root=await canonicalLocalFolderRoot(inputRoot);
+  const stat=fs.statSync(root);
+  return {
+    root,
+    name:path.basename(root)||root,
+    mtimeMs:Math.round(stat.mtimeMs)
+  };
+}
+
+const localFileSkippedDirs=new Set(['.git','node_modules','.next','.cache','.turbo']);
+
+function localFolderList(inputRoot,relativeDir='',recursive=false){
+  const root=fs.realpathSync(inputRoot);
+  const target=safeLocalFolderPath(root,relativeDir,{allowRoot:true});
+  if(!fs.statSync(target.resolved).isDirectory())throw new Error('Local Files list target is not a folder.');
+  const entries=[];
+  const maxEntries=recursive?700:300;
+  const walk=(dir,base,depth)=>{
+    if(entries.length>=maxEntries||depth>8)return;
+    let items=[];
+    try{items=fs.readdirSync(dir,{withFileTypes:true})}catch{return}
+    items.sort((a,b)=>a.name.localeCompare(b.name));
+    for(const item of items){
+      if(entries.length>=maxEntries)break;
+      const rel=(base?base+'/':'')+item.name;
+      if(sensitiveLocalFile(rel))continue;
+      if(item.isSymbolicLink()){
+        entries.push({path:rel,type:'symlink',accessible:false});
+        continue;
+      }
+      const abs=path.join(dir,item.name);
+      if(item.isDirectory()){
+        entries.push({path:rel,type:'directory'});
+        if(recursive&&!localFileSkippedDirs.has(item.name))walk(abs,rel,depth+1);
+      }else if(item.isFile()){
+        let stat=null;
+        try{stat=fs.statSync(abs)}catch{}
+        entries.push({path:rel,type:'file',size:Number(stat?.size)||0,mtimeMs:Math.round(Number(stat?.mtimeMs)||0)});
+      }
+    }
+  };
+  walk(target.resolved,target.relative,0);
+  return {
+    folder:path.basename(root)||root,
+    path:target.relative,
+    recursive:!!recursive,
+    truncated:entries.length>=maxEntries,
+    entries
+  };
+}
+
+function localFolderStat(inputRoot,relativePath){
+  const root=fs.realpathSync(inputRoot);
+  const target=safeLocalFolderPath(root,relativePath);
+  const stat=fs.statSync(target.resolved);
+  return {
+    path:target.relative,
+    type:stat.isDirectory()?'directory':stat.isFile()?'file':'other',
+    size:stat.isFile()?stat.size:0,
+    mtimeMs:Math.round(stat.mtimeMs)
+  };
+}
+
+function localFolderRead(inputRoot,relativePath,startLine=1,endLine=null){
+  const root=fs.realpathSync(inputRoot);
+  const target=safeLocalFolderPath(root,relativePath);
+  const stat=fs.statSync(target.resolved);
+  if(!stat.isFile())throw new Error('Local Files read target is not a file.');
+  if(stat.size>2*1024*1024)throw new Error('Local file is too large for the bounded text reader. Use attach if the selected model supports file upload.');
+  const buffer=fs.readFileSync(target.resolved);
+  if(buffer.subarray(0,Math.min(buffer.length,8192)).includes(0))throw new Error('This local file appears to be binary. Use attach if the selected model supports file upload.');
+  const text=buffer.toString('utf8');
+  const lines=text.split(/\r?\n/);
+  const totalLines=Math.max(1,lines.length);
+  const start=Math.max(1,Math.min(totalLines,Number(startLine)||1));
+  const requestedEnd=endLine===null||endLine===undefined?start+239:Number(endLine)||start+239;
+  let end=Math.max(start,Math.min(totalLines,requestedEnd,start+399));
+  let selected=lines.slice(start-1,end);
+  while(selected.join('\n').length>18000&&end>start){
+    end=Math.max(start,end-Math.max(1,Math.ceil((end-start+1)/8)));
+    selected=lines.slice(start-1,end);
+  }
+  if(selected.join('\n').length>18000)throw new Error('A local file line exceeds the bounded text observation limit.');
+  return {
+    path:target.relative,
+    size:stat.size,
+    mtimeMs:Math.round(stat.mtimeMs),
+    totalLines,
+    startLine:start,
+    endLine:end,
+    complete:start===1&&end===totalLines,
+    content:selected.join('\n')
+  };
+}
+
+function recordLocalFileRead(task,result){
+  if(!(task.localFileReadState instanceof Map))task.localFileReadState=new Map();
+  const key=String(result?.path||'').toLowerCase();
+  if(!key)return;
+  let state=task.localFileReadState.get(key);
+  if(!state||state.size!==result.size||state.mtimeMs!==result.mtimeMs||state.totalLines!==result.totalLines){
+    state={size:result.size,mtimeMs:result.mtimeMs,totalLines:result.totalLines,ranges:[]};
+  }
+  state.ranges.push([result.startLine,result.endLine]);
+  state.ranges.sort((a,b)=>a[0]-b[0]);
+  const merged=[];
+  for(const range of state.ranges){
+    const last=merged[merged.length-1];
+    if(!last||range[0]>last[1]+1)merged.push([...range]);
+    else last[1]=Math.max(last[1],range[1]);
+  }
+  state.ranges=merged;
+  task.localFileReadState.set(key,state);
+}
+
+function localFileReadIsComplete(task,target){
+  if(!(task.localFileReadState instanceof Map))return false;
+  const key=String(target.relative||'').toLowerCase();
+  const state=task.localFileReadState.get(key);
+  if(!state||!fs.existsSync(target.resolved))return false;
+  const stat=fs.statSync(target.resolved);
+  if(state.size!==stat.size||state.mtimeMs!==Math.round(stat.mtimeMs))return false;
+  return state.ranges.length===1&&state.ranges[0][0]===1&&state.ranges[0][1]>=state.totalLines;
+}
+
+const localMimeTypes={
+  '.txt':'text/plain','.md':'text/markdown','.json':'application/json','.csv':'text/csv','.tsv':'text/tab-separated-values',
+  '.html':'text/html','.css':'text/css','.js':'text/javascript','.jsx':'text/javascript','.ts':'text/typescript','.tsx':'text/typescript',
+  '.pdf':'application/pdf','.docx':'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx':'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.pptx':'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  '.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp',
+  '.svg':'image/svg+xml','.zip':'application/zip'
+};
+
+function localFolderAttach(inputRoot,relativePath){
+  const root=fs.realpathSync(inputRoot);
+  const target=safeLocalFolderPath(root,relativePath);
+  const stat=fs.statSync(target.resolved);
+  if(!stat.isFile())throw new Error('Local Files attach target is not a file.');
+  if(stat.size>20*1024*1024)throw new Error('Local file exceeds the 20 MB per-file limit for this checkpoint.');
+  const data=fs.readFileSync(target.resolved);
+  const type=localMimeTypes[path.extname(target.relative).toLowerCase()]||'application/octet-stream';
+  return {
+    path:target.relative,
+    attached:true,
+    attachment:{
+      name:path.basename(target.relative),
+      type,
+      size:stat.size,
+      dataUrl:'data:'+type+';base64,'+data.toString('base64')
+    }
+  };
+}
+
+function localFolderWrite(inputRoot,relativePath,content){
+  const root=fs.realpathSync(inputRoot);
+  const target=safeLocalFolderPath(root,relativePath,{allowMissing:true});
+  const text=String(content??'');
+  if(Buffer.byteLength(text,'utf8')>350*1024)throw new Error('Local file write is too large for one agent step.');
+  fs.mkdirSync(path.dirname(target.resolved),{recursive:true});
+  fs.writeFileSync(target.resolved,text,'utf8');
+  return {ok:true,path:target.relative,size:Buffer.byteLength(text,'utf8')};
+}
+
+async function chooseLocalFolder(){
+  if(process.platform!=='win32')throw new Error('Local folder access is currently available on Windows.');
+  if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
+  const result=await dialog.showOpenDialog(win,{
+    title:'Open local folder for Work',
+    properties:['openDirectory'],
+    buttonLabel:'Open folder'
+  });
+  if(result.canceled||!result.filePaths?.[0])return null;
+  return localFolderSummary(result.filePaths[0]);
+}
+
 function displayPoint(displayId,nx,ny){
   const displays=screen.getAllDisplays();
   const matched=displays.find(d=>String(d.id)===String(displayId))||null;
