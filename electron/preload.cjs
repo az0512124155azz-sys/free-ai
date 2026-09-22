@@ -40,6 +40,15 @@ contextBridge.exposeInMainWorld('desktopApi',{
   browserForward:()=>ipcRenderer.invoke('browser:forward'),
   browserReload:()=>ipcRenderer.invoke('browser:reload'),
   browserClose:()=>ipcRenderer.invoke('browser:close'),
+  browserUseBuiltInSnapshot:(tabId)=>ipcRenderer.invoke('browserUse:builtInSnapshot',tabId),
+  browserUseBuiltInAction:(payload)=>ipcRenderer.invoke('browserUse:builtInAction',payload),
+  extensionBrowserListTabs:()=>ipcRenderer.invoke('browserUse:extensionListTabs'),
+  extensionBrowserActivateTab:(tabId)=>ipcRenderer.invoke('browserUse:extensionActivateTab',tabId),
+  extensionBrowserCreateTab:(payload)=>ipcRenderer.invoke('browserUse:extensionCreateTab',payload),
+  extensionBrowserCloseTab:(tabId)=>ipcRenderer.invoke('browserUse:extensionCloseTab',tabId),
+  extensionBrowserNavigate:(payload)=>ipcRenderer.invoke('browserUse:extensionNavigate',payload),
+  extensionBrowserSnapshot:(tabId)=>ipcRenderer.invoke('browserUse:extensionSnapshot',tabId),
+  extensionBrowserAction:(payload)=>ipcRenderer.invoke('browserUse:extensionAction',payload),
   openAuthUrl:(url)=>ipcRenderer.invoke('auth:openExternal',url),
   onPromptStream:(cb)=>{
     const h=(_e,event)=>cb(event);
