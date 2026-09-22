@@ -452,28 +452,57 @@ function hookBrowserDownloads(wc){
   });
 }
 
-function createBrowserTab(input='https://www.google.com/',activate=true){
+function createBrowserTab(input='https://www.google.com/',activate=true,options={}){
   const id=crypto.randomUUID();
-  const view=new WebContentsView({
-    webPreferences:{
-      sandbox:true,
-      contextIsolation:true,
-      nodeIntegration:false,
-      partition:'persist:freeai-browser'
-    }
-  });
+  const skipLoad=!!options.skipLoad;
+  const initialUrl=skipLoad?String(input||'about:blank'):normalizeBrowserUrl(input);
+  const view=options.view||createBrowserView(options.webPreferences);
   browserTabs.set(id,view);
   browserErrors.delete(id);
   if(process.platform==='win32'){
-    browserUrls.set(id,normalizeBrowserUrl(input));
+    browserUrls.set(id,initialUrl);
     browserTitles.set(id,'New tab');
     browserFavicons.delete(id);
   }
   const wc=view.webContents;
   hookBrowserDownloads(wc);
-  wc.setWindowOpenHandler(({url})=>{
-    createBrowserTab(url,true);
-    return {action:'deny'};
+  wc.setWindowOpenHandler((details)=>{
+    if(process.platform!=='win32'){
+      createBrowserTab(details.url,true);
+      return {action:'deny'};
+    }
+    const activatePopup=details.disposition!=='background-tab';
+    const browserWasAttached=browserAttached;
+    return {
+      action:'allow',
+      outlivesOpener:true,
+      createWindow:(windowOptions={})=>{
+        let popupView=null;
+        const supplied=windowOptions.webContents;
+        if(supplied&&supplied.session===persistentBrowserSession()){
+          popupView=new WebContentsView({webContents:supplied});
+        }else{
+          if(supplied)try{supplied.close()}catch{}
+          popupView=createBrowserView(windowOptions.webPreferences);
+        }
+        const popup=createBrowserTab(details.url||'about:blank',activatePopup,{
+          view:popupView,
+          skipLoad:true,
+          preserveHidden:!browserWasAttached
+        });
+        if(details.disposition==='background-tab'&&details.url&&details.url!=='about:blank'){
+          popup.view.webContents.loadURL(details.url).catch(error=>{
+            if(browserTabs.has(popup.id))browserErrors.set(popup.id,{
+              type:'load',
+              description:String(error?.message||'This page could not be loaded.'),
+              url:String(details.url)
+            });
+            emitBrowserState();
+          });
+        }
+        return popup.view.webContents;
+      }
+    };
   });
   wc.on('did-start-navigation',(_event,details)=>{
     if(process.platform!=='win32'||details?.isMainFrame===false)return;
@@ -553,15 +582,25 @@ function createBrowserTab(input='https://www.google.com/',activate=true){
     });
     emitBrowserState();
   });
-  if(activate)activateBrowserTab(id);
-  wc.loadURL(normalizeBrowserUrl(input)).catch(error=>{
-    if(process.platform==='win32')browserErrors.set(id,{
-      type:'load',
-      description:String(error?.message||'This page could not be loaded.'),
-      url:String(wc.getURL()||normalizeBrowserUrl(input))
+  wc.once('destroyed',()=>handleBrowserTabDestroyed(id,view));
+  if(activate){
+    if(options.preserveHidden){
+      activeBrowserTabId=id;
+      emitBrowserState();
+    }else{
+      activateBrowserTab(id);
+    }
+  }
+  if(!skipLoad){
+    wc.loadURL(initialUrl).catch(error=>{
+      if(process.platform==='win32')browserErrors.set(id,{
+        type:'load',
+        description:String(error?.message||'This page could not be loaded.'),
+        url:String(wc.getURL()||initialUrl)
+      });
+      emitBrowserState();
     });
-    emitBrowserState();
-  });
+  }
   emitBrowserState();
   return {id,view};
 }
