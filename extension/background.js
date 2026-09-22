@@ -60,7 +60,9 @@ async function ensureContentScript(tabId){
   return result?.ok===true;
 }
 
-async function scanProviders(){
+async function scanProviders(options={}){
+  const probeModels=!!options.probeModels;
+  const probeTools=!!options.probeTools;
   const connected=[];
   for(const [providerId,p] of Object.entries(PROVIDERS)){
     const tabs=await chrome.tabs.query({url:p.matches});
@@ -69,9 +71,14 @@ async function scanProviders(){
       try{
         const ok=await ensureContentScript(tab.id);
         if(!ok)continue;
-        const capabilities=await sendToTab(tab.id,{type:'freeai:scanCapabilities',provider:providerId}).catch(()=>({mcps:[],modelOptions:[]}));
+        const instanceId=providerId+':'+tab.id;
+        const previous=lastProviders.find(item=>item.id===instanceId)||null;
+        const capabilities=await sendToTab(tab.id,{type:'freeai:scanCapabilities',provider:providerId,probeModels,probeTools}).catch(()=>({mcps:[],modelOptions:[]}));
+        const modelOptions=Array.isArray(capabilities?.modelOptions)&&capabilities.modelOptions.length?capabilities.modelOptions:(Array.isArray(previous?.modelOptions)?previous.modelOptions:[]);
+        const mcps=Array.isArray(capabilities?.mcps)&&capabilities.mcps.length?capabilities.mcps:(Array.isArray(previous?.mcps)?previous.mcps:[]);
+        const effortLevels=Array.isArray(capabilities?.effortLevels)&&capabilities.effortLevels.length?capabilities.effortLevels:(Array.isArray(previous?.effortLevels)?previous.effortLevels:[]);
         connected.push({
-          id:providerId+':'+tab.id,
+          id:instanceId,
           providerId,
           name:p.name,
           tabId:tab.id,
@@ -80,13 +87,13 @@ async function scanProviders(){
           url:tab.url||'',
           favIconUrl:tab.favIconUrl||'',
           source:'browser',
-          modelName:typeof capabilities?.modelName==='string'&&capabilities.modelName.trim()?capabilities.modelName.trim():p.name,
-          modelOptions:Array.isArray(capabilities?.modelOptions)?capabilities.modelOptions:[],
-          effortLevels:[],
-          effortControl:null,
-          activeEffort:'default',
-          fileUpload:!!capabilities?.fileUpload,
-          mcps:Array.isArray(capabilities?.mcps)?capabilities.mcps:[]
+          modelName:typeof capabilities?.modelName==='string'&&capabilities.modelName.trim()?capabilities.modelName.trim():(previous?.modelName||p.name),
+          modelOptions,
+          effortLevels,
+          effortControl:capabilities?.effortControl||(effortLevels.length>1?'native':previous?.effortControl||null),
+          activeEffort:capabilities?.activeEffort||previous?.activeEffort||'default',
+          fileUpload:capabilities?.fileUpload===true||previous?.fileUpload===true,
+          mcps
         });
       }catch{}
     }
@@ -196,6 +203,24 @@ async function handleBrowserRequest(message){
     return {result,...await browserSnapshot(tab.id)};
   }
 
+  if(command==='setProviderModel'){
+    const tab=await requireBrowserTab(payload.tabId);
+    await ensureContentScript(tab.id);
+    const result=await sendToTab(tab.id,{type:'freeai:setProviderModel',provider:String(payload.providerId||''),modelName:String(payload.modelName||'')});
+    if(result?.error)throw new Error(result.error);
+    await scanProviders({probeModels:true});
+    return result||{ok:true};
+  }
+
+  if(command==='setProviderEffort'){
+    const tab=await requireBrowserTab(payload.tabId);
+    await ensureContentScript(tab.id);
+    const result=await sendToTab(tab.id,{type:'freeai:setProviderEffort',provider:String(payload.providerId||''),effort:String(payload.effort||'default')});
+    if(result?.error)throw new Error(result.error);
+    await scanProviders({probeModels:true});
+    return result||{ok:true};
+  }
+
   throw new Error('Unsupported Browser Use command: '+command);
 }
 
@@ -218,7 +243,7 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
     return true;
   }
   if(m?.type==='freeai:rescan'){
-    scanProviders().then(providers=>sendResponse({ok:true,providerCount:providers.length})).catch(err=>sendResponse({ok:false,error:err?.message||String(err)}));
+    scanProviders({probeModels:true,probeTools:true}).then(providers=>sendResponse({ok:true,providerCount:providers.length})).catch(err=>sendResponse({ok:false,error:err?.message||String(err)}));
     return true;
   }
 });
@@ -321,7 +346,7 @@ function connect(){
     let m;try{m=JSON.parse(event.data)}catch{return}
 
     if(m.type==='scanProviders'){
-      await scanProviders();
+      await scanProviders({probeModels:!!m.probeModels,probeTools:!!m.probeTools});
       return;
     }
     if(m.type==='scanBrowser'){
