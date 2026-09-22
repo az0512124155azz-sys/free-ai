@@ -676,6 +676,9 @@ function hideBrowserView(){
     try{win?.contentView.removeChildView(view)}catch{}
   }
   browserAttached=false;
+  if(process.platform==='win32'){
+    try{persistentBrowserSession().flushStorageData()}catch{}
+  }
   emitBrowserState();
 }
 
