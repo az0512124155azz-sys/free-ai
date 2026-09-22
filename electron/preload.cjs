@@ -73,6 +73,11 @@ contextBridge.exposeInMainWorld('desktopApi',{
     ipcRenderer.on('prompt-stream',h);
     return()=>ipcRenderer.removeListener('prompt-stream',h);
   },
+  onPromptActivity:(cb)=>{
+    const h=(_e,event)=>cb(event);
+    ipcRenderer.on('prompt-activity',h);
+    return()=>ipcRenderer.removeListener('prompt-activity',h);
+  },
   onWorkTask:(cb)=>{
     const h=(_e,state)=>cb(state);
     ipcRenderer.on('work-task',h);

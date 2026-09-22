@@ -23,13 +23,19 @@ for(const requiredProp of ['onSelectProviderModel','onSelectProviderEffort','onR
   }
 }
 
-for(const requiredSearchProp of ['webSearchEnabled','onToggleWebSearch']){
+for(const requiredSearchProp of ['webSearchEnabled','onToggleWebSearch','deepResearchEnabled','onToggleDeepResearch']){
   if(!composer.includes(requiredSearchProp)){
-    fail('Composer is missing required Search prop "'+requiredSearchProp+'".');
+    fail('Composer is missing required web/research prop "'+requiredSearchProp+'".');
   }
 }
-if(!source.includes("nativeTool:nativeSearch?'search':null")){
-  fail('Chat Web Search is not routed to the provider-native search tool.');
+if(!source.includes("nativeTool:nativeDeepResearch?'deep-research':nativeSearch?'search':null")){
+  fail('Chat Search / Deep Research is not routed to the provider-native tool.');
+}
+if(!source.includes("onPromptActivity")){
+  fail('Deep Research activity is not wired into the renderer.');
+}
+if(!source.includes("m.deepResearch&&")){
+  fail('Deep Research responses are missing research-status rendering.');
 }
 if(!source.includes('<MessageSources sources={m.sources}')){
   fail('Search responses are missing the Sources renderer.');

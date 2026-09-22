@@ -2085,6 +2085,11 @@ function emitPromptStream(id,text){
   win.webContents.send('prompt-stream',{id,text:String(text||'')});
 }
 
+function emitPromptActivity(id,text){
+  if(!id||!win||win.isDestroyed())return;
+  win.webContents.send('prompt-activity',{id,text:String(text||'')});
+}
+
 function routeToBrowser(msg,onStream){
   return new Promise((resolve,reject)=>{
     if(!extensionSocket||extensionSocket.readyState!==WebSocket.OPEN){
@@ -2094,11 +2099,12 @@ function routeToBrowser(msg,onStream){
       return reject(new Error('That browser model is not currently connected.'));
     }
     const id=msg.requestId||msg.id||crypto.randomUUID();
+    const timeoutMs=msg.nativeTool==='deep-research'?30*60*1000:180000;
     const timer=setTimeout(()=>{
       pending.delete(id);
-      reject(new Error('AI response timed out.'));
-    },180000);
-    pending.set(id,{resolve,reject,timer,onStream,provider:msg.provider});
+      reject(new Error(msg.nativeTool==='deep-research'?'Deep Research timed out.':'AI response timed out.'));
+    },timeoutMs);
+    pending.set(id,{resolve,reject,timer,onStream,provider:msg.provider,nativeTool:msg.nativeTool||null});
     sendExtension({...msg,id,type:'prompt'});
   });
 }
@@ -2281,6 +2287,10 @@ function startLocalBridge(){
       }
       if(m.type==='stream'&&pending.has(m.id)){
         pending.get(m.id)?.onStream?.(String(m.text||''));
+        return;
+      }
+      if(m.type==='activity'&&pending.has(m.id)){
+        emitPromptActivity(m.id,String(m.text||''));
         return;
       }
       if(m.type==='response'&&pending.has(m.id)){

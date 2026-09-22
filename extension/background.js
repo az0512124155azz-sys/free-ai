@@ -267,6 +267,10 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
     safeSend({type:'stream',id:m.id,text:String(m.text||'')});
     return;
   }
+  if(m?.type==='freeai:activity'&&m.id){
+    safeSend({type:'activity',id:m.id,text:String(m.text||'')});
+    return;
+  }
   if(m?.type==='freeai:getStatus'){
     sendResponse({
       bridgeConnected:!!(ws&&ws.readyState===WebSocket.OPEN),
