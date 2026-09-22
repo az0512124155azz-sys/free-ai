@@ -3056,20 +3056,57 @@ async function callWorkModel(task,observation,attachments=[]){
 }
 
 function validateWorkToolDecision(task,decision){
-  if(decision?.tool!=='mcp')return null;
-  const action=decision.action||{};
+  const action=decision?.action||{};
   const type=String(action.type||'').toLowerCase();
-  if(!['list','describe','call'].includes(type)){
-    return 'Unsupported MCP action type. Use list, describe, or call.';
+
+  if(decision?.tool==='mcp'){
+    if(!['list','describe','call'].includes(type)){
+      return 'Unsupported MCP action type. Use list, describe, or call.';
+    }
+    if(type==='list')return null;
+    const resolved=workMcpTool(task,action);
+    if(!resolved){
+      return 'The requested MCP connection/tool is not available in the apps selected for this task. Use mcp list and then describe an exact listed tool.';
+    }
+    if(type==='call'&&(action.arguments===null||typeof action.arguments!=='object'||Array.isArray(action.arguments))){
+      return 'MCP call arguments must be a JSON object matching the tool inputSchema.';
+    }
+    return null;
   }
-  if(type==='list')return null;
-  const resolved=workMcpTool(task,action);
-  if(!resolved){
-    return 'The requested MCP connection/tool is not available in the apps selected for this task. Use mcp list and then describe an exact listed tool.';
+
+  if(decision?.tool==='files'){
+    if(!task.localFolder?.root)return 'No local folder is open for this task.';
+    if(!['list','stat','read','attach','write'].includes(type)){
+      return 'Unsupported local Files action. Use list, stat, read, attach, or write.';
+    }
+    try{
+      if(type==='list'){
+        const target=safeLocalFolderPath(task.localFolder.root,action.path||'',{allowRoot:true});
+        if(!fs.statSync(target.resolved).isDirectory())return 'Files list path must be a folder.';
+        return null;
+      }
+      if(!String(action.path||'').trim())return 'This Files action requires a relative path inside the selected folder.';
+      const target=safeLocalFolderPath(task.localFolder.root,action.path,{allowMissing:type==='write'});
+      if(type==='write'){
+        if(typeof action.content!=='string')return 'Files write content must be a string.';
+        if(fs.existsSync(target.resolved)){
+          const stat=fs.statSync(target.resolved);
+          if(!stat.isFile())return 'Files write target must be a file path.';
+          if(!localFileReadIsComplete(task,target)){
+            return 'Read the complete current local file with Files read before overwriting it.';
+          }
+        }
+        return null;
+      }
+      if(type==='attach'&&!workCanReceiveFiles(task)){
+        return 'The selected controller model does not expose real file upload, so Files attach is unavailable. Use Files read for text or choose a browser model with file upload.';
+      }
+      return null;
+    }catch(error){
+      return String(error?.message||error);
+    }
   }
-  if(type==='call'&&(action.arguments===null||typeof action.arguments!=='object'||Array.isArray(action.arguments))){
-    return 'MCP call arguments must be a JSON object matching the tool inputSchema.';
-  }
+
   return null;
 }
 
@@ -3113,6 +3150,28 @@ async function executeWorkTool(task,decision){
       },
       settleMs:action.settleMs
     },20000);
+  }
+  if(decision.tool==='files'){
+    if(!task.localFolder?.root)throw new Error('No local folder is open for this task.');
+    if(type==='list')return localFolderList(task.localFolder.root,action.path||'',action.recursive===true);
+    if(type==='stat')return localFolderStat(task.localFolder.root,action.path);
+    if(type==='read'){
+      const result=localFolderRead(task.localFolder.root,action.path,action.startLine,action.endLine);
+      recordLocalFileRead(task,result);
+      return result;
+    }
+    if(type==='attach'){
+      if(!workCanReceiveFiles(task))throw new Error('The selected controller model cannot receive attached local files.');
+      return localFolderAttach(task.localFolder.root,action.path);
+    }
+    if(type==='write'){
+      const target=safeLocalFolderPath(task.localFolder.root,action.path,{allowMissing:true});
+      if(fs.existsSync(target.resolved)&&!localFileReadIsComplete(task,target)){
+        throw new Error('Read the complete current local file before overwriting it.');
+      }
+      return localFolderWrite(task.localFolder.root,action.path,action.content);
+    }
+    throw new Error('Unsupported local Files action: '+String(action.type||'unknown'));
   }
   if(decision.tool==='mcp'){
     if(type==='list'){
