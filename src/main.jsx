@@ -107,6 +107,14 @@ function App(){
   const fileRef=useRef(null);
 
   useEffect(()=>{
+    if(isNative&&product==='super'){
+      setProduct('free');
+      localStorage.setItem('freeai.product','free');
+      setMode('chat');
+    }
+  },[product]);
+
+  useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
     supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)}).catch(()=>{setSession(null);setAuthReady(true)});
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true)});
@@ -336,10 +344,10 @@ function App(){
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
         <div className="productSwitcher">
-          <button className="brandButton" title="Switch product" aria-haspopup="menu" aria-expanded={productMenu} onClick={()=>setProductMenu(v=>!v)}>
-            <BrandMark size={20}/><b>{product==='super'?'Super AI':'Free AI'}</b><ChevronDown size={14}/>
+          <button className="brandButton" title={isNative?'Free AI':'Switch product'} aria-haspopup={isNative?undefined:'menu'} aria-expanded={isNative?undefined:productMenu} onClick={()=>!isNative&&setProductMenu(v=>!v)}>
+            <BrandMark size={20}/><b>{product==='super'?'Super AI':'Free AI'}</b>{!isNative&&<ChevronDown size={14}/>}
           </button>
-          {productMenu&&<div className="productMenu" role="menu">
+          {!isNative&&productMenu&&<div className="productMenu" role="menu">
             <button className={product==='free'?'active':''} onClick={()=>{setProduct('free');setProductMenu(false);setMode('chat')}}>
               <BrandMark size={20}/><span><b>Free AI</b><small>Chat and work with all connected models</small></span>{product==='free'&&<Check size={16}/>}
             </button>
@@ -358,7 +366,7 @@ function App(){
       <div className="mobileQuickStart">
         <button className="mobileNewChat" onClick={newChat}><SquarePen size={17}/><span>New chat</span></button>
         <div className="mobileExperienceRail" aria-label="Experiences">
-          <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>
+          {!isNative&&<button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>}
           <button className={page==='plugins'?'active':''} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Plugins</span></button>
           <button className={page==='explore'?'active':''} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
         </div>
