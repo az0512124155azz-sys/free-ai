@@ -2322,10 +2322,17 @@ function startLocalBridge(){
     ws.on('close',()=>{
       if(ws===extensionSocket){
         extensionSocket=null;
+        browserProviders=[];
+        extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
         for(const [id,request] of extensionBrowserPending){
           clearTimeout(request.timer);
           request.reject(new Error('Browser extension disconnected.'));
           extensionBrowserPending.delete(id);
+        }
+        for(const [id,request] of pending){
+          clearTimeout(request.timer);
+          request.reject(new Error('Browser extension disconnected during generation.'));
+          pending.delete(id);
         }
       }
       sendStatus();
