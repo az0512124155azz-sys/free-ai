@@ -719,7 +719,7 @@ function Composer(props){
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
           <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
-            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
+            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual'}<ChevronDown size={12}/>
           </button>
           {approvalMenu&&<PermissionModeMenu value={approvalMode} options={permissionOptions} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
@@ -813,8 +813,8 @@ function EffortMenu({effort,levels,choose}){
 
 function PermissionModeMenu({value,options={},choose}){
   const rows=[
-    ['ask','Ask for approval','Default workspace permissions. Ask before additional access.',true],
-    ['auto','Approve for me','Keep the workspace boundary and send additional-access requests to automatic review.',!!options.auto],
+    ['ask','Manual','Ask before each supported action that needs approval.',true],
+    ['auto','Automatic','Automatically continue eligible low-risk actions and pause for sensitive actions.',!!options.auto],
     ['full','Full access','Allow supported disk and network actions without repeated approval prompts.',!!options.full]
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
@@ -1132,14 +1132,14 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
     await executeAction(action);
   }
 
-  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval';
+  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
       <select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Ask for approval</option>
-        <option value="auto" disabled={!permissionOptions.auto}>Approve for me</option>
+        <option value="ask">Manual</option>
+        <option value="auto" disabled={!permissionOptions.auto}>Automatic</option>
         <option value="full" disabled={!permissionOptions.full}>Full access</option>
       </select>
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
