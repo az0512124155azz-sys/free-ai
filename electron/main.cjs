@@ -199,6 +199,122 @@ function browserSnapshot(){
   };
 }
 
+async function builtInBrowserAgentSnapshot(tabId=activeBrowserTabId){
+  const id=tabId||activeBrowserTabId;
+  const view=id?browserTabs.get(id):null;
+  if(!view||view.webContents.isDestroyed())throw new Error('That built-in browser tab is not available.');
+  const wc=view.webContents;
+  const page=await wc.executeJavaScriptInIsolatedWorld(1204,[{code:`
+    (()=>{
+      const visible=el=>!!(el&&el.getClientRects().length);
+      const selector=['a[href]','button','input:not([type="hidden"])','textarea','select','summary','[role="button"]','[role="link"]','[role="textbox"]','[contenteditable="true"]','[tabindex]:not([tabindex="-1"])'].join(',');
+      const elements=[];
+      for(const el of document.querySelectorAll(selector)){
+        if(elements.length>=140||!visible(el))continue;
+        const r=el.getBoundingClientRect();
+        if(r.width<2||r.height<2||r.bottom<0||r.right<0||r.top>innerHeight||r.left>innerWidth)continue;
+        const label=String(el.getAttribute?.('aria-label')||el.getAttribute?.('title')||el.getAttribute?.('placeholder')||el.innerText||el.textContent||'').replace(/\\s+/g,' ').trim().slice(0,180);
+        elements.push({
+          role:String(el.getAttribute?.('role')||el.tagName||'').toLowerCase(),
+          label,
+          tag:String(el.tagName||'').toLowerCase(),
+          href:el.tagName==='A'?String(el.href||''):'',
+          rect:{x:Math.round(r.x),y:Math.round(r.y),width:Math.round(r.width),height:Math.round(r.height)}
+        });
+      }
+      return {
+        url:location.href,title:document.title,
+        text:String(document.body?.innerText||'').replace(/\\n{3,}/g,'\\n\\n').trim().slice(0,18000),
+        viewport:{width:innerWidth,height:innerHeight,scrollX:Math.round(scrollX),scrollY:Math.round(scrollY)},
+        elements
+      };
+    })()
+  `}],false);
+  let screenshot='';
+  try{screenshot=(await wc.capturePage()).toDataURL()}catch{}
+  return {channel:'built-in',tab:browserTabMeta(id,view),page,screenshot};
+}
+
+function builtInBrowserPoint(action,page){
+  const width=Math.max(1,Number(page?.viewport?.width)||0);
+  const height=Math.max(1,Number(page?.viewport?.height)||0);
+  const x=Number(action?.x),y=Number(action?.y);
+  if(!Number.isFinite(x)||!Number.isFinite(y))throw new Error('Browser action is missing valid coordinates.');
+  return {x:Math.max(0,Math.min(width-1,Math.round(x))),y:Math.max(0,Math.min(height-1,Math.round(y)))};
+}
+
+function electronBrowserKey(value){
+  const key=String(value||'').trim();
+  const aliases={CTRL:'Control',CONTROL:'Control',SHIFT:'Shift',ALT:'Alt',META:'Meta',CMD:'Meta',COMMAND:'Meta',ESC:'Escape',RETURN:'Enter',SPACE:' '};
+  return aliases[key.toUpperCase()]||key;
+}
+
+async function performBuiltInBrowserAction(payload={}){
+  if(process.platform!=='win32')throw new Error('Built-in Browser Use control is currently enabled on Windows.');
+  const requestedTabId=payload.tabId||activeBrowserTabId;
+  if(requestedTabId&&requestedTabId!==activeBrowserTabId){
+    if(!activateBrowserTab(requestedTabId))throw new Error('That built-in browser tab is not available.');
+  }
+  const action=payload.action||{};
+  const type=String(action.type||'').toLowerCase();
+
+  if(type==='new_tab'){
+    const created=createBrowserTab(action.url||'https://www.google.com/',true);
+    return builtInBrowserAgentSnapshot(created.id);
+  }
+  if(type==='switch_tab'){
+    if(!activateBrowserTab(action.tabId))throw new Error('That built-in browser tab is not available.');
+    return builtInBrowserAgentSnapshot(action.tabId);
+  }
+  if(type==='close_tab'){
+    closeBrowserTab(action.tabId||activeBrowserTabId);
+    return activeBrowserTabId?builtInBrowserAgentSnapshot(activeBrowserTabId):{channel:'built-in',tab:null,page:null,screenshot:''};
+  }
+  if(type==='navigate'){
+    const view=ensureBrowserView();
+    await view.webContents.loadURL(normalizeBrowserUrl(action.url));
+    return builtInBrowserAgentSnapshot(activeBrowserTabId);
+  }
+  if(type==='back'){browserGoBack(activeBrowserEntry()?.webContents);await new Promise(r=>setTimeout(r,120));return builtInBrowserAgentSnapshot()}
+  if(type==='forward'){browserGoForward(activeBrowserEntry()?.webContents);await new Promise(r=>setTimeout(r,120));return builtInBrowserAgentSnapshot()}
+  if(type==='reload'){activeBrowserEntry()?.webContents.reload();await new Promise(r=>setTimeout(r,180));return builtInBrowserAgentSnapshot()}
+  if(type==='wait'){await new Promise(r=>setTimeout(r,Math.max(100,Math.min(2500,Number(action.ms)||700))));return builtInBrowserAgentSnapshot()}
+  if(type==='snapshot')return builtInBrowserAgentSnapshot();
+
+  const view=activeBrowserEntry();
+  if(!view||view.webContents.isDestroyed())throw new Error('No built-in browser tab is active.');
+  const wc=view.webContents;
+  const before=await builtInBrowserAgentSnapshot(activeBrowserTabId);
+  const point=['click','double_click','move','scroll','type'].includes(type)?builtInBrowserPoint(action,before.page):null;
+
+  if(type==='move'){
+    wc.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
+  }else if(type==='click'||type==='double_click'){
+    const count=type==='double_click'?2:1;
+    wc.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
+    wc.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:String(action.button||'left'),clickCount:count});
+    wc.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:String(action.button||'left'),clickCount:count});
+  }else if(type==='scroll'){
+    wc.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
+    wc.sendInputEvent({type:'mouseWheel',x:point.x,y:point.y,deltaX:Number(action.deltaX)||0,deltaY:Number(action.deltaY)||0,canScroll:true});
+  }else if(type==='type'){
+    wc.sendInputEvent({type:'mouseMove',x:point.x,y:point.y});
+    wc.sendInputEvent({type:'mouseDown',x:point.x,y:point.y,button:'left',clickCount:1});
+    wc.sendInputEvent({type:'mouseUp',x:point.x,y:point.y,button:'left',clickCount:1});
+    wc.insertText(String(action.text||''));
+  }else if(type==='keypress'){
+    const keys=(Array.isArray(action.keys)?action.keys:[action.key]).filter(Boolean).map(electronBrowserKey);
+    if(!keys.length)throw new Error('Browser keypress action is missing keys.');
+    for(const keyCode of keys)wc.sendInputEvent({type:'keyDown',keyCode});
+    for(const keyCode of [...keys].reverse())wc.sendInputEvent({type:'keyUp',keyCode});
+  }else{
+    throw new Error('Unsupported built-in Browser Use action: '+String(action.type||'unknown'));
+  }
+
+  await new Promise(r=>setTimeout(r,Math.max(80,Math.min(800,Number(payload.settleMs)||180))));
+  return builtInBrowserAgentSnapshot(activeBrowserTabId);
+}
+
 function emitBrowserState(){
   if(win&&!win.isDestroyed())win.webContents.send('browser-state',browserSnapshot());
 }
