@@ -25,6 +25,7 @@ let siteToolsEnabled=true;
 let appshotWatcher=null;
 let quickWin=null;
 let quickChatEnabled=true;
+let quickChatShortcut='Alt+Space';
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -880,12 +881,17 @@ function showQuickWindow(){
 }
 
 function registerQuickChatShortcut(){
-  if(process.platform!=='win32')return;
-  try{globalShortcut.unregister('Super+Alt+P')}catch{}
-  if(quickChatEnabled){
-    const ok=globalShortcut.register('Super+Alt+P',showQuickWindow);
-    if(!ok)globalShortcut.register('Alt+Space',showQuickWindow);
+  if(process.platform!=='win32')return {ok:false,shortcut:quickChatShortcut};
+  globalShortcut.unregisterAll();
+  if(!quickChatEnabled)return {ok:true,shortcut:quickChatShortcut};
+  const requested=String(quickChatShortcut||'Alt+Space').trim()||'Alt+Space';
+  const ok=globalShortcut.register(requested,showQuickWindow);
+  if(ok){quickChatShortcut=requested;return {ok:true,shortcut:requested}}
+  if(requested!=='Alt+Space'){
+    const fallback=globalShortcut.register('Alt+Space',showQuickWindow);
+    if(fallback){quickChatShortcut='Alt+Space';return {ok:true,shortcut:'Alt+Space',fallback:true}}
   }
+  return {ok:false,shortcut:requested};
 }
 
 function createWindow(){
@@ -988,7 +994,13 @@ app.on('before-quit',()=>{
 
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
-ipcMain.handle('quick-chat:setEnabled',(_e,value)=>{quickChatEnabled=!!value;registerQuickChatShortcut();if(!quickChatEnabled&&quickWin&&!quickWin.isDestroyed())quickWin.hide();return quickChatEnabled});
+ipcMain.handle('quick-chat:configure',(_e,cfg={})=>{
+  quickChatEnabled=cfg.enabled!==false;
+  if(cfg.shortcut)quickChatShortcut=String(cfg.shortcut).trim()||'Alt+Space';
+  const result=registerQuickChatShortcut();
+  if(!quickChatEnabled&&quickWin&&!quickWin.isDestroyed())quickWin.hide();
+  return {...result,enabled:quickChatEnabled};
+});
 ipcMain.handle('quick-chat:hide',()=>{quickWin?.hide();return true});
 ipcMain.handle('appshot:capture',()=>captureForegroundAppshot());
 ipcMain.handle('app:quit',()=>{app.quit();return true});
