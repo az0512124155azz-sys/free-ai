@@ -155,6 +155,175 @@
     return values.slice(0,20);
   }
 
+  function modelMenuTrigger(provider){
+    const candidates=modelCandidates(provider);
+    for(const item of candidates){
+      const role=String(item.el.getAttribute?.('role')||'').toLowerCase();
+      if(role==='option'||role==='menuitemradio')continue;
+      if(item.el.hasAttribute?.('aria-haspopup'))return item.el;
+    }
+    const selectors=[
+      'button[data-testid*="model" i]','button[data-test-id*="model" i]',
+      'button[aria-label*="model" i]','[role="button"][aria-label*="model" i]',
+      'header button[aria-haspopup]','nav button[aria-haspopup]'
+    ];
+    return first(selectors);
+  }
+
+  async function closeTransientControl(trigger){
+    if(trigger?.getAttribute?.('aria-expanded')==='true'){
+      try{trigger.click();await sleep(80);return}catch{}
+    }
+    try{
+      document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
+      document.dispatchEvent(new KeyboardEvent('keyup',{key:'Escape',code:'Escape',bubbles:true}));
+      await sleep(80);
+    }catch{}
+  }
+
+  async function probeModelOptions(provider){
+    const before=detectModelOptions(provider);
+    const trigger=modelMenuTrigger(provider);
+    if(!trigger)return before;
+    const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
+    if(!wasExpanded){
+      try{trigger.click();await sleep(260)}catch{return before}
+    }
+    const after=detectModelOptions(provider);
+    if(!wasExpanded)await closeTransientControl(trigger);
+    const values=[];
+    const seen=new Set();
+    for(const value of [...after,...before]){
+      const key=String(value||'').trim().toLowerCase();
+      if(!key||seen.has(key))continue;
+      seen.add(key);values.push(String(value).trim());
+    }
+    return values.slice(0,24);
+  }
+
+  async function selectProviderModel(provider,target){
+    const desired=cleanLabel(target);
+    if(!desired)throw new Error('Choose a provider model first.');
+    const current=detectActiveModel(provider);
+    if(current&&current.toLowerCase()===desired.toLowerCase())return {ok:true,modelName:current};
+
+    const trigger=modelMenuTrigger(provider);
+    if(!trigger)throw new Error('Could not find the model selector in this '+provider+' tab.');
+    const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
+    if(!wasExpanded){trigger.click();await sleep(280)}
+
+    const candidates=modelCandidates(provider);
+    const normalized=desired.toLowerCase();
+    const option=candidates.find(item=>{
+      if(item.el===trigger)return false;
+      const role=String(item.el.getAttribute?.('role')||'').toLowerCase();
+      const optionLike=role==='option'||role==='menuitemradio'||role==='menuitem'||item.el.closest?.('[role="menu"],[role="listbox"],[role="dialog"]');
+      return optionLike&&item.model.toLowerCase()===normalized;
+    })||candidates.find(item=>item.el!==trigger&&item.model.toLowerCase().includes(normalized));
+
+    if(!option){
+      if(!wasExpanded)await closeTransientControl(trigger);
+      throw new Error('The requested model "'+desired+'" is not available in this tab right now.');
+    }
+
+    option.el.click();
+    await sleep(420);
+    const active=detectActiveModel(provider)||desired;
+    return {ok:true,modelName:active};
+  }
+
+  const effortAliases=[
+    ['extra-high',/^(extra\s*high|maximum|max)$/i],
+    ['high',/^high$/i],
+    ['medium',/^medium$/i],
+    ['instant',/^(instant|fast)$/i],
+    ['pro-extended',/^(pro\s*extended|extended)$/i],
+    ['pro-standard',/^(pro\s*standard|standard)$/i],
+    ['deep-think',/^(deep\s*think|deep)$/i],
+    ['heavy',/^heavy$/i]
+  ];
+
+  function effortLevelFromLabel(value){
+    const label=cleanLabel(value);
+    for(const [id,re] of effortAliases)if(re.test(label))return id;
+    return '';
+  }
+
+  function effortCandidates(){
+    const selectors=[
+      'button','[role="button"]','[role="option"]','[role="menuitemradio"]','[role="menuitem"]',
+      '[aria-selected="true"]','[aria-checked="true"]'
+    ];
+    const out=[];
+    const seen=new Set();
+    for(const el of document.querySelectorAll(selectors.join(','))){
+      if(!visible(el)||seen.has(el))continue;
+      seen.add(el);
+      const label=controlLabel(el);
+      const level=effortLevelFromLabel(label);
+      const explicit=/reasoning|thinking|effort|intelligence/i.test(label+' '+String(el.getAttribute?.('aria-label')||'')+' '+String(el.getAttribute?.('data-testid')||''));
+      if(!level&&!explicit)continue;
+      let score=0;
+      if(level)score+=4;
+      if(explicit)score+=4;
+      if(el.getAttribute?.('aria-selected')==='true'||el.getAttribute?.('aria-checked')==='true')score+=8;
+      if(el.hasAttribute?.('aria-haspopup'))score+=3;
+      out.push({el,label,level,score});
+    }
+    return out.sort((a,b)=>b.score-a.score);
+  }
+
+  function effortTrigger(){
+    return effortCandidates().find(item=>{
+      const role=String(item.el.getAttribute?.('role')||'').toLowerCase();
+      return role!=='option'&&role!=='menuitemradio'&&item.el.hasAttribute?.('aria-haspopup');
+    })?.el||null;
+  }
+
+  function detectEffortState(){
+    const candidates=effortCandidates();
+    const levels=[];
+    const seen=new Set();
+    let active='default';
+    for(const item of candidates){
+      if(!item.level)continue;
+      if(!seen.has(item.level)){seen.add(item.level);levels.push(item.level)}
+      if(item.el.getAttribute?.('aria-selected')==='true'||item.el.getAttribute?.('aria-checked')==='true')active=item.level;
+    }
+    return {levels,active};
+  }
+
+  async function probeEffortState(){
+    const before=detectEffortState();
+    const trigger=effortTrigger();
+    if(!trigger)return before;
+    const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
+    if(!wasExpanded){try{trigger.click();await sleep(220)}catch{return before}}
+    const after=detectEffortState();
+    if(!wasExpanded)await closeTransientControl(trigger);
+    const levels=[...new Set([...after.levels,...before.levels])];
+    return {levels,active:after.active!=='default'?after.active:before.active};
+  }
+
+  async function selectProviderEffort(level){
+    const desired=String(level||'default');
+    if(!desired||desired==='default')return {ok:true,activeEffort:'default'};
+    const state=detectEffortState();
+    if(state.active===desired)return {ok:true,activeEffort:desired};
+    const trigger=effortTrigger();
+    if(!trigger)throw new Error('This provider tab does not expose a native reasoning-effort control.');
+    const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
+    if(!wasExpanded){trigger.click();await sleep(220)}
+    const option=effortCandidates().find(item=>item.el!==trigger&&item.level===desired);
+    if(!option){
+      if(!wasExpanded)await closeTransientControl(trigger);
+      throw new Error('Reasoning effort "'+desired+'" is not available in this provider tab.');
+    }
+    option.el.click();
+    await sleep(240);
+    return {ok:true,activeEffort:desired};
+  }
+
   function scanMcps(){
     const found=new Set();
     const generic=/^(tools?|apps?|plugins?|connectors?|connected apps?|add|more|manage|settings)$/i;
@@ -178,6 +347,55 @@
       for(const el of container.querySelectorAll('[role="menuitem"],[role="option"],button,a'))add(controlLabel(el));
     }
     return [...found].slice(0,60);
+  }
+
+  function visibleIntegrationNames(){
+    const found=new Set();
+    const generic=/^(tools?|apps?|plugins?|connectors?|connected apps?|add|more|manage|settings|files?|photos?|camera|search|deep research)$/i;
+    const roots=[...document.querySelectorAll('[role="menu"],[role="listbox"],[role="dialog"],[class*="menu"],[class*="popover"]')].filter(visible);
+    for(const root of roots){
+      for(const el of root.querySelectorAll('[role="menuitem"],[role="option"],button,a')){
+        if(!visible(el))continue;
+        const label=cleanLabel(controlLabel(el));
+        if(!label||generic.test(label)||label.length>100)continue;
+        const hint=label+' '+String(el.getAttribute?.('data-testid')||'')+' '+String(el.getAttribute?.('href')||'');
+        if(/plugin|connector|app|tool|gmail|drive|github|calendar|notion|slack|canva|figma|dropbox|onedrive|sharepoint|outlook/i.test(hint))found.add(label);
+      }
+    }
+    return [...found];
+  }
+
+  async function probeMcps(){
+    const found=new Set(scanMcps());
+    const triggers=[];
+    for(const el of document.querySelectorAll('button,[role="button"]')){
+      if(!visible(el))continue;
+      const label=controlLabel(el);
+      if(!/(tools?|apps?|plugins?|connectors?|connected apps?|add files|add|more)/i.test(label))continue;
+      if(triggers.length<6)triggers.push(el);
+    }
+
+    for(const trigger of triggers){
+      const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
+      if(!wasExpanded){
+        try{trigger.click();await sleep(180)}catch{continue}
+      }
+      for(const name of scanMcps())found.add(name);
+      for(const name of visibleIntegrationNames())found.add(name);
+
+      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?)$/i.test(cleanLabel(controlLabel(el))));
+      for(const item of nested.slice(0,2)){
+        try{
+          item.click();await sleep(180);
+          for(const name of scanMcps())found.add(name);
+          for(const name of visibleIntegrationNames())found.add(name);
+          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
+          await sleep(60);
+        }catch{}
+      }
+      if(!wasExpanded)await closeTransientControl(trigger);
+    }
+    return [...found].filter(Boolean).slice(0,80);
   }
 
   function detectFileUpload(){
@@ -409,7 +627,7 @@
     if(!input) throw new Error('Could not find the chat input. Open the chat page and wait for it to finish loading.');
 
     const prefixes=[];
-    if(effort&&effort!=='default') prefixes.push('Reasoning preference: '+effort+'.');
+    if(effort&&effort!=='default') await selectProviderEffort(effort);
     if(toolRequest?.mcp){
       prefixes.push('Use the already-installed MCP/connector "'+toolRequest.mcp+'" for this request if it is available in this account. Do not claim to use it if it is unavailable.');
     }
@@ -441,13 +659,39 @@
 
     if(m?.type==='freeai:scanCapabilities'){
       const provider=String(m.provider||'');
-      sendResponse({
-        mcps:scanMcps(),
-        modelName:detectActiveModel(provider),
-        modelOptions:detectModelOptions(provider),
-        fileUpload:detectFileUpload()
-      });
-      return;
+      (async()=>{
+        try{
+          const modelOptions=m.probeModels?await probeModelOptions(provider):detectModelOptions(provider);
+          const effort=m.probeModels?await probeEffortState():detectEffortState();
+          const mcps=m.probeTools?await probeMcps():scanMcps();
+          sendResponse({
+            mcps,
+            modelName:detectActiveModel(provider),
+            modelOptions,
+            effortLevels:effort.levels,
+            activeEffort:effort.active,
+            effortControl:effort.levels.length>1?'native':null,
+            fileUpload:detectFileUpload()
+          });
+        }catch(e){sendResponse({error:e?.message||String(e),mcps:scanMcps(),modelName:detectActiveModel(provider),modelOptions:detectModelOptions(provider),fileUpload:detectFileUpload()})}
+      })();
+      return true;
+    }
+
+    if(m?.type==='freeai:setProviderModel'){
+      (async()=>{
+        try{sendResponse(await selectProviderModel(String(m.provider||''),String(m.modelName||'')))}
+        catch(e){sendResponse({error:e?.message||String(e)})}
+      })();
+      return true;
+    }
+
+    if(m?.type==='freeai:setProviderEffort'){
+      (async()=>{
+        try{sendResponse(await selectProviderEffort(String(m.effort||'default')))}
+        catch(e){sendResponse({error:e?.message||String(e)})}
+      })();
+      return true;
     }
 
     if(m?.type==='freeai:browserSnapshot'){
