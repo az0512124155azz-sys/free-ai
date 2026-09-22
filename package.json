@@ -1,6 +1,6 @@
 {
   "name": "free-ai",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "private": true,
   "author": "Free AI",
   "description": "Cross-platform AI control center for browser AI models",
@@ -44,7 +44,8 @@
     "@capgo/capacitor-speech-recognition": "^8.3.2",
     "@capgo/capacitor-inappbrowser": "^8.18.0",
     "@capgo/capacitor-social-login": "^8.5.10",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.4",
+    "@capacitor/haptics": "^8.0.0"
   },
   "build": {
     "appId": "com.freeai.desktop",
