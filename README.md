@@ -6,7 +6,11 @@ Free AI is a cross-platform AI workspace that can use AI services already open i
 
 ### Browser extension
 
-**[Download the Free AI Browser Bridge ZIP](https://github.com/az0512124155azz-sys/free-ai/releases/latest/download/free-ai-extension.zip)**
+**Stable release:** [Download the published Free AI Browser Bridge ZIP](https://github.com/az0512124155azz-sys/free-ai/releases/latest/download/free-ai-extension.zip)
+
+**Current main build:** [Open the latest `main` Build Free AI runs](https://github.com/az0512124155azz-sys/free-ai/actions/workflows/build.yml?query=branch%3Amain), open the newest successful run, and download the **`free-ai-chrome-extension`** artifact.
+
+The stable link intentionally follows the latest published GitHub Release. Development checkpoints do not republish an existing release tag, so the Actions artifact can be newer than the stable release. GitHub Actions artifacts are temporary build artifacts and can expire; use the published Release ZIP when you need the stable permanent download.
 
 The extension is a Chrome/Edge Manifest V3 bridge with:
 - the Free AI app logo
