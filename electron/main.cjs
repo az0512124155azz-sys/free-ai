@@ -3100,6 +3100,7 @@ app.whenReady().then(()=>{
   installAppMenu();
   registerAuthProtocol();
   loadApiConnections();
+  loadMcpConnections();
   startLocalBridge();
   createWindow();
 
@@ -3137,6 +3138,7 @@ app.on('before-quit',()=>{
   for(const task of workTasks.values())stopWorkTask(task.id);
   pendingWorkApprovals.clear();
   workTasks.clear();
+  mcpSessions.clear();
   for(const active of activePrompts.values())active.controller.abort();
   activePrompts.clear();
 });
@@ -3158,6 +3160,35 @@ ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{
   relayConfig={relayUrl:String(cfg?.relayUrl||'').trim(),pairKey:String(cfg?.pairKey||'').trim()};
   connectRelay();
   return status();
+});
+ipcMain.handle('mcp:listConnections',()=>mcpConnections.map(publicMcpConnection));
+ipcMain.handle('mcp:addConnection',async(_e,input)=>{
+  const connection={
+    id:crypto.randomUUID(),
+    name:String(input?.name||'MCP app').trim()||'MCP app',
+    url:validateMcpUrl(input?.url),
+    token:String(input?.token||'').trim()
+  };
+  const tested=await listMcpTools(connection,{forceSession:true});
+  mcpConnections.push(connection);
+  saveMcpConnections();
+  return tested;
+});
+ipcMain.handle('mcp:removeConnection',(_e,id)=>{
+  const key=String(id||'');
+  mcpConnections=mcpConnections.filter(item=>item.id!==key);
+  mcpSessions.delete(key);
+  saveMcpConnections();
+  return mcpConnections.map(publicMcpConnection);
+});
+ipcMain.handle('mcp:refreshConnection',(_e,id)=>refreshMcpConnection(id));
+ipcMain.handle('mcp:refreshAll',async()=>{
+  const results=[];
+  for(const connection of mcpConnections){
+    try{results.push(await listMcpTools(connection,{forceSession:true}))}
+    catch{results.push(publicMcpConnection(connection))}
+  }
+  return results;
 });
 ipcMain.handle('api:listConnections',()=>apiConnections.map(publicApiConnection));
 ipcMain.handle('api:addConnection',(_e,input)=>{
