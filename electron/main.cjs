@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,session}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -14,10 +14,14 @@ let apiConnections=[];
 const pending=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
-let browserTabs=[];
+const browserTabs=new Map();
 let activeBrowserTabId=null;
 let browserBounds=null;
-let browserTabSeq=0;
+let browserAttached=false;
+let browserDownloads=[];
+let browserDownloadHooked=false;
+const browserSiteTools=new Map();
+let siteToolsEnabled=true;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -68,30 +72,37 @@ function installAppMenu(){
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function activeBrowserTab(){
-  return browserTabs.find(tab=>tab.id===activeBrowserTabId)||null;
+function activeBrowserEntry(){
+  return activeBrowserTabId?browserTabs.get(activeBrowserTabId)||null:null;
 }
 
-function browserTabSnapshot(tab){
-  if(!tab?.view)return {id:tab?.id||'',url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
-  const wc=tab.view.webContents;
+function browserTabMeta(id,view){
+  const wc=view.webContents;
   return {
-    id:tab.id,
-    url:wc.getURL()||tab.url||'',
-    title:wc.getTitle()||tab.title||'New tab',
-    loading:wc.isLoading(),
-    canGoBack:wc.canGoBack(),
-    canGoForward:wc.canGoForward()
+    id,
+    url:wc.getURL()||'',
+    title:wc.getTitle()||'New tab',
+    loading:wc.isLoading()
   };
 }
 
 function browserSnapshot(){
-  const active=activeBrowserTab();
-  const current=active?browserTabSnapshot(active):{id:'',url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+  const entry=activeBrowserEntry();
+  const tabs=[...browserTabs.entries()].map(([id,view])=>browserTabMeta(id,view));
+  if(!entry){
+    return {url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[]};
+  }
+  const wc=entry.webContents;
   return {
-    ...current,
+    url:wc.getURL()||'',
+    title:wc.getTitle()||'New tab',
+    loading:wc.isLoading(),
+    canGoBack:wc.canGoBack(),
+    canGoForward:wc.canGoForward(),
+    tabs,
     activeTabId:activeBrowserTabId,
-    tabs:browserTabs.map(browserTabSnapshot)
+    downloads:browserDownloads,
+    siteTools:browserSiteTools.get(activeBrowserTabId)||[]
   };
 }
 
@@ -108,8 +119,194 @@ function normalizeBrowserUrl(input){
   return 'https://www.google.com/search?q='+encodeURIComponent(raw);
 }
 
-function createBrowserTab(url='https://www.google.com/'){
-  const id='tab-'+(++browserTabSeq);
+function attachBrowserView(view){
+  if(!win||win.isDestroyed()||!view)return;
+  if(browserAttached){
+    const previous=activeBrowserEntry();
+    if(previous&&previous!==view){
+      try{win.contentView.removeChildView(previous)}catch{}
+    }
+  }
+  try{win.contentView.addChildView(view);browserAttached=true}catch{}
+  if(browserBounds)view.setBounds(browserBounds);
+}
+
+async function refreshBrowserSiteTools(id){
+  if(!siteToolsEnabled){
+    browserSiteTools.set(id,[]);
+    emitBrowserState();
+    return [];
+  }
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())return [];
+  try{
+    const tools=await view.webContents.executeJavaScript(`
+      (async()=>{
+        const ctx=document.modelContext;
+        if(!ctx||typeof ctx.getTools!=='function')return [];
+        try{
+          const tools=await ctx.getTools();
+          return tools.map(tool=>({
+            name:String(tool.name||''),
+            title:String(tool.title||''),
+            description:String(tool.description||''),
+            origin:String(tool.origin||location.origin||''),
+            inputSchema:tool.inputSchema||{type:'object',properties:{}},
+            annotations:tool.annotations||{}
+          }));
+        }catch{return []}
+      })()
+    `,true);
+    browserSiteTools.set(id,Array.isArray(tools)?tools:[]);
+  }catch{
+    browserSiteTools.set(id,[]);
+  }
+  emitBrowserState();
+  return browserSiteTools.get(id)||[];
+}
+
+async function startBrowserAnnotation(id){
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())throw new Error('That browser tab is no longer available.');
+  return view.webContents.executeJavaScript(`
+    (()=>{
+      if(window.__freeAiAnnotation?.cleanup)window.__freeAiAnnotation.cleanup();
+      return new Promise(resolve=>{
+        const overlay=document.createElement('div');
+        Object.assign(overlay.style,{
+          position:'fixed',pointerEvents:'none',zIndex:'2147483647',
+          border:'2px solid #3a83f7',background:'rgba(58,131,247,.10)',
+          borderRadius:'4px',boxSizing:'border-box'
+        });
+        document.documentElement.appendChild(overlay);
+        let current=null;
+        const selectorFor=el=>{
+          if(!el||el===document.documentElement)return 'html';
+          if(el.id)return '#'+CSS.escape(el.id);
+          const parts=[];
+          let node=el;
+          while(node&&node.nodeType===1&&node!==document.body){
+            let part=node.localName;
+            if(node.classList?.length){
+              const cls=[...node.classList].find(x=>/^[A-Za-z_-][A-Za-z0-9_-]*$/.test(x));
+              if(cls)part+='.'+CSS.escape(cls);
+            }
+            const siblings=node.parentElement?[...node.parentElement.children].filter(x=>x.localName===node.localName):[];
+            if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(node)+1)+')';
+            parts.unshift(part);
+            node=node.parentElement;
+            if(parts.length>=5)break;
+          }
+          return parts.join(' > ');
+        };
+        const update=event=>{
+          const el=event.target;
+          if(!el||el===overlay)return;
+          current=el;
+          const r=el.getBoundingClientRect();
+          Object.assign(overlay.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+        };
+        const cleanup=()=>{
+          document.removeEventListener('mousemove',update,true);
+          document.removeEventListener('click',pick,true);
+          document.removeEventListener('keydown',key,true);
+          overlay.remove();
+          delete window.__freeAiAnnotation;
+        };
+        const pick=event=>{
+          if(!current)return;
+          event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+          const el=current;
+          const r=el.getBoundingClientRect();
+          const result={
+            selector:selectorFor(el),
+            tag:el.localName||'',
+            text:String(el.innerText||el.textContent||'').trim().replace(/\\s+/g,' ').slice(0,1000),
+            ariaLabel:el.getAttribute?.('aria-label')||'',
+            title:el.getAttribute?.('title')||'',
+            rect:{x:r.x,y:r.y,width:r.width,height:r.height},
+            url:location.href
+          };
+          cleanup();
+          resolve(result);
+        };
+        const key=event=>{
+          if(event.key==='Escape'){cleanup();resolve(null)}
+        };
+        document.addEventListener('mousemove',update,true);
+        document.addEventListener('click',pick,true);
+        document.addEventListener('keydown',key,true);
+        window.__freeAiAnnotation={cleanup:()=>{cleanup();resolve(null)}};
+      })
+    })()
+  `,true);
+}
+
+async function cancelBrowserAnnotation(id){
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())return false;
+  try{
+    await view.webContents.executeJavaScript(`window.__freeAiAnnotation?.cleanup?.(); true`,true);
+    return true;
+  }catch{return false}
+}
+
+async function executeBrowserSiteTool(id,name,input){
+  if(!siteToolsEnabled)throw new Error('Site tools are disabled in Browser settings.');
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())throw new Error('That browser tab is no longer available.');
+  const safeName=JSON.stringify(String(name||''));
+  const safeInput=JSON.stringify(input&&typeof input==='object'?input:{});
+  const result=await view.webContents.executeJavaScript(`
+    (async()=>{
+      const ctx=document.modelContext;
+      if(!ctx||typeof ctx.getTools!=='function'||typeof ctx.executeTool!=='function'){
+        throw new Error('This page does not expose WebMCP site tools.');
+      }
+      const tools=await ctx.getTools();
+      const tool=tools.find(t=>t.name===${safeName});
+      if(!tool)throw new Error('The selected site tool is no longer available.');
+      const value=await ctx.executeTool(tool,${safeInput});
+      try{return {ok:true,value:JSON.parse(JSON.stringify(value))}}catch{return {ok:true,value:String(value??'')}}
+    })()
+  `,true);
+  setTimeout(()=>refreshBrowserSiteTools(id),300);
+  return result;
+}
+
+function hookBrowserDownloads(wc){
+  if(browserDownloadHooked)return;
+  browserDownloadHooked=true;
+  wc.session.on('will-download',(_event,item)=>{
+    const id=crypto.randomUUID();
+    const record={
+      id,
+      filename:item.getFilename(),
+      url:item.getURL(),
+      state:'progressing',
+      receivedBytes:0,
+      totalBytes:item.getTotalBytes()
+    };
+    browserDownloads=[record,...browserDownloads].slice(0,12);
+    emitBrowserState();
+    item.on('updated',(_e,state)=>{
+      record.state=state;
+      record.receivedBytes=item.getReceivedBytes();
+      record.totalBytes=item.getTotalBytes();
+      emitBrowserState();
+    });
+    item.once('done',(_e,state)=>{
+      record.state=state;
+      record.receivedBytes=item.getReceivedBytes();
+      record.totalBytes=item.getTotalBytes();
+      record.savePath=item.getSavePath();
+      emitBrowserState();
+    });
+  });
+}
+
+function createBrowserTab(input='https://www.google.com/',activate=true){
+  const id=crypto.randomUUID();
   const view=new WebContentsView({
     webPreferences:{
       sandbox:true,
@@ -118,98 +315,95 @@ function createBrowserTab(url='https://www.google.com/'){
       partition:'persist:freeai-browser'
     }
   });
-  const tab={id,view,url,title:'New tab'};
-  browserTabs.push(tab);
+  browserTabs.set(id,view);
   const wc=view.webContents;
-  wc.setWindowOpenHandler(({url:newUrl})=>{
-    const child=createBrowserTab(newUrl);
-    switchBrowserTab(child.id);
-    child.view.webContents.loadURL(normalizeBrowserUrl(newUrl)).catch(()=>{});
+  hookBrowserDownloads(wc);
+  wc.setWindowOpenHandler(({url})=>{
+    createBrowserTab(url,true);
     return {action:'deny'};
   });
-  for(const eventName of ['did-start-loading','did-stop-loading','did-navigate','did-navigate-in-page','page-title-updated']){
-    wc.on(eventName,()=>{
-      const snap=browserTabSnapshot(tab);
-      tab.url=snap.url;tab.title=snap.title;
-      emitBrowserState();
-    });
+  for(const eventName of ['did-start-loading','did-navigate','did-navigate-in-page','page-title-updated']){
+    wc.on(eventName,()=>emitBrowserState());
   }
-  wc.on('render-process-gone',()=>emitBrowserState());
-  return tab;
-}
-
-function switchBrowserTab(id){
-  const next=browserTabs.find(tab=>tab.id===id);
-  if(!next||!win||win.isDestroyed())return null;
-  const current=activeBrowserTab();
-  if(current&&current.id!==next.id){
-    try{win.contentView.removeChildView(current.view)}catch{}
-  }
-  activeBrowserTabId=next.id;
-  try{win.contentView.addChildView(next.view)}catch{}
-  if(browserBounds)setBrowserBounds(browserBounds);
+  wc.on('did-stop-loading',()=>{
+    emitBrowserState();
+    refreshBrowserSiteTools(id);
+    setTimeout(()=>refreshBrowserSiteTools(id),1200);
+  });
+  wc.on('render-process-gone',()=>{browserSiteTools.set(id,[]);emitBrowserState()});
+  if(activate)activateBrowserTab(id);
+  wc.loadURL(normalizeBrowserUrl(input)).catch(()=>emitBrowserState());
   emitBrowserState();
-  return next;
+  return {id,view};
 }
 
-function ensureBrowserTab(){
-  let tab=activeBrowserTab();
-  if(tab)return tab;
-  tab=createBrowserTab();
-  switchBrowserTab(tab.id);
-  return tab;
+function activateBrowserTab(id){
+  const view=browserTabs.get(id);
+  if(!view)return false;
+  const previous=activeBrowserEntry();
+  if(previous&&previous!==view&&browserAttached){
+    try{win?.contentView.removeChildView(previous)}catch{}
+    browserAttached=false;
+  }
+  activeBrowserTabId=id;
+  attachBrowserView(view);
+  emitBrowserState();
+  return true;
+}
+
+function ensureBrowserView(){
+  let entry=activeBrowserEntry();
+  if(!entry){
+    entry=createBrowserTab('https://www.google.com/',true).view;
+  }else{
+    attachBrowserView(entry);
+  }
+  return entry;
 }
 
 function setBrowserBounds(bounds){
-  browserBounds=bounds||browserBounds;
-  const tab=activeBrowserTab();
-  if(!tab?.view||!browserBounds)return;
-  const x=Math.max(0,Math.round(Number(browserBounds.x)||0));
-  const y=Math.max(0,Math.round(Number(browserBounds.y)||0));
-  const width=Math.max(1,Math.round(Number(browserBounds.width)||1));
-  const height=Math.max(1,Math.round(Number(browserBounds.height)||1));
-  tab.view.setBounds({x,y,width,height});
+  if(!bounds)return;
+  browserBounds={
+    x:Math.max(0,Math.round(Number(bounds.x)||0)),
+    y:Math.max(0,Math.round(Number(bounds.y)||0)),
+    width:Math.max(1,Math.round(Number(bounds.width)||1)),
+    height:Math.max(1,Math.round(Number(bounds.height)||1))
+  };
+  const view=activeBrowserEntry();
+  if(view)view.setBounds(browserBounds);
 }
 
 function closeBrowserTab(id){
-  const index=browserTabs.findIndex(tab=>tab.id===id);
-  if(index<0)return browserSnapshot();
-  const [tab]=browserTabs.splice(index,1);
-  const wasActive=tab.id===activeBrowserTabId;
-  if(wasActive){
-    try{win?.contentView.removeChildView(tab.view)}catch{}
+  const view=browserTabs.get(id);
+  if(!view)return browserSnapshot();
+  const ids=[...browserTabs.keys()];
+  const index=ids.indexOf(id);
+  if(activeBrowserTabId===id&&browserAttached){
+    try{win?.contentView.removeChildView(view)}catch{}
+    browserAttached=false;
   }
-  try{tab.view.webContents.close()}catch{}
-  if(wasActive){
-    const fallback=browserTabs[Math.max(0,index-1)]||browserTabs[0]||null;
-    activeBrowserTabId=fallback?.id||null;
-    if(fallback&&win&&!win.isDestroyed()){
-      try{win.contentView.addChildView(fallback.view)}catch{}
-      if(browserBounds)setBrowserBounds(browserBounds);
-    }
+  try{view.webContents.close()}catch{}
+  browserTabs.delete(id);
+  browserSiteTools.delete(id);
+  if(activeBrowserTabId===id){
+    activeBrowserTabId=null;
+    const nextId=ids[index+1]||ids[index-1]||[...browserTabs.keys()][0]||null;
+    if(nextId)activateBrowserTab(nextId);
+    else createBrowserTab('https://www.google.com/',true);
   }
   emitBrowserState();
   return browserSnapshot();
 }
 
 function hideBrowserView(){
-  const tab=activeBrowserTab();
-  if(tab){
-    try{win?.contentView.removeChildView(tab.view)}catch{}
+  const view=activeBrowserEntry();
+  if(view&&browserAttached){
+    try{win?.contentView.removeChildView(view)}catch{}
   }
+  browserAttached=false;
   emitBrowserState();
 }
 
-function closeBrowserView(){
-  for(const tab of browserTabs){
-    try{win?.contentView.removeChildView(tab.view)}catch{}
-    try{tab.view.webContents.close()}catch{}
-  }
-  browserTabs=[];
-  activeBrowserTabId=null;
-  browserBounds=null;
-  emitBrowserState();
-}
 
 function runPowerShell(script){
   return new Promise((resolve,reject)=>{
@@ -247,8 +441,43 @@ Start-Sleep -Milliseconds 80
 }
 
 async function pasteWindowsText(text){
-  clipboard.writeText(String(text||''));
+  await clipboard.writeText(String(text||''));
   await runPowerShell("Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')");
+}
+
+function runAppleScript(script){
+  return new Promise((resolve,reject)=>{
+    execFile('/usr/bin/osascript',['-e',script],{windowsHide:true},(error,stdout,stderr)=>{
+      if(error){
+        const detail=String(stderr||error.message||error);
+        if(/not allowed assistive access|-25211|accessibility/i.test(detail)){
+          return reject(new Error('Free AI needs Accessibility permission in System Settings → Privacy & Security → Accessibility to control macOS apps.'));
+        }
+        return reject(new Error(detail));
+      }
+      resolve(String(stdout||'').trim());
+    });
+  });
+}
+
+function ensureMacAccessibility(){
+  if(process.platform!=='darwin')return true;
+  if(systemPreferences.isTrustedAccessibilityClient(false))return true;
+  systemPreferences.isTrustedAccessibilityClient(true);
+  throw new Error('Free AI needs Accessibility permission in System Settings → Privacy & Security → Accessibility. Enable it, then try again.');
+}
+
+async function clickMacPoint(x,y){
+  ensureMacAccessibility();
+  const px=Math.round(Number(x)||0);
+  const py=Math.round(Number(y)||0);
+  await runAppleScript(`tell application "System Events" to click at {${px}, ${py}}`);
+}
+
+async function pasteMacText(text){
+  ensureMacAccessibility();
+  clipboard.writeText(String(text||''));
+  await runAppleScript('tell application "System Events" to keystroke "v" using command down');
 }
 
 async function startWindowsVoiceTyping(){
@@ -603,7 +832,11 @@ app.whenReady().then(()=>{
 });
 
 app.on('before-quit',()=>{
-  closeBrowserView();
+  hideBrowserView();
+  for(const view of browserTabs.values()){try{view.webContents.close()}catch{}}
+  browserTabs.clear();
+  browserSiteTools.clear();
+  activeBrowserTabId=null;
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
   pending.clear();
@@ -652,56 +885,85 @@ ipcMain.handle('dictation:start',async()=>{
 
 ipcMain.handle('browser:open',async(_e,payload={})=>{
   if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
-  const tab=ensureBrowserTab();
   if(payload.bounds)setBrowserBounds(payload.bounds);
-  const url=normalizeBrowserUrl(payload.url||tab.url);
-  if(!tab.view.webContents.getURL())await tab.view.webContents.loadURL(url);
+  let view=ensureBrowserView();
+  if(payload.newTab){
+    view=createBrowserTab(payload.url||'https://www.google.com/',true).view;
+  }else if(payload.url&&(!view.webContents.getURL()||payload.forceNavigate)){
+    await view.webContents.loadURL(normalizeBrowserUrl(payload.url));
+  }
   emitBrowserState();
   return browserSnapshot();
 });
-ipcMain.handle('browser:newTab',async(_e,input='https://www.google.com/')=>{
-  const tab=createBrowserTab(normalizeBrowserUrl(input));
-  switchBrowserTab(tab.id);
-  await tab.view.webContents.loadURL(normalizeBrowserUrl(input));
-  emitBrowserState();
+ipcMain.handle('browser:newTab',async(_e,input)=>{
+  createBrowserTab(input||'https://www.google.com/',true);
   return browserSnapshot();
 });
-ipcMain.handle('browser:switchTab',(_e,id)=>{switchBrowserTab(id);return browserSnapshot()});
+ipcMain.handle('browser:selectTab',(_e,id)=>{activateBrowserTab(id);return browserSnapshot()});
 ipcMain.handle('browser:closeTab',(_e,id)=>closeBrowserTab(id));
+ipcMain.handle('browser:setSiteToolsEnabled',(_e,value)=>{
+  siteToolsEnabled=!!value;
+  if(!siteToolsEnabled){
+    for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
+    emitBrowserState();
+  }else if(activeBrowserTabId){
+    refreshBrowserSiteTools(activeBrowserTabId);
+  }
+  return siteToolsEnabled;
+});
+ipcMain.handle('browser:clearData',async()=>{
+  const sessions=new Set([...browserTabs.values()].map(view=>view.webContents.session));
+  for(const ses of sessions){
+    await ses.clearStorageData();
+    await ses.clearCache();
+  }
+  browserDownloads=[];
+  for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
+  emitBrowserState();
+  return {ok:true};
+});
+ipcMain.handle('browser:startAnnotation',()=>activeBrowserTabId?startBrowserAnnotation(activeBrowserTabId):null);
+ipcMain.handle('browser:cancelAnnotation',()=>activeBrowserTabId?cancelBrowserAnnotation(activeBrowserTabId):false);
+ipcMain.handle('browser:refreshSiteTools',()=>activeBrowserTabId?refreshBrowserSiteTools(activeBrowserTabId):[]);
+ipcMain.handle('browser:executeSiteTool',async(_e,{tabId,name,input}={})=>{
+  const id=tabId||activeBrowserTabId;
+  if(!id)throw new Error('No browser tab is active.');
+  return executeBrowserSiteTool(id,name,input);
+});
 ipcMain.handle('browser:navigate',async(_e,input)=>{
-  const tab=ensureBrowserTab();
-  const url=normalizeBrowserUrl(input);
-  await tab.view.webContents.loadURL(url);
+  const view=ensureBrowserView();
+  await view.webContents.loadURL(normalizeBrowserUrl(input));
   emitBrowserState();
   return browserSnapshot();
 });
 ipcMain.handle('browser:setBounds',(_e,bounds)=>{setBrowserBounds(bounds);return true});
-ipcMain.handle('browser:back',()=>{const tab=activeBrowserTab();if(tab?.view.webContents.canGoBack())tab.view.webContents.goBack();return browserSnapshot()});
-ipcMain.handle('browser:forward',()=>{const tab=activeBrowserTab();if(tab?.view.webContents.canGoForward())tab.view.webContents.goForward();return browserSnapshot()});
-ipcMain.handle('browser:reload',()=>{activeBrowserTab()?.view.webContents.reload();return browserSnapshot()});
-ipcMain.handle('browser:hide',()=>{hideBrowserView();return true});
-ipcMain.handle('browser:close',()=>{closeBrowserView();return true});
-ipcMain.handle('browser:clearData',async()=>{
-  closeBrowserView();
-  const browserSession=session.fromPartition('persist:freeai-browser');
-  await Promise.allSettled([
-    browserSession.clearStorageData(),
-    browserSession.clearCache()
-  ]);
-  return {ok:true};
-});
+ipcMain.handle('browser:back',()=>{const view=activeBrowserEntry();if(view?.webContents.canGoBack())view.webContents.goBack();return browserSnapshot()});
+ipcMain.handle('browser:forward',()=>{const view=activeBrowserEntry();if(view?.webContents.canGoForward())view.webContents.goForward();return browserSnapshot()});
+ipcMain.handle('browser:reload',()=>{activeBrowserEntry()?.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:close',()=>{hideBrowserView();return true});
 
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
-  if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows. Screen preview still works on this platform.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'){
+    throw new Error('Interactive desktop control is available on Windows and macOS. Linux currently supports screen preview and browser actions.');
+  }
   const point=displayPoint(displayId,nx,ny);
-  await clickWindowsPoint(point.x,point.y);
+  if(process.platform==='darwin')await clickMacPoint(point.x,point.y);
+  else await clickWindowsPoint(point.x,point.y);
   return point;
 });
 ipcMain.handle('computer:clickAndType',async(_e,{displayId,nx,ny,text}={})=>{
-  if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'){
+    throw new Error('Interactive desktop control is available on Windows and macOS.');
+  }
   const point=displayPoint(displayId,nx,ny);
-  await clickWindowsPoint(point.x,point.y);
-  await pasteWindowsText(text);
+  if(process.platform==='darwin'){
+    await clickMacPoint(point.x,point.y);
+    await new Promise(resolve=>setTimeout(resolve,120));
+    await pasteMacText(text);
+  }else{
+    await clickWindowsPoint(point.x,point.y);
+    await pasteWindowsText(text);
+  }
   return point;
 });
 
