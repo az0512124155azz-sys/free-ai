@@ -42,7 +42,7 @@ if(!gradle.includes(marker)){
 const info=[
   'Free AI Android OAuth registration',
   'Package name: com.freeai.mobile',
-  'Debug signing SHA-1: 74:E6:72:2F:31:E0:7D:D4:F5:0C:A6:51:96:DC:54:78:B7:D0:A1:61',
+  'Debug signing SHA-1: 1F:F0:59:1B:C8:69:C4:89:01:01:2F:79:E1:2D:0B:2E:7D:FC:C9:4B',
   'Web client ID audience: 991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com',
   '',
   'Create an Android OAuth client in the same Google Cloud project using the package and SHA-1 above.'
