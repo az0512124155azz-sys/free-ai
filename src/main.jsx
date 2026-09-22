@@ -213,6 +213,19 @@ function DeleteChatDialog({chat,onClose,onConfirm}){
   </div>;
 }
 
+function MessageSources({sources,onOpen}){
+  const items=Array.isArray(sources)?sources.filter(item=>item?.url).slice(0,8):[];
+  if(!items.length)return null;
+  return <div className="messageSources" aria-label="Web sources">
+    <div className="messageSourcesLabel"><Globe2 size={12}/><span>Sources</span><small>{items.length}</small></div>
+    <div className="messageSourceList">{items.map((source,index)=><button type="button" key={source.url+'::'+index} onClick={()=>onOpen?.(source.url)} title={source.url}>
+      <span className="sourceIndex">{index+1}</span>
+      <span className="sourceText"><b>{source.title||source.domain||'Web source'}</b><small>{source.domain||(()=>{try{return new URL(source.url).hostname.replace(/^www\./,'')}catch{return ''}})()}</small></span>
+      <ExternalLink size={12}/>
+    </button>)}</div>
+  </div>;
+}
+
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
@@ -325,6 +338,7 @@ function App(){
   const [effortMenu,setEffortMenu]=useState(false);
   const [effort,setEffort]=useState('instant');
   const [plusMenu,setPlusMenu]=useState(false);
+  const [webSearchEnabled,setWebSearchEnabled]=useState(false);
   const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [settingsSection,setSettingsSection]=useState('General');
@@ -895,6 +909,7 @@ function App(){
     stopActiveWorkTask();
     setSelectedMcpIds([]);
     setLocalFolderWorkspace(null);
+    setWebSearchEnabled(false);
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -904,12 +919,12 @@ function App(){
     if(product!=='free'||nextMode===mode)return;
     stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
-    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);setPage('chat');
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setWebSearchEnabled(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
     stopActiveWorkTask();
-    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);
+    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setWebSearchEnabled(false);setSelectedTool(null);setSelectedMcpIds([]);setLocalFolderWorkspace(null);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -1391,6 +1406,18 @@ function App(){
     const a=document.createElement('a');
     a.href=href;a.download='free-ai-export.json';document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(href),1500);
+  }
+
+  function toggleWebSearch(){
+    if(!isWindowsDesktop||mode!=='chat')return;
+    if(selected?.source==='api'){
+      setAttachmentError('Web Search currently uses the selected browser AI\'s live Search tool. Choose a connected browser model first.');
+      return;
+    }
+    setAttachmentError('');
+    setSelectedTool(null);
+    setPlusMenu(false);
+    setWebSearchEnabled(value=>!value);
   }
 
   async function openBrowser(){
