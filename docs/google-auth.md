@@ -1,83 +1,69 @@
 # Google Sign-In setup
 
-The application code supports Google OAuth on Windows, macOS, Linux and Android through Supabase Auth.
+Free AI uses Supabase Auth for account sessions.
 
-## 1. Create or choose a Supabase project
+## Email/password
 
-The packaged app is connected to the Free AI Supabase project by default using the public Project URL and publishable key. You can still override them for another environment with:
+Email/password uses Supabase directly:
+
+- sign up: `supabase.auth.signUp({ email, password })`
+- sign in: `supabase.auth.signInWithPassword({ email, password })`
+
+The app now checks the live Supabase Auth settings before attempting email/password authentication so a disabled provider or unreachable Auth service produces a visible error instead of appearing to do nothing.
+
+## Android Google sign-in
+
+Android uses `@capgo/capacitor-social-login` with Google Credential Manager, then exchanges the returned Google ID token with Supabase through `signInWithIdToken`.
+
+Required Google Cloud credentials must be in the same Google Cloud project:
+
+1. **Web OAuth client**
+   - used as `webClientId` by the app
+   - current default:
+     `991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com`
+
+2. **Android OAuth client**
+   - package: `com.freeai.mobile`
+   - debug SHA-1:
+     `1F:F0:59:1B:C8:69:C4:89:01:01:2F:79:E1:2D:0B:2E:7D:FC:C9:4B`
+
+The Android client ID is registered in Google Cloud only. Do not pass the Android client ID as `webClientId`.
+
+Each signing certificate that can install the app needs a matching Android OAuth client, including:
+- local/debug signing
+- release signing
+- Google Play App Signing
+
+The Web client ID can be overridden at build time with:
+
+`VITE_GOOGLE_WEB_CLIENT_ID`
+
+## Desktop Google sign-in
+
+Windows/macOS/Linux continue to use the Supabase PKCE OAuth flow and return to:
+
+`freeai://auth/callback`
+
+Allow that redirect URL in the Supabase Auth URL configuration.
+
+## Supabase client configuration
+
+The packaged app uses the Free AI Supabase project by default. Another environment can override:
 
 - `VITE_SUPABASE_URL`
 - `VITE_SUPABASE_ANON_KEY`
 
-These are public client values; the Google Client Secret is never bundled into the app.
+Do not ship the Google Client Secret in the app. The Google Client Secret belongs in the server-side Supabase Google provider configuration.
 
-Do not put the Google client secret in the app or in a `VITE_*` variable.
+## Troubleshooting Android Google
 
-## 2. Configure Google Cloud
+If Android reports error 28444, developer-console configuration errors, credential errors, or a cancellation immediately after choosing an account, verify:
 
-Create an OAuth 2.0 **Web application** client in Google Cloud.
+- package name exactly matches `com.freeai.mobile`
+- the installed APK's SHA-1 matches a Google Android OAuth client
+- the Web OAuth client is used as `webClientId`
+- Web and Android OAuth clients belong to the same Google Cloud project
+- if the consent screen is in Testing, the account is an allowed test user
+- after changing Google Cloud credentials, reinstall the APK and retry
 
-In **Authorized redirect URIs**, add the Supabase callback URL:
-
-```text
-https://xquntkgjlmrxkwkrwsjl.supabase.co/auth/v1/callback
-```
-
-Copy the Google Client ID and Client Secret.
-
-## 3. Enable Google in Supabase
-
-Open **Authentication -> Providers -> Google** and enable the provider.
-
-Paste:
-
-- Google Client ID
-- Google Client Secret
-
-## 4. Allow the Free AI app callback
-
-In the Supabase authentication URL/redirect settings, add this allowed redirect URL:
-
-```text
-freeai://auth/callback
-```
-
-Desktop and Android both return to the app through this custom scheme.
-
-For local browser-only development, also allow the Vite URL you use, for example:
-
-```text
-http://localhost:5173
-```
-
-## 5. Platform behavior
-
-### Windows / macOS / Linux
-
-Free AI opens Google authentication in the system browser. After the user finishes, the browser redirects to:
-
-```text
-freeai://auth/callback?code=...
-```
-
-Electron receives that protocol URL and exchanges the authorization code for a Supabase session using PKCE.
-
-### Android
-
-Free AI opens Google authentication in the system browser using Capacitor Browser. The Android manifest contains a generated intent filter for:
-
-- scheme: `freeai`
-- host: `auth`
-
-The app receives the callback through Capacitor App and exchanges the authorization code for a Supabase session.
-
-## 6. Email/password
-
-Email/password authentication continues to use the same Supabase project. Enable Email in Supabase Authentication providers if it is disabled.
-
-## Security
-
-- The Google Client Secret belongs only in Supabase/Google Cloud configuration.
-- `VITE_SUPABASE_ANON_KEY` is a public client key and is expected to be present in the packaged app.
-- OAuth uses PKCE.
-- The custom protocol handler accepts the Free AI auth callback and forwards it to the renderer.
+The CI build emits `android-oauth-info.txt` and runs Gradle `signingReport` so the signing identity can be compared against Google Cloud.
