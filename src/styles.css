@@ -344,6 +344,15 @@ button:disabled{opacity:.42;cursor:default}
   border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px;font-size:11px;box-shadow:var(--shadow-md)
 }
 .attachedTool small{color:var(--muted)}.attachedTool button{background:transparent;display:grid;place-items:center}
+.attachmentTray{display:flex;flex-wrap:wrap;gap:var(--r-sm);margin-bottom:var(--r-sm)}
+.attachmentChip{display:flex;align-items:center;gap:6px;max-width:100%;background:var(--popover);border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px}
+.attachmentChip>button{background:transparent;display:grid;place-items:center}
+.attachmentOpen{display:flex!important;align-items:center;gap:6px!important;min-width:0;color:var(--text-secondary)}
+.attachmentOpen span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.attachmentOpen small{color:var(--muted)}
+.messageAttachmentList{display:flex;flex-wrap:wrap;gap:var(--r-sm);margin-top:var(--r-sm);color:var(--text-tertiary)}
+.messageAttachmentList span{display:flex;align-items:center;gap:6px}
+.desktopShell.dragActive .chatStage{outline:auto}
 .menuAnchor{position:relative}
 
 .floatingMenu{
