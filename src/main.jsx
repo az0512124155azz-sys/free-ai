@@ -1766,58 +1766,159 @@ function ProfileMenu({session,onSettings}){
   </div>
 }
 
+function pluginSearchMatch(values,needle){
+  if(!needle)return true;
+  return values.filter(Boolean).join(' ').toLowerCase().includes(needle);
+}
+
+function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,onRemoveMcp,onToggleMcp,selectedMcpIds=[]}){
+  if(!item)return null;
+  const direct=item.kind==='direct'?item.connection:null;
+  const publicItem=item.kind==='public'?item.entry:null;
+  const hint=item.kind==='hint'?item.hint:null;
+  const capability=direct?directMcpCapabilitySummary(direct):null;
+  const selected=direct&&selectedMcpIds.includes(direct.id);
+  return <div className="projectDialogScrim pluginDetailsScrim" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose?.()}}>
+    <div className="pluginDetailsDialog" role="dialog" aria-modal="true" aria-label="Plugin details">
+      <div className="projectDialogHeader">
+        <div>
+          <b>{direct?.name||publicItem?.name||hint?.mcp||'Plugin'}</b>
+          <small>{item.kind==='direct'?'Configured direct MCP app':item.kind==='public'?'Public ChatGPT directory listing':'Provider-managed connector hint'}</small>
+        </div>
+        <button onClick={onClose} aria-label="Close"><X size={17}/></button>
+      </div>
+
+      {direct&&<>
+        <div className="pluginDetailsStatusRow">
+          <span className={'connectionStatus '+(direct.connected?'good':'')}>{direct.connected?'Connected':'Saved'}</span>
+          <span>MCP {direct.protocolVersion||'2025-11-25'}</span>
+          <span>{direct.hasToken?'Bearer token stored securely':'No stored token'}</span>
+        </div>
+        <div className="pluginDetailsBlock"><b>Endpoint</b><code>{direct.url}</code></div>
+        <div className="pluginDetailsBlock">
+          <b>Capabilities</b>
+          <span>{capability.tools} tools · {capability.readOnly} declared read-only · {capability.writeLike} may modify state{capability.destructive?(' · '+capability.destructive+' marked destructive'):''}</span>
+          <small>Free AI derives these labels from MCP tool annotations. Missing annotations are not treated as read-only.</small>
+        </div>
+        {direct.error&&<div className="formError">{direct.error}</div>}
+        <div className="pluginPermissionList">
+          {(direct.tools||[]).map(tool=><div key={tool.name}>
+            <span><b>{tool.title||tool.name}</b><small>{tool.description||tool.name}</small></span>
+            <span className={'capabilityBadge '+(tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint!==true?'read':'write')}>
+              {tool.annotations?.destructiveHint===true?'Destructive':tool.annotations?.readOnlyHint===true?'Read-only':'May write'}
+            </span>
+          </div>)}
+          {!direct.tools?.length&&<div className="muted">No MCP tools were returned by this endpoint.</div>}
+        </div>
+        <div className="pluginDetailsActions">
+          <button onClick={()=>onRefreshMcp?.()}>Refresh tools</button>
+          <button className={selected?'selectedPluginAction':''} onClick={()=>onToggleMcp?.(direct.id)}>{selected?'Remove from next Work task':'Use in next Work task'}</button>
+          <button className="dangerText" onClick={()=>{onRemoveMcp?.(direct.id);onClose?.()}}>Remove</button>
+        </div>
+      </>}
+
+      {publicItem&&<>
+        <div className="pluginDetailsStatusRow"><span>Public directory</span><span>{publicItem.category}</span></div>
+        <div className="pluginDetailsBlock"><b>What it does</b><span>{publicItem.description}</span></div>
+        <div className="pluginDetailsBlock">
+          <b>Connection</b>
+          <span>This is a discovery listing from ChatGPT's public plugin directory, not a Free AI installation.</span>
+          <small>Free AI does not have this app's authorization backend or provider account connection. Open the public directory to review its current setup requirements and connect it there.</small>
+        </div>
+        <div className="pluginDetailsBlock">
+          <b>Verification</b>
+          <span>Not asserted by Free AI.</span>
+          <small>OpenAI Verified is a separate directory badge. Free AI does not infer that badge from an app name.</small>
+        </div>
+        <div className="pluginDetailsActions"><button className="primaryAction" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open ChatGPT directory</button></div>
+      </>}
+
+      {hint&&<>
+        <div className="pluginDetailsStatusRow"><span className="warningBadge">Unverified hint</span><span>{hint.ownerName||'Browser provider'}</span></div>
+        <div className="pluginDetailsBlock"><b>Detected label</b><span>{hint.mcp}</span></div>
+        <div className="pluginDetailsBlock">
+          <b>What Free AI knows</b>
+          <span>This label was observed in a connected AI provider's browser UI.</span>
+          <small>It is not proof that an MCP server is reachable, that a tool exists, or that the provider used it. Provider authorization and permissions remain outside Free AI.</small>
+        </div>
+      </>}
+    </div>
+  </div>;
+}
+
+function PublicDirectoryCard({entry,onOpen}){
+  return <button className="directoryCard" onClick={onOpen}>
+    <span className="directoryIcon">{entry.name.slice(0,1).toUpperCase()}</span>
+    <span><b>{entry.name}</b><small>{entry.description}</small></span>
+    <span className="directoryCategory">{entry.category}</span>
+  </button>;
+}
+
 function PluginsPage({
-  tools,connected,directMcpConnections=[],mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh
+  tools,connected,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,
+  mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh,onExplore,onOpenPublicDirectory
 }){
   const [query,setQuery]=useState('');
+  const [view,setView]=useState('configured');
+  const [category,setCategory]=useState('All');
+  const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
-  const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
-  const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
-  const visibleDirect=needle
-    ? directMcpConnections.filter(connection=>(
-        connection.name+' '+connection.url+' '+(connection.tools||[]).map(tool=>tool.name+' '+tool.title).join(' ')
-      ).toLowerCase().includes(needle))
-    : directMcpConnections;
-  return <div className="contentPage">
-    <PageTop onBack={onBack} title={pageName} action={isDesktop?'Refresh':null} onAction={onRefresh}/>
-    <div className="contentInner">
-      <h1>{pageName}</h1>
-      <p className="pageLead">{isWindowsDesktop
-        ? 'Connect remote MCP apps directly to Free AI, then select the apps you want to use for each Work or Super AI task.'
-        : 'Provider-managed connectors are surfaced only when a connected AI provider exposes them in its own interface.'}</p>
-      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isWindowsDesktop?'Search apps and tools':'Search provider hints'}/></div>
+  const categories=['All',...new Set(publicPluginDirectory.map(item=>item.category))];
+  const visibleTools=tools.filter(t=>pluginSearchMatch([t.mcp,t.ownerName],needle));
+  const visibleProviders=connected.filter(p=>pluginSearchMatch([modelLabel(p),...(p.mcps||[])],needle));
+  const visibleDirect=directMcpConnections.filter(connection=>pluginSearchMatch([
+    connection.name,connection.url,...(connection.tools||[]).flatMap(tool=>[tool.name,tool.title,tool.description])
+  ],needle));
+  const visiblePublic=publicPluginDirectory.filter(entry=>
+    (category==='All'||entry.category===category)&&pluginSearchMatch([entry.name,entry.category,entry.description],needle)
+  );
 
-      {isWindowsDesktop&&<section className="pluginSection">
-        <div className="sectionHeading"><h2>Direct MCP apps</h2><span className="pluginMeta">{visibleDirect.length} apps</span></div>
+  return <div className="contentPage">
+    <PageTop onBack={onBack} title={pageName} action={isWindowsDesktop?'Explore':null} onAction={onExplore}/>
+    <div className="contentInner pluginsDirectoryInner">
+      <div className="pluginPageHero">
+        <div><h1>{pageName}</h1><p className="pageLead">{isWindowsDesktop
+          ? 'Manage apps Free AI can actually call, and separately browse public directory listings and unverified provider hints.'
+          : 'Provider-managed connectors are surfaced only when a connected AI provider exposes them in its own interface.'}</p></div>
+        {isWindowsDesktop&&<button className="secondaryAction" onClick={onRefresh}><RefreshCw size={14}/>Refresh connections</button>}
+      </div>
+
+      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isWindowsDesktop?'Search configured apps, public listings, or hints':'Search provider hints'}/></div>
+      {isWindowsDesktop&&<div className="directoryTabs" role="tablist" aria-label="Plugin directory sections">
+        {[['configured','Configured'],['discover','Discover'],['hints','Provider hints'],['providers','AI providers']].map(([id,label])=>
+          <button key={id} role="tab" aria-selected={view===id} className={view===id?'active':''} onClick={()=>setView(id)}>{label}</button>
+        )}
+      </div>}
+
+      {isWindowsDesktop&&view==='configured'&&<section className="pluginSection">
+        <div className="sectionHeading"><div><h2>Configured in Free AI</h2><small>Only these direct MCP apps are callable by the Windows Work runtime.</small></div><span className="pluginMeta">{visibleDirect.length} apps</span></div>
         <div className="directMcpGrid">
-          {visibleDirect.map(connection=><div className="directMcpCard" key={connection.id}>
-            <div className="directMcpTop">
-              <span className="pluginIcon"><Plug size={17}/></span>
-              <span><b>{connection.name}</b><small>{connection.url}</small></span>
-              <span className={'connectionStatus '+(connection.connected?'good':'')}>{connection.connected?'Connected':'Saved'}</span>
-            </div>
-            <div className="directMcpMeta">
-              <span>MCP {connection.protocolVersion||'2025-11-25'}</span>
-              <span>{connection.tools?.length||0} tools</span>
-              {connection.hasToken&&<span>Token saved securely</span>}
-            </div>
-            {connection.error&&<div className="formError">{connection.error}</div>}
-            {Array.isArray(connection.tools)&&connection.tools.length>0&&<div className="directMcpTools">
-              {connection.tools.slice(0,12).map(tool=><span key={tool.name} title={tool.description||tool.name}>
-                {tool.title||tool.name}{tool.annotations?.readOnlyHint===true?' · read-only':''}
-              </span>)}
-              {connection.tools.length>12&&<span>+{connection.tools.length-12} more</span>}
-            </div>}
-            <div className="directMcpActions">
-              <button onClick={onRefreshMcp}>Refresh</button>
-              <button className="dangerText" onClick={()=>onRemoveMcp?.(connection.id)}>Remove</button>
-            </div>
-          </div>)}
-          {!visibleDirect.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{needle?'No direct MCP app matches':'No direct MCP apps yet'}</b><span>Add an HTTPS MCP endpoint below. Localhost HTTP is also allowed for local development.</span></div>}
+          {visibleDirect.map(connection=>{
+            const cap=directMcpCapabilitySummary(connection);
+            const selected=selectedMcpIds.includes(connection.id);
+            return <div className="directMcpCard directoryManagedCard" key={connection.id}>
+              <button className="directMcpMain" onClick={()=>setDetails({kind:'direct',connection})}>
+                <span className="pluginIcon"><Plug size={17}/></span>
+                <span><b>{connection.name}</b><small>{connection.url}</small></span>
+                <span className={'connectionStatus '+(connection.connected?'good':'')}>{connection.connected?'Connected':'Saved'}</span>
+              </button>
+              <div className="directMcpMeta">
+                <span>{cap.tools} tools</span><span>{cap.readOnly} read-only</span><span>{cap.writeLike} may write</span>
+                {connection.hasToken&&<span>Secure token</span>}
+              </div>
+              {connection.error&&<div className="formError">{connection.error}</div>}
+              <div className="directMcpActions">
+                <button onClick={()=>setDetails({kind:'direct',connection})}>Details</button>
+                <button className={selected?'selectedPluginAction':''} onClick={()=>onToggleMcp?.(connection.id)}>{selected?'Selected':'Use in Work'}</button>
+              </div>
+            </div>;
+          })}
+          {!visibleDirect.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{needle?'No configured MCP app matches':'No direct MCP apps configured'}</b><span>Free AI does not pretend public directory entries are installed. Add an MCP endpoint below to create a real callable connection.</span></div>}
         </div>
+
         <div className="mcpAddCard">
-          <div><b>Add remote MCP app</b><small>This checkpoint supports Streamable HTTP MCP 2025-11-25. The token is stored by the desktop process, not in the renderer.</small></div>
+          <div><b>Connect a direct MCP app</b><small>Real Streamable HTTP MCP 2025-11-25. The optional bearer token is stored by the desktop process, not exposed to the renderer.</small></div>
           <div className="mcpAddForm">
             <input placeholder="App name" value={mcpDraft?.name||''} onChange={e=>setMcpDraft?.({...mcpDraft,name:e.target.value})}/>
             <input placeholder="https://example.com/mcp" value={mcpDraft?.url||''} onChange={e=>setMcpDraft?.({...mcpDraft,url:e.target.value})}/>
@@ -1828,40 +1929,112 @@ function PluginsPage({
         </div>
       </section>}
 
-      <section className="pluginSection">
-        <div className="sectionHeading"><h2>Provider-managed connector hints</h2><span className="pluginMeta">{visibleTools.length} hints</span></div>
-        <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Not direct MCP verification</b><span>These labels come from visible provider UI detected by the browser extension. Free AI does not treat them as proof that a tool exists or that a provider actually used it.</span></div></div>
-        <div className="installedStrip">
-          {visibleTools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
-          {!visibleTools.length&&<span className="muted">{query?'No provider hint matches your search.':'No provider-managed connector hints detected.'}</span>}
+      {isWindowsDesktop&&view==='discover'&&<section className="pluginSection">
+        <div className="sectionHeading"><div><h2>Discover</h2><small>Current examples from ChatGPT's public plugin directory. They are not installed in Free AI.</small></div><button className="textLinkButton" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open public directory</button></div>
+        <div className="pluginHint directoryNotice"><Blocks size={20}/><div><b>Discovery is separate from connection</b><span>Free AI can browse public listings, but it only calls apps that you explicitly configure as direct MCP connections. Public app authorization remains in the provider or ChatGPT.</span></div></div>
+        <div className="directoryChips">{categories.map(name=><button key={name} className={category===name?'active':''} onClick={()=>setCategory(name)}>{name}</button>)}</div>
+        <div className="directoryGrid">
+          {visiblePublic.map(entry=><PublicDirectoryCard key={entry.id} entry={entry} onOpen={()=>setDetails({kind:'public',entry})}/>)}
+          {!visiblePublic.length&&<div className="pluginEmptyCard"><Search size={22}/><b>No public listing matches</b><span>Try another category or search term.</span></div>}
         </div>
-      </section>
+      </section>}
 
-      <section className="pluginSection">
-        <h2>Connected AI providers</h2>
+      {(!isWindowsDesktop||view==='hints')&&<section className="pluginSection">
+        <div className="sectionHeading"><div><h2>Provider-managed connector hints</h2><small>Labels observed in provider UI; not direct MCP verification.</small></div><span className="pluginMeta">{visibleTools.length} hints</span></div>
+        <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Unverified</b><span>These labels do not prove a tool exists, that it is connected, or that the provider used it. Free AI never promotes them to callable MCP tools.</span></div></div>
+        <div className="hintGrid">
+          {visibleTools.map(t=><button key={t.key} className="hintCard" onClick={()=>setDetails({kind:'hint',hint:t})}><span className="pluginIcon"><Plug size={16}/></span><span><b>{t.mcp}</b><small>{t.ownerName||'Provider UI'} · unverified</small></span><ChevronRight size={14}/></button>)}
+          {!visibleTools.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{query?'No provider hint matches':'No provider-managed hints detected'}</b><span>Hints appear only when the browser extension can observe them in a connected provider UI.</span></div>}
+        </div>
+      </section>}
+
+      {isWindowsDesktop&&view==='providers'&&<section className="pluginSection">
+        <div className="sectionHeading"><div><h2>Connected AI providers</h2><small>Controller models are not plugin installations.</small></div><span className="pluginMeta">{visibleProviders.length} providers</span></div>
         <div className="pluginGrid">
           {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
             <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
             <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API model':((provider.mcps?.length||0)+' provider UI hints')}</small></span>
             <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
           </div>)}
-          {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No AI provider is connected</b><span>Open a supported AI site in Chromium with the Free AI extension, or add an API model in Settings.</span></div>}
+          {!visibleProviders.length&&<div className="pluginEmptyCard"><Bot size={22}/><b>No AI provider is connected</b><span>Open a supported AI site in Chromium with the Free AI extension, or add an API model in Settings.</span></div>}
         </div>
-      </section>
+      </section>}
     </div>
-  </div>
+
+    {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
+      onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+  </div>;
 }
 
-function ExplorePage({tools,chats,onBack}){
+function ExplorePage({tools,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onBack,onManagePlugins,onOpenPublicDirectory}){
+  const [query,setQuery]=useState('');
+  const [filter,setFilter]=useState('all');
+  const [category,setCategory]=useState('All');
+  const [details,setDetails]=useState(null);
+  const needle=query.trim().toLowerCase();
+  const categories=['All',...new Set(publicPluginDirectory.map(item=>item.category))];
+  const direct=directMcpConnections.filter(connection=>pluginSearchMatch([
+    connection.name,connection.url,...(connection.tools||[]).flatMap(tool=>[tool.name,tool.title,tool.description])
+  ],needle));
+  const publicItems=publicPluginDirectory.filter(entry=>
+    (category==='All'||entry.category===category)&&pluginSearchMatch([entry.name,entry.category,entry.description],needle)
+  );
+  const hints=tools.filter(tool=>pluginSearchMatch([tool.mcp,tool.ownerName],needle));
+  const showDirect=filter==='all'||filter==='configured';
+  const showPublic=filter==='all'||filter==='public';
+  const showHints=filter==='all'||filter==='hints';
+
   return <div className="contentPage">
-    <PageTop onBack={onBack} title="Explore"/>
-    <div className="contentInner exploreInner">
-      <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
-      {!isNative&&<><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>}
-      <h3>{isNative?'Apps':'Provider connector hints'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+(isNative?'':' · unverified')}/>)}
-      <h3>Conversations</h3>{chats.slice(0,8).map(c=><MenuRow key={c.id} icon={Bot} label={c.title} sub={c.modelName}/>)}
+    <PageTop onBack={onBack} title="Explore" action={isWindowsDesktop?'Plugins':null} onAction={onManagePlugins}/>
+    <div className="contentInner exploreDirectoryInner">
+      <div className="exploreHero">
+        <span className="exploreMark"><Blocks size={22}/></span>
+        <div><h1>Explore</h1><p className="pageLead">Discover public plugin listings, inspect the apps already configured in Free AI, and keep unverified provider hints clearly separate.</p></div>
+      </div>
+
+      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search apps, capabilities, or categories"/></div>
+      <div className="directoryTabs exploreFilters" role="tablist" aria-label="Explore filters">
+        {[['all','All'],['configured','Configured'],['public','Public directory'],['hints','Provider hints']].map(([id,label])=>
+          <button key={id} role="tab" aria-selected={filter===id} className={filter===id?'active':''} onClick={()=>setFilter(id)}>{label}</button>
+        )}
+      </div>
+
+      {showDirect&&<section className="exploreSection">
+        <div className="sectionHeading"><div><h2>Configured in Free AI</h2><small>Real direct MCP connections available to Work and Super AI.</small></div><button className="textLinkButton" onClick={onManagePlugins}>Manage</button></div>
+        <div className="directoryGrid compactDirectoryGrid">
+          {direct.map(connection=>{
+            const cap=directMcpCapabilitySummary(connection);
+            const selected=selectedMcpIds.includes(connection.id);
+            return <div className="directoryCard managedExploreCard" key={connection.id}>
+              <button className="directoryCardMain" onClick={()=>setDetails({kind:'direct',connection})}><span className="directoryIcon"><Plug size={16}/></span><span><b>{connection.name}</b><small>{cap.tools} tools · {cap.readOnly} read-only · {cap.writeLike} may write</small></span></button>
+              <button className={'usePluginButton '+(selected?'active':'')} onClick={()=>onToggleMcp?.(connection.id)}>{selected?<Check size={13}/>:<Plus size={13}/>}{selected?'Selected':'Use'}</button>
+            </div>;
+          })}
+          {!direct.length&&<button className="pluginEmptyCard clickableEmpty" onClick={onManagePlugins}><Plus size={22}/><b>No direct MCP apps configured</b><span>Open Plugins to connect a real MCP endpoint.</span></button>}
+        </div>
+      </section>}
+
+      {showPublic&&<section className="exploreSection">
+        <div className="sectionHeading"><div><h2>Public directory</h2><small>Discoverable ChatGPT plugin listings. Opening one does not install it into Free AI.</small></div><button className="textLinkButton" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Browse live directory</button></div>
+        <div className="directoryChips">{categories.map(name=><button key={name} className={category===name?'active':''} onClick={()=>setCategory(name)}>{name}</button>)}</div>
+        <div className="directoryGrid">
+          {publicItems.map(entry=><PublicDirectoryCard key={entry.id} entry={entry} onOpen={()=>setDetails({kind:'public',entry})}/>)}
+          {!publicItems.length&&<div className="pluginEmptyCard"><Search size={22}/><b>No public listing matches</b><span>Try another category or search term.</span></div>}
+        </div>
+      </section>}
+
+      {showHints&&<section className="exploreSection">
+        <div className="sectionHeading"><div><h2>Provider hints</h2><small>Observed labels only — never treated as installed apps.</small></div><span className="pluginMeta">{hints.length} hints</span></div>
+        <div className="hintGrid">
+          {hints.map(item=><button key={item.key} className="hintCard" onClick={()=>setDetails({kind:'hint',hint:item})}><span className="pluginIcon"><Chrome size={16}/></span><span><b>{item.mcp}</b><small>{item.ownerName||'Provider UI'} · unverified</small></span><ChevronRight size={14}/></button>)}
+          {!hints.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider hints detected</b><span>Provider hints appear only when the browser extension observes labels in a supported AI provider UI.</span></div>}
+        </div>
+      </section>}
     </div>
-  </div>
+
+    {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
+      onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+  </div>;
 }
 
 function PageTop({onBack,title,action,onAction}){
