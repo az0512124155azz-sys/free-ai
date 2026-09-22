@@ -584,7 +584,7 @@ function App(){
     if((!userText&&!attachments.length)||workBusy)return;
     if(!selected){setModelMenu(true);return}
     if(selectedTool){
-      setAttachmentError('Plugin/MCP orchestration is not part of Windows 4. Remove the selected plugin or use Chat; plugin orchestration remains a Windows 5 checkpoint.');
+      setAttachmentError('That item is only a provider-managed connector hint, not a verified direct MCP app. Remove it and select a Direct MCP app from Add → Direct MCP apps.');
       return;
     }
     const canUploadFiles=selected.source==='browser'&&selected.fileUpload===true;
@@ -1249,7 +1249,7 @@ function App(){
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
-      saveSettings={saveSettings} connected={connected} apiDraft={apiDraft} setApiDraft={setApiDraft}
+      saveSettings={saveSettings} connected={connected} mcpConnections={mcpConnections} apiDraft={apiDraft} setApiDraft={setApiDraft}
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
       onExportData={exportLocalData} onClearHistory={clearLocalHistory}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
@@ -1614,6 +1614,7 @@ function WorkTaskStatus({task,onApproval}){
       <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
     </div>
     {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
+    {Array.isArray(task.apps)&&task.apps.length>0&&<div className="workAppsLine"><Plug size={12}/><span>{task.apps.map(app=>app.name).join(' · ')}</span><small>{task.apps.reduce((sum,app)=>sum+(Number(app.toolCount)||0),0)} direct MCP tools</small></div>}
     {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
       <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
     </div>)}</div>}
@@ -1659,7 +1660,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
     </>}
     <div className="floatingTitle section">{mode==='work'&&isWindowsDesktop?'Provider hints':'Plugins'}</div>
     {tools.length===0?<div className="menuEmpty compact">No provider-managed connector hints detected.</div>:tools.slice(0,10).map(t=>
-      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · provider-managed, unverified'} onClick={()=>setSelectedTool(t)}/>
+      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · provider-managed, unverified'} onClick={mode==='work'&&isWindowsDesktop?undefined:()=>setSelectedTool(t)}/>
     )}
     <MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>
     {!isNative&&<MenuRow icon={Monitor} label="Computer" sub="View or control your desktop" onClick={onComputer}/>} 
@@ -1726,9 +1727,7 @@ function PluginsPage({
               {connection.tools.length>12&&<span>+{connection.tools.length-12} more</span>}
             </div>}
             <div className="directMcpActions">
-              <button onClick={()=>window.desktopApi?.refreshMcpConnection?.(connection.id).then(updated=>{
-                if(updated)onRefreshMcp?.();
-              }).catch(()=>onRefreshMcp?.())}>Refresh</button>
+              <button onClick={onRefreshMcp}>Refresh</button>
               <button className="dangerText" onClick={()=>onRemoveMcp?.(connection.id)}>Remove</button>
             </div>
           </div>)}
@@ -1776,7 +1775,7 @@ function ExplorePage({tools,chats,onBack}){
     <div className="contentInner exploreInner">
       <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
       {!isNative&&<><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>}
-      <h3>{isNative?'Apps':'Plugins'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName}/>)}
+      <h3>{isNative?'Apps':'Provider connector hints'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+(isNative?'':' · unverified')}/>)}
       <h3>Conversations</h3>{chats.slice(0,8).map(c=><MenuRow key={c.id} icon={Bot} label={c.title} sub={c.modelName}/>)}
     </div>
   </div>
@@ -2194,7 +2193,7 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
   const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
@@ -2223,7 +2222,7 @@ function SettingsView(props){
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
-      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
+      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
       {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Local repository workspace','Super AI · user-selected Git folder'],['Repository actions','Status, list, read, diff, and approval-gated writes']]}/>}
