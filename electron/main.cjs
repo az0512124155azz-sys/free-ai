@@ -1442,6 +1442,358 @@ async function routePrompt(msg,emitToRenderer=false){
   return routeDirect(msg,onStream);
 }
 
+function publicWorkTask(task){
+  return {
+    id:task.id,
+    state:task.state,
+    step:task.step,
+    maxSteps:task.maxSteps,
+    statusText:task.statusText||'',
+    finalText:task.finalText||'',
+    error:task.error||'',
+    approval:task.approval?{
+      id:task.approval.id,
+      kind:task.approval.kind,
+      title:task.approval.title,
+      description:task.approval.description,
+      host:task.approval.host||'',
+      action:task.approval.action||null
+    }:null
+  };
+}
+
+function emitWorkTask(task){
+  if(win&&!win.isDestroyed())win.webContents.send('work-task',publicWorkTask(task));
+}
+
+function workTaskHost(value){
+  try{
+    const parsed=new URL(String(value||''));
+    return parsed.protocol==='http:'||parsed.protocol==='https:'?parsed.host.toLowerCase():'';
+  }catch{return ''}
+}
+
+function workDecisionFromText(text){
+  const raw=String(text||'').trim();
+  const candidates=[raw];
+  const fenced=raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if(fenced)candidates.unshift(fenced[1].trim());
+  const first=raw.indexOf('{'),last=raw.lastIndexOf('}');
+  if(first>=0&&last>first)candidates.push(raw.slice(first,last+1));
+  for(const candidate of candidates){
+    try{
+      const parsed=JSON.parse(candidate);
+      if(parsed&&typeof parsed==='object')return parsed;
+    }catch{}
+  }
+  return {kind:'final',text:raw};
+}
+
+function workActionApproval(task,decision){
+  const mode=task.approvalMode;
+  const kind=String(decision.kind||'').toLowerCase();
+  const action=decision.action||{};
+  const type=String(action.type||'').toLowerCase();
+  if(mode==='full')return null;
+
+  if(kind==='computer'){
+    const lowRisk=new Set(['screenshot','wait','move','scroll']);
+    if(mode==='auto'&&lowRisk.has(type))return null;
+    return {
+      kind:'computer',
+      title:'Approve computer action?',
+      description:'Free AI wants to '+(type||'interact with your computer')+'.',
+      action:{kind,type}
+    };
+  }
+
+  if(kind==='browser'){
+    const mutating=new Set(['click','double_click','type','keypress','select','navigate','new_tab','close_tab']);
+    if(mode==='auto'&&!mutating.has(type))return null;
+    if(mode==='ask'&&['snapshot','wait','move','scroll'].includes(type))return null;
+    return {
+      kind:'browser',
+      title:'Approve browser action?',
+      description:'Free AI wants to '+(type||'interact with the browser')+'.',
+      action:{kind,type,channel:decision.channel||'built-in'}
+    };
+  }
+  return null;
+}
+
+function askWorkApproval(task,approval){
+  return new Promise(resolve=>{
+    const id=crypto.randomUUID();
+    task.state='waiting_approval';
+    task.statusText=approval.description;
+    task.approval={...approval,id,resolve};
+    emitWorkTask(task);
+  });
+}
+
+function resolveWorkApproval(taskId,approvalId,allow){
+  const task=workTasks.get(String(taskId||''));
+  if(!task||!task.approval||task.approval.id!==approvalId)return false;
+  const approval=task.approval;
+  task.approval=null;
+  task.state='running';
+  task.statusText=allow?'Approval granted':'Approval denied';
+  approval.resolve(!!allow);
+  emitWorkTask(task);
+  return true;
+}
+
+async function ensureWorkWebsiteAccess(task,channel){
+  if(task.approvalMode==='full')return true;
+  let url='';
+  if(channel==='extension'){
+    const active=extensionBrowserState.tabs?.find(tab=>tab.id===extensionBrowserState.activeTabId);
+    url=active?.url||'';
+  }else{
+    url=browserSnapshot().url||'';
+  }
+  const host=workTaskHost(url);
+  if(!host||task.approvedHosts.has(host))return true;
+  const allowed=await askWorkApproval(task,{
+    kind:'website',
+    title:'Allow website access?',
+    description:'Allow Free AI Work to read and interact with '+host+' for this task?',
+    host
+  });
+  if(allowed)task.approvedHosts.add(host);
+  return allowed;
+}
+
+async function workBrowserContext(task){
+  if(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN&&extensionBrowserState.activeTabId){
+    if(!(await ensureWorkWebsiteAccess(task,'extension')))return {denied:true};
+    const snapshot=await requestExtensionBrowser('snapshot',{tabId:extensionBrowserState.activeTabId},20000);
+    return {channel:'extension',snapshot};
+  }
+  if(activeBrowserTabId){
+    if(!(await ensureWorkWebsiteAccess(task,'built-in')))return {denied:true};
+    const snapshot=await builtInBrowserAgentSnapshot(activeBrowserTabId);
+    return {channel:'built-in',snapshot};
+  }
+  return null;
+}
+
+async function workComputerContext(task){
+  if(process.platform!=='win32'||!task.modelFileUpload)return null;
+  const screens=await captureScreens();
+  const screenItem=screens.find(item=>item.interactive&&item.thumbnail)||null;
+  if(!screenItem)return null;
+  return {
+    displayId:screenItem.displayId,
+    viewport:{width:screenItem.width,height:screenItem.height},
+    name:screenItem.name,
+    attachment:{
+      name:'free-ai-computer-screenshot.jpg',
+      type:'image/jpeg',
+      size:0,
+      dataUrl:screenItem.thumbnail
+    }
+  };
+}
+
+function compactBrowserContext(context){
+  if(!context?.snapshot)return 'Browser context: unavailable.';
+  const snapshot=context.snapshot;
+  const page=snapshot.page||{};
+  const tab=snapshot.tab||{};
+  const elements=(page.elements||[]).slice(0,80).map(el=>({
+    id:el.id||null,role:el.role||'',label:el.label||'',tag:el.tag||'',href:el.href||'',rect:el.rect||null
+  }));
+  return JSON.stringify({
+    channel:context.channel,
+    tab:{id:tab.id??null,title:tab.title||'',url:tab.url||page.url||''},
+    viewport:page.viewport||null,
+    text:String(page.text||'').slice(0,12000),
+    elements
+  });
+}
+
+function workPlannerPrompt(task,browserContext,computerContext,previousResult=''){
+  const schemas=[
+    'Return exactly one JSON object and no markdown.',
+    'Finish: {"kind":"final","text":"your final answer"}',
+    'Browser built-in: {"kind":"browser","channel":"built-in","action":{"type":"snapshot|click|double_click|move|scroll|type|keypress|wait|navigate|back|forward|reload|new_tab|switch_tab|close_tab",...}}',
+    'Browser extension: {"kind":"browser","channel":"extension","action":{"type":"click|focus|type|select|scroll","elementId":"e1",...}}',
+    'Computer: {"kind":"computer","action":{"type":"screenshot|click|double_click|move|scroll|keypress|type|drag|wait",...}}',
+    'For built-in click/type coordinates, use current browser viewport pixels. For extension actions, use only elementId values from the latest snapshot.',
+    'For computer coordinate actions, use screenshot pixels and the provided displayId/viewport. Never invent missing element IDs, coordinates, tabs or capabilities.',
+    'If an action cannot be performed safely with the available context, finish with a truthful explanation instead of guessing.'
+  ].join('\n');
+  const sections=[
+    'You are the action planner for a local Free AI Work task on Windows.',
+    'Task: '+task.userText,
+    schemas,
+    compactBrowserContext(browserContext)
+  ];
+  if(computerContext){
+    sections.push('Computer screenshot is attached. Computer target: '+JSON.stringify({
+      displayId:computerContext.displayId,
+      viewport:computerContext.viewport,
+      name:computerContext.name
+    }));
+  }else{
+    sections.push('Computer visual context is unavailable to this model. Do not request computer actions.');
+  }
+  if(previousResult)sections.push('Previous action result: '+String(previousResult).slice(0,8000));
+  return sections.join('\n\n');
+}
+
+async function executeWorkDecision(task,decision,browserContext,computerContext){
+  const kind=String(decision.kind||'').toLowerCase();
+  const action=decision.action||{};
+  if(kind==='browser'){
+    const channel=decision.channel==='extension'?'extension':'built-in';
+    if(!(await ensureWorkWebsiteAccess(task,channel)))return {stopped:true,summary:'Website access was denied.'};
+    const approval=workActionApproval(task,{...decision,channel});
+    if(approval&&!(await askWorkApproval(task,approval)))return {stopped:true,summary:'Browser action was denied.'};
+    task.state='running';task.statusText='Using browser';emitWorkTask(task);
+    if(channel==='extension'){
+      if(!extensionBrowserState.activeTabId)throw new Error('No active extension browser tab is available.');
+      const result=await requestExtensionBrowser('action',{
+        tabId:extensionBrowserState.activeTabId,
+        action,
+        settleMs:220
+      },20000);
+      return {summary:JSON.stringify({channel,tab:result?.tab,page:result?.page,result:result?.result}).slice(0,10000)};
+    }
+    const result=await performBuiltInBrowserAction({tabId:activeBrowserTabId,action,settleMs:220});
+    return {summary:JSON.stringify({channel,tab:result?.tab,page:result?.page}).slice(0,10000)};
+  }
+
+  if(kind==='computer'){
+    if(!computerContext)throw new Error('Computer visual context is unavailable to the selected model.');
+    const approval=workActionApproval(task,decision);
+    if(approval&&!(await askWorkApproval(task,approval)))return {stopped:true,summary:'Computer action was denied.'};
+    task.state='running';task.statusText='Using computer';emitWorkTask(task);
+    const result=await performWindowsComputerAction({
+      displayId:computerContext.displayId,
+      viewport:computerContext.viewport,
+      action
+    });
+    return {summary:JSON.stringify({action:result?.action,point:result?.point||null}).slice(0,4000)};
+  }
+
+  throw new Error('Unsupported Work decision kind: '+String(decision.kind||'unknown'));
+}
+
+async function runWorkTask(task){
+  let previousResult='';
+  try{
+    for(task.step=1;task.step<=task.maxSteps;task.step++){
+      if(task.cancelled)throw new Error('Work task stopped.');
+      task.state='running';
+      task.statusText='Reviewing task · step '+task.step+' of '+task.maxSteps;
+      emitWorkTask(task);
+
+      const browserContext=await workBrowserContext(task);
+      if(browserContext?.denied){
+        task.state='stopped';task.statusText='Website access denied';emitWorkTask(task);return;
+      }
+      const computerContext=await workComputerContext(task);
+      const prompt=workPlannerPrompt(task,browserContext,computerContext,previousResult);
+      const requestId=task.id+':'+task.step;
+      task.activeRequestId=requestId;
+      const attachments=computerContext?[computerContext.attachment]:[];
+      const result=await routePrompt({
+        requestId,
+        provider:task.provider,
+        source:task.source,
+        text:prompt,
+        history:task.source==='api'?[{role:'user',content:prompt}]:undefined,
+        attachments,
+        mode:'work',
+        product:task.product,
+        approvalMode:task.approvalMode,
+        toolRequest:null
+      },false);
+      task.activeRequestId=null;
+      if(task.cancelled)throw new Error('Work task stopped.');
+
+      const decision=workDecisionFromText(result?.text||'');
+      if(String(decision.kind||'').toLowerCase()==='final'){
+        task.state='completed';
+        task.finalText=String(decision.text||result?.text||'').trim();
+        task.statusText='Completed';
+        emitWorkTask(task);
+        return;
+      }
+
+      const executed=await executeWorkDecision(task,decision,browserContext,computerContext);
+      if(executed?.stopped){
+        task.state='stopped';
+        task.statusText=executed.summary||'Stopped';
+        emitWorkTask(task);
+        return;
+      }
+      previousResult=executed?.summary||'Action completed.';
+    }
+    task.state='failed';
+    task.error='Work stopped after reaching the '+task.maxSteps+'-step safety limit.';
+    task.statusText='Step limit reached';
+    emitWorkTask(task);
+  }catch(e){
+    if(task.cancelled||/stopped/i.test(String(e?.message||''))){
+      task.state='stopped';
+      task.statusText='Stopped';
+    }else{
+      task.state='failed';
+      task.error=e?.message||String(e);
+      task.statusText='Failed';
+    }
+    task.activeRequestId=null;
+    if(task.approval?.resolve){task.approval.resolve(false);task.approval=null}
+    emitWorkTask(task);
+  }
+}
+
+function startWorkTask(payload={}){
+  if(process.platform!=='win32')throw new Error('Local Work task control is currently available on Windows.');
+  const userText=String(payload.text||'').trim();
+  if(!userText)throw new Error('Work task is empty.');
+  if(!payload.provider)throw new Error('Select a model before starting Work.');
+  const id=String(payload.taskId||crypto.randomUUID());
+  const task={
+    id,
+    userText,
+    provider:payload.provider,
+    source:payload.source||'browser',
+    product:payload.product||'free',
+    approvalMode:['ask','auto','full'].includes(payload.approvalMode)?payload.approvalMode:'ask',
+    modelFileUpload:payload.modelFileUpload===true,
+    state:'running',
+    statusText:'Starting Work task',
+    step:0,
+    maxSteps:Math.max(1,Math.min(24,Number(payload.maxSteps)||12)),
+    cancelled:false,
+    activeRequestId:null,
+    approvedHosts:new Set(),
+    approval:null,
+    finalText:'',
+    error:''
+  };
+  workTasks.set(id,task);
+  emitWorkTask(task);
+  runWorkTask(task);
+  return publicWorkTask(task);
+}
+
+function stopWorkTask(id){
+  const task=workTasks.get(String(id||''));
+  if(!task)return false;
+  task.cancelled=true;
+  if(task.activeRequestId)cancelPrompt(task.activeRequestId);
+  if(task.approval?.resolve){task.approval.resolve(false);task.approval=null}
+  task.state='stopped';
+  task.statusText='Stopped';
+  emitWorkTask(task);
+  return true;
+}
+
 function startLocalBridge(){
   const wss=new WebSocketServer({host:'127.0.0.1',port:17341});
   wss.on('connection',(ws,req)=>{
