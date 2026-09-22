@@ -67,7 +67,7 @@ has(installerSmoke,"$app.HasExited",'Installer smoke must detect first-launch cr
 has(installerSmoke,"Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe'",'Installer smoke must find the installed NSIS uninstaller.');
 has(installerSmoke,'/S _?=$installDir','Installer smoke must silently uninstall the exact smoke-test installation.');
 
-has(main,"browserProviders=[];\n        extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};",'Extension disconnect must clear stale browser provider and tab state.');
+ok(/extensionSocket=null;\s*browserProviders=\[\];\s*extensionBrowserState=\{tabs:\[\],activeTabId:null,activeWindowId:null\};/.test(main),'Extension disconnect must clear stale browser provider and tab state.');
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
 has(main,"for(const [id,request] of pending)",'Extension disconnect must drain pending browser prompts.');
 has(source,"if(!fresh){setSelected(null);setSelectedTool(null);setParallelCount(1)}",'Renderer must clear a selected provider after disconnect.');
