@@ -13,7 +13,7 @@ import {
   CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,Download,ExternalLink,
   Ellipsis,File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
-  Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
+  Pin,Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
   SquarePen,Table2,Target,SquareTerminal,Trash2,Upload,UserRound,Volume2,X
 } from 'lucide-react';
 import './styles.css';
@@ -58,6 +58,51 @@ function humanSize(bytes){
   if(bytes<1024)return bytes+' B';
   if(bytes<1024*1024)return (bytes/1024).toFixed(1)+' KB';
   return (bytes/1024/1024).toFixed(1)+' MB';
+}
+
+function mediaDb(){
+  return new Promise((resolve,reject)=>{
+    const request=indexedDB.open('freeai-media',1);
+    request.onupgradeneeded=()=>{if(!request.result.objectStoreNames.contains('images'))request.result.createObjectStore('images',{keyPath:'id'})};
+    request.onsuccess=()=>resolve(request.result);
+    request.onerror=()=>reject(request.error);
+  });
+}
+async function listImageAssets(){
+  const db=await mediaDb();
+  return await new Promise((resolve,reject)=>{
+    const tx=db.transaction('images','readonly');
+    const request=tx.objectStore('images').getAll();
+    request.onsuccess=()=>resolve((request.result||[]).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0)));
+    request.onerror=()=>reject(request.error);
+    tx.oncomplete=()=>db.close();
+  });
+}
+async function saveImageAsset(asset){
+  const db=await mediaDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('images','readwrite');
+    tx.objectStore('images').put(asset);
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+}
+async function removeImageAsset(id){
+  const db=await mediaDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('images','readwrite');
+    tx.objectStore('images').delete(id);
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+}
+function fileAsDataUrl(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result||''));
+    reader.onerror=()=>reject(reader.error);
+    reader.readAsDataURL(file);
+  });
 }
 
 function BrandMark({size=22,className=''}) {
