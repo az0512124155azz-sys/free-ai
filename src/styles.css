@@ -281,7 +281,9 @@ button:disabled{opacity:.42;cursor:default}
 .modelButton small{color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis}
 .accessButton{color:var(--text-secondary);padding-left:7px;border:1px solid transparent}
 .accessButton:hover{background:var(--hover);color:var(--text)}
-.accessButton.enabled{background:color-mix(in srgb,var(--work) 13%,transparent);color:var(--work);border-color:color-mix(in srgb,var(--work) 27%,transparent)}
+.accessButton.mode-ask{background:var(--surface-primary);border-color:var(--border-soft);color:var(--text-secondary)}
+.accessButton.mode-auto{background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 27%,transparent)}
+.accessButton.mode-full{background:color-mix(in srgb,var(--work) 13%,transparent);color:var(--work);border-color:color-mix(in srgb,var(--work) 27%,transparent)}
 .permissionAnchor .floatingMenu{left:0;right:auto;transform-origin:bottom left}
 .permissionPicker{bottom:40px;width:330px}
 .permissionRow{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) 18px;gap:9px;align-items:center;background:transparent;border-radius:11px;padding:9px;text-align:left;color:var(--text-secondary)}
