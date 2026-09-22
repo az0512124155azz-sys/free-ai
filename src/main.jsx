@@ -433,6 +433,12 @@ function App(){
     });
   },[workTask?.id,workTask?.status]);
 
+  useEffect(()=>{
+    if(product==='super'&&workTask?.workspace?.name){
+      setRepositoryWorkspace(current=>current?.root?{...current,...workTask.workspace}:current);
+    }
+  },[product,workTask?.workspace?.name,workTask?.workspace?.branch,workTask?.workspace?.head,workTask?.workspace?.dirty]);
+
   const activeProject=useMemo(()=>projects.find(project=>project.id===activeProjectId)||null,[projects,activeProjectId]);
   const projectChats=useMemo(()=>activeProjectId
     ? chats.filter(chat=>chat.projectId===activeProjectId).sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0))
@@ -468,6 +474,7 @@ function App(){
   async function chooseRepositoryWorkspace(){
     if(!isWindowsDesktop)return;
     stopActiveWorkTask();
+    setMode('work');setPage('chat');setMobileNavOpen(false);
     setAttachmentError('');
     try{
       const workspace=await window.desktopApi.chooseRepository();
@@ -571,7 +578,7 @@ function App(){
     if((!userText&&!attachments.length)||workBusy)return;
     if(!selected){setModelMenu(true);return}
     if(selectedTool){
-      setAttachmentError('Plugin/MCP orchestration is not part of the Windows 4 Work loop yet. Remove the selected plugin or use Chat; Plugins/MCP are handled in Windows 5.');
+      setAttachmentError('Plugin/MCP orchestration is not part of Windows 4. Remove the selected plugin or use Chat; plugin orchestration remains a Windows 5 checkpoint.');
       return;
     }
     const canUploadFiles=selected.source==='browser'&&selected.fileUpload===true;
@@ -1155,7 +1162,7 @@ function App(){
               </div>
             </div>
         }
-        <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
+        <div className="stageFooter">{product==='super'?'Super AI can make mistakes. Review edits and important actions.':'Free AI can make mistakes. Check important information.'}</div>
       </section>}
 
       {page==='project'&&isWindowsDesktop&&activeProject&&<ProjectPage
@@ -2103,7 +2110,7 @@ function SettingsView(props){
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
-      {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Git integration','Available through installed plugins'],['Repository context','Super AI / Work']]}/>}
+      {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Local repository workspace','Super AI · user-selected Git folder'],['Repository actions','Status, list, read, diff, and approval-gated writes']]}/>}
       {section==='Environments'&&!isNative&&<SimpleSettings title="Environments" rows={[['Desktop runtime','Electron desktop'],['Browser bridge',status.extension?'Connected':'Disconnected']]}/>}
     </main>
   </div>
