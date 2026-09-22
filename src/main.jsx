@@ -1294,6 +1294,7 @@ function App(){
       {page==='explore'&&<ExplorePage
         tools={mcpTools} directMcpConnections={mcpConnections}
         selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
+        onRefreshMcp={refreshMcpConnections} onRemoveMcp={removeMcpConnection}
         onBack={()=>setPage('chat')} onManagePlugins={openPluginsPage} onOpenPublicDirectory={openPublicPluginDirectory}
       />}
     </main>
@@ -1930,7 +1931,7 @@ function PluginsPage({
       </section>}
 
       {isWindowsDesktop&&view==='discover'&&<section className="pluginSection">
-        <div className="sectionHeading"><div><h2>Discover</h2><small>Current examples from ChatGPT's public plugin directory. They are not installed in Free AI.</small></div><button className="textLinkButton" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open public directory</button></div>
+        <div className="sectionHeading"><div><h2>Discover</h2><small>Examples from ChatGPT's public plugin directory. Availability can change; use the live directory for current setup.</small></div><button className="textLinkButton" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open public directory</button></div>
         <div className="pluginHint directoryNotice"><Blocks size={20}/><div><b>Discovery is separate from connection</b><span>Free AI can browse public listings, but it only calls apps that you explicitly configure as direct MCP connections. Public app authorization remains in the provider or ChatGPT.</span></div></div>
         <div className="directoryChips">{categories.map(name=><button key={name} className={category===name?'active':''} onClick={()=>setCategory(name)}>{name}</button>)}</div>
         <div className="directoryGrid">
@@ -1966,7 +1967,7 @@ function PluginsPage({
   </div>;
 }
 
-function ExplorePage({tools,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onBack,onManagePlugins,onOpenPublicDirectory}){
+function ExplorePage({tools,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onRefreshMcp,onRemoveMcp,onBack,onManagePlugins,onOpenPublicDirectory}){
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState('all');
   const [category,setCategory]=useState('All');
@@ -2033,7 +2034,7 @@ function ExplorePage({tools,directMcpConnections=[],selectedMcpIds=[],onToggleMc
     </div>
 
     {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
-      onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+      onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
   </div>;
 }
 
