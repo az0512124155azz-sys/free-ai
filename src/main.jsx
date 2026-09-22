@@ -78,6 +78,9 @@ function randomKey(){
 function modelLabel(model){
   return model?.modelName||model?.name||providerNames[model?.id]||model?.model||'Select model';
 }
+function modelKey(model){
+  return model?(String(model.source||'browser')+'::'+String(model.id||'')):'';
+}
 function initials(session){
   const value=session?.user?.user_metadata?.full_name||session?.user?.email||'Free AI';
   return value.split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();
@@ -133,7 +136,7 @@ function DesktopProductSwitcher({product,open,setOpen,onSelect}){
         <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
       </button>
       <button role="menuitemradio" aria-checked={product==='super'} className={product==='super'?'active':''} onClick={()=>onSelect('super')}>
-        <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with browser and computer control</small></span>{product==='super'&&<Check size={16}/>}
+        <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with repositories, browser and computer</small></span>{product==='super'&&<Check size={16}/>} 
       </button>
     </div>}
   </div>;
@@ -199,6 +202,8 @@ function App(){
   const [dragActive,setDragActive]=useState(false);
   const [screens,setScreens]=useState([]);
   const [workTask,setWorkTask]=useState(null);
+  const [repositoryWorkspace,setRepositoryWorkspace]=useState(null);
+  const [superTeamKeys,setSuperTeamKeys]=useState(()=>readJSON('freeai.super.team',[]));
   const handledWorkTerminalRef=useRef(null);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
@@ -287,6 +292,15 @@ function App(){
     if(!fresh){setSelected(null);setSelectedTool(null)}
     else if(fresh!==selected)setSelected(fresh);
   },[connected]);
+
+  useEffect(()=>{
+    setSuperTeamKeys(current=>{
+      const primary=modelKey(selected);
+      const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,3);
+      localStorage.setItem('freeai.super.team',JSON.stringify(next));
+      return next;
+    });
+  },[connected,selected?.id,selected?.source]);
 
   useEffect(()=>{
     if(!isWindowsDesktop)return;
@@ -419,6 +433,12 @@ function App(){
     });
   },[workTask?.id,workTask?.status]);
 
+  useEffect(()=>{
+    if(product==='super'&&workTask?.workspace?.name){
+      setRepositoryWorkspace(current=>current?.root?{...current,...workTask.workspace}:current);
+    }
+  },[product,workTask?.workspace?.name,workTask?.workspace?.branch,workTask?.workspace?.head,workTask?.workspace?.dirty]);
+
   const activeProject=useMemo(()=>projects.find(project=>project.id===activeProjectId)||null,[projects,activeProjectId]);
   const projectChats=useMemo(()=>activeProjectId
     ? chats.filter(chat=>chat.projectId===activeProjectId).sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0))
@@ -450,6 +470,22 @@ function App(){
       window.desktopApi?.stopWorkTask?.(taskId).catch(()=>{});
       setWorkTask(null);
     }
+  }
+  async function chooseRepositoryWorkspace(){
+    if(!isWindowsDesktop)return;
+    stopActiveWorkTask();
+    setMode('work');setPage('chat');setMobileNavOpen(false);
+    setAttachmentError('');
+    try{
+      const workspace=await window.desktopApi.chooseRepository();
+      if(workspace)setRepositoryWorkspace(workspace);
+    }catch(error){
+      setAttachmentError(error?.message||'Could not open repository workspace.');
+    }
+  }
+  function clearRepositoryWorkspace(){
+    if(workBusy)return;
+    setRepositoryWorkspace(null);
   }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
   function createProject(){
@@ -486,7 +522,10 @@ function App(){
       const chat={
         id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,
         mode:product==='super'?'work':mode,pinned:!!existing?.pinned,
-        projectId:existing?.projectId||activeProjectId||null,updatedAt:Date.now()
+        projectId:existing?.projectId||activeProjectId||null,
+        workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:null,
+        superTeamKeys:product==='super'?superTeamKeys:[],
+        updatedAt:Date.now()
       };
       const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
       localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
@@ -526,6 +565,10 @@ function App(){
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     if(product==='free')setMode(chat.mode||'chat');
+    if(product==='super'){
+      setRepositoryWorkspace(chat.workspace||null);
+      setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
+    }
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
@@ -535,7 +578,7 @@ function App(){
     if((!userText&&!attachments.length)||workBusy)return;
     if(!selected){setModelMenu(true);return}
     if(selectedTool){
-      setAttachmentError('Plugin/MCP orchestration is not part of the Windows 4 Work loop yet. Remove the selected plugin or use Chat; Plugins/MCP are handled in Windows 5.');
+      setAttachmentError('Plugin/MCP orchestration is not part of Windows 4. Remove the selected plugin or use Chat; plugin orchestration remains a Windows 5 checkpoint.');
       return;
     }
     const canUploadFiles=selected.source==='browser'&&selected.fileUpload===true;
@@ -567,10 +610,20 @@ function App(){
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
-    setWorkTask({id:taskId,status:'running',step:0,maxSteps:18,detail:'Starting Work task…',approval:null,progress:[],finalMessage:'',error:''});
+    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,finalMessage:'',error:''});
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      let workspace=repositoryWorkspace;
+      if(product==='super'&&workspace?.root){
+        workspace=await window.desktopApi.repositorySummary(workspace.root);
+        setRepositoryWorkspace(workspace);
+      }
+      const team=product==='super'
+        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>modelKey(model)!==modelKey(selected)).slice(0,3).map(model=>({
+            id:model.id,source:model.source||'browser',name:modelLabel(model)
+          }))
+        : [];
       const state=await window.desktopApi.startWorkTask({
         id:taskId,
         provider:selected.id,
@@ -580,6 +633,8 @@ function App(){
         effort,
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
         attachments:outbound,
+        workspace:product==='super'?workspace:null,
+        team,
         instructions:projectInstructions||globalInstructions,
         history:messages.slice(-12).filter(message=>message?.role==='user'||message?.role==='assistant').map(message=>({
           role:message.role,
@@ -900,7 +955,7 @@ function App(){
                   <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
                 </button>
                 <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
-                  <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with browser and computer control</small></span>{product==='super'&&<Check size={16}/>}
+                  <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Agent workspace with browser and computer control</small></span>{product==='super'&&<Check size={16}/>} 
                 </button>
               </div>}
             </div>}
@@ -979,9 +1034,9 @@ function App(){
           )}
         </>:<>
           <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-          <button className="projectItem" onClick={()=>{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}>
+          <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
             {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
-            {product==='super'?'Repository workspace':'Free AI Workspace'}
+            {product==='super'?(repositoryWorkspace?.name||'Choose repository'):'Free AI Workspace'}
           </button>
           <div className="sidebarGroupTitle">Recents</div>
           {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
@@ -1051,6 +1106,8 @@ function App(){
                 approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+                repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={openPluginsPage}
@@ -1096,14 +1153,16 @@ function App(){
                   approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
-                    onBrowser={openBrowser}
+                repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
+                superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={openPluginsPage}
                 />
               </div>
             </div>
         }
-        <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
+        <div className="stageFooter">{product==='super'?'Super AI can make mistakes. Review edits and important actions.':'Free AI can make mistakes. Check important information.'}</div>
       </section>}
 
       {page==='project'&&isWindowsDesktop&&activeProject&&<ProjectPage
@@ -1196,12 +1255,14 @@ function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
+    repositoryWorkspace,onChooseRepository,onClearRepository,superTeamKeys=[],setSuperTeamKeys,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
   const [dictationNotice,setDictationNotice]=useState('');
   const [approvalMenu,setApprovalMenu]=useState(false);
+  const [teamMenu,setTeamMenu]=useState(false);
   const textareaRef=useRef(null);
   const nativeSpeechHandles=useRef([]);
   const webRecognition=useRef(null);
@@ -1313,6 +1374,10 @@ function Composer(props){
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
     {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval}/>}
+    {product==='super'&&windowsDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
+      <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
+      <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
+    </div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
@@ -1346,6 +1411,12 @@ function Composer(props){
       </div>
 
       <div className="composerRight">
+        {product==='super'&&windowsDesktop&&<div className="menuAnchor">
+          <button className="teamButton" aria-haspopup="menu" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
+            <Bot size={14}/>Team {1+superTeamKeys.length}<ChevronDown size={12}/>
+          </button>
+          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>setSuperTeamKeys?.(keys)} onClose={()=>setTeamMenu(false)}/>}
+        </div>}
         {!isNative&&<div className="menuAnchor">
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
@@ -1371,7 +1442,7 @@ function Composer(props){
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      <button onClick={()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?'Add workspace files':windowsDesktop?'Attach project files':'Choose project'}</button>
+      <button onClick={product==='super'&&windowsDesktop?onChooseRepository:()=>fileRef.current?.click()}><Folder size={15}/>{product==='super'?(repositoryWorkspace?.name||'Choose repository'):windowsDesktop?'Attach project files':'Choose project'}</button>
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
@@ -1420,6 +1491,31 @@ function ModelMenu({connected,selected,choose}){
   </div>
 }
 
+function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
+  const primary=modelKey(selected);
+  const eligible=connected.filter(model=>modelKey(model)!==primary);
+  const toggle=key=>{
+    const current=Array.isArray(selectedKeys)?selectedKeys:[];
+    if(current.includes(key)){choose(current.filter(item=>item!==key));return}
+    if(current.length>=3)return;
+    choose([...current,key]);
+  };
+  return <div className="floatingMenu teamPicker" role="menu" aria-label="Super AI team">
+    <div className="teamPickerHead"><span><b>Super AI team</b><small>Controller + up to 3 specialist/reviewer models</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
+    {selected&&<div className="teamControllerRow"><span className={'providerBadge '+(selected.source==='api'?'api':selected.id)}>{modelLabel(selected).slice(0,1)}</span><span><b>{modelLabel(selected)}</b><small>Primary controller</small></span><Check size={14}/></div>}
+    <div className="floatingTitle section">Specialists / reviewers</div>
+    {eligible.length===0?<div className="menuEmpty compact">Connect another model to build a multi-agent team.</div>:eligible.map(model=>{
+      const key=modelKey(model),checked=selectedKeys.includes(key),limitReached=!checked&&selectedKeys.length>=3;
+      return <button key={key} className={'teamModelRow '+(checked?'active ':'')+(limitReached?'disabled':'')} disabled={limitReached} onClick={()=>toggle(key)}>
+        <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
+        <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API model':'Connected browser model'}</small></span>
+        <span className={'teamCheck '+(checked?'checked':'')}>{checked?<Check size={13}/>:null}</span>
+      </button>;
+    })}
+    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' additional agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
+  </div>
+}
+
 function EffortMenu({effort,levels,choose}){
   const values=Array.isArray(levels)?levels.filter(Boolean):[];
   const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'};
@@ -1453,11 +1549,16 @@ function PermissionModeMenu({value,choose}){
 function WorkTaskStatus({task,onApproval}){
   const labels={running:'Running',waiting_approval:'Waiting for approval',completed:'Completed',failed:'Failed',stopped:'Stopped'};
   const active=task.status==='running'||task.status==='waiting_approval';
+  const agents=Array.isArray(task.agents)?task.agents:[];
   return <div className={'workTaskStatus '+task.status} role="status" aria-live="polite">
     <div className="workTaskHead">
       <span className="workTaskStateIcon">{task.status==='completed'?<Check size={15}/>:task.status==='failed'?<X size={15}/>:task.status==='stopped'?<Square size={13}/>:<RefreshCw className={active?'spin':''} size={14}/>}</span>
-      <span><b>{labels[task.status]||task.status}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
+      <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
     </div>
+    {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
+    {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
+      <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
+    </div>)}</div>}
     {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-4).map(item=><span key={item.id}>{item.text}</span>)}</div>}
     {task.status==='waiting_approval'&&task.approval&&<div className="workApprovalCard">
       <ShieldCheck size={18}/>
@@ -2009,7 +2110,7 @@ function SettingsView(props){
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
-      {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Git integration','Available through installed plugins'],['Repository context','Super AI / Work']]}/>}
+      {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Local repository workspace','Super AI · user-selected Git folder'],['Repository actions','Status, list, read, diff, and approval-gated writes']]}/>}
       {section==='Environments'&&!isNative&&<SimpleSettings title="Environments" rows={[['Desktop runtime','Electron desktop'],['Browser bridge',status.extension?'Connected':'Disconnected']]}/>}
     </main>
   </div>
