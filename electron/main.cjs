@@ -1745,7 +1745,7 @@ function workApprovalFor(task,decision){
   const readOnly=workActionIsReadOnly(tool,type);
   const sensitive=workActionIsSensitive(tool,type);
   const mode=task.approvalMode;
-  const needsActionApproval=!readOnly&&(mode==='ask'||mode==='read'||sensitive);
+  const needsActionApproval=mode==='ask'||(mode==='read'?!readOnly:sensitive);
 
   if(!scope&&!needsActionApproval)return null;
 
