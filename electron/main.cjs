@@ -1050,17 +1050,42 @@ async function canonicalRepositoryRoot(input){
   }
   const resolved=path.resolve(root);
   if(!fs.existsSync(resolved)||!fs.statSync(resolved).isDirectory())throw new Error('Git repository root is not available.');
-  return resolved;
+  return fs.realpathSync(resolved);
+}
+
+function repositoryContainsPath(root,candidate){
+  const realRoot=fs.realpathSync(root);
+  const prefix=(realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep).toLowerCase();
+  const value=String(candidate||'').toLowerCase();
+  return value===realRoot.toLowerCase()||value.startsWith(prefix);
+}
+
+function nearestExistingRepositoryAncestor(candidate){
+  let current=path.resolve(candidate);
+  while(!fs.existsSync(current)){
+    const parent=path.dirname(current);
+    if(parent===current)break;
+    current=parent;
+  }
+  return current;
 }
 
 function safeRepositoryPath(root,relativePath,{allowMissing=false}={}){
+  const realRoot=fs.realpathSync(root);
   const rel=String(relativePath||'').replace(/\\/g,'/').trim();
   if(!rel||path.isAbsolute(rel)||rel.split('/').some(part=>part==='..'||part===''))throw new Error('Repository path must be a relative file path.');
   if(rel==='.git'||rel.startsWith('.git/'))throw new Error('Direct access to .git is not allowed.');
-  const resolved=path.resolve(root,...rel.split('/'));
-  const prefix=root.endsWith(path.sep)?root:root+path.sep;
-  if(resolved!==root&&!resolved.toLowerCase().startsWith(prefix.toLowerCase()))throw new Error('Repository path escapes the selected workspace.');
-  if(!allowMissing&&!fs.existsSync(resolved))throw new Error('Repository file does not exist: '+rel);
+  const resolved=path.resolve(realRoot,...rel.split('/'));
+  if(!repositoryContainsPath(realRoot,resolved))throw new Error('Repository path escapes the selected workspace.');
+  if(fs.existsSync(resolved)){
+    const realTarget=fs.realpathSync(resolved);
+    if(!repositoryContainsPath(realRoot,realTarget))throw new Error('Repository path resolves through a symlink outside the selected workspace.');
+  }else{
+    if(!allowMissing)throw new Error('Repository file does not exist: '+rel);
+    const ancestor=nearestExistingRepositoryAncestor(path.dirname(resolved));
+    const realAncestor=fs.realpathSync(ancestor);
+    if(!repositoryContainsPath(realRoot,realAncestor))throw new Error('Repository path resolves through a symlink outside the selected workspace.');
+  }
   return {resolved,relative:rel};
 }
 
@@ -1909,9 +1934,20 @@ function workApprovalFor(task,decision){
   const repositoryTarget=tool==='repository'&&action.path
     ? 'Repository file: '+String(action.path).slice(0,500)+'.'
     : '';
-  const repositoryWrite=tool==='repository'&&type==='write'
-    ? 'New content size: '+Buffer.byteLength(String(action.content??''),'utf8')+' bytes.'
-    : '';
+  let repositoryWrite='';
+  if(tool==='repository'&&type==='write'){
+    const newBytes=Buffer.byteLength(String(action.content??''),'utf8');
+    let operation='Write';
+    let previousBytes=0;
+    try{
+      const target=safeRepositoryPath(task.workspace?.root||'',action.path,{allowMissing:true});
+      if(fs.existsSync(target.resolved)){
+        operation='Replace existing file';
+        previousBytes=fs.statSync(target.resolved).size;
+      }else operation='Create new file';
+    }catch{}
+    repositoryWrite=operation+'. Previous size: '+previousBytes+' bytes. New size: '+newBytes+' bytes.';
+  }
   const detail=[
     scopeDetail,
     needsActionApproval?'Proposed action: '+label+'. Tool: '+tool+'. Type: '+type+'.':'',
@@ -2407,10 +2443,20 @@ async function executeWorkTool(task,decision){
     if(task.product!=='super'||!task.workspace?.root)throw new Error('No local repository is attached to this Super AI task.');
     if(type==='status')return repositorySummary(task.workspace.root);
     if(type==='list')return repositoryList(task.workspace.root);
-    if(type==='read')return repositoryRead(task.workspace.root,action.path);
+    if(type==='read'){
+      const result=await repositoryRead(task.workspace.root,action.path);
+      task.repositoryReads.add(String(result.path||'').toLowerCase());
+      return result;
+    }
     if(type==='diff')return repositoryDiff(task.workspace.root,action.path||'');
     if(type==='write'){
-      const result=await repositoryWrite(task.workspace.root,action.path,action.content);
+      const target=safeRepositoryPath(task.workspace.root,action.path,{allowMissing:true});
+      const key=String(target.relative||'').toLowerCase();
+      if(fs.existsSync(target.resolved)&&!task.repositoryReads.has(key)){
+        throw new Error('Read the existing repository file before proposing a write: '+target.relative);
+      }
+      const result=await repositoryWrite(task.workspace.root,target.relative,action.content);
+      task.repositoryReads.delete(key);
       task.workspace=await repositorySummary(task.workspace.root);
       return {...result,workspace:{name:task.workspace.name,branch:task.workspace.branch,head:task.workspace.head,dirty:task.workspace.dirty,status:task.workspace.status}};
     }
@@ -2615,6 +2661,7 @@ async function startWorkTask(input={}){
     agents,
     team,
     specialistNotes:[],
+    repositoryReads:new Set(),
     trace:[],
     approvedScopes:new Set(),
     approval:null,
