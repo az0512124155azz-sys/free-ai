@@ -333,6 +333,7 @@ function App(){
 
   async function openBrowser(){
     setPlusMenu(false);
+    if(isDesktop&&mode!=='work')setMode('work');
     if(isNative){
       try{
         await InAppBrowser.openWebView({
