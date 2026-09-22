@@ -1625,7 +1625,7 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
   const currentEffort=labels[effort]||effort||'Instant';
   return <div className="mobileConversationPicker menuAnchor">
     <button className="mobileModelTrigger" aria-haspopup="dialog" aria-expanded={open} onClick={()=>setOpen(v=>!v)}>
-      <span className={'providerBadge small '+(selected?.source==='api'?'api':selected?.id||'')}>{selected?modelLabel(selected).slice(0,1):'+'}</span>
+      <ProviderBadge model={selected} small/>
       <span className="mobileModelTriggerText"><b>{selected?modelLabel(selected):'Select model'}</b>{levels.length>1&&<small>{currentEffort}</small>}</span>
       <ChevronDown size={14}/>
     </button>
@@ -1649,40 +1649,70 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
   </div>
 }
 
-function ModelMenu({connected,selected,choose}){
+function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount}){
+  const selectedGroupKey=modelGroupKey(selected);
+  const matchingInstances=selectedGroupKey
+    ? connected.filter(model=>model.connected!==false&&modelGroupKey(model)===selectedGroupKey)
+    : [];
+  const maxParallel=Math.max(1,matchingInstances.length);
+  const parallel=Math.max(1,Math.min(Number(parallelCount)||1,maxParallel));
   return <div className="floatingMenu modelPicker" role="listbox" aria-label="Select model">
     <div className="floatingTitle">Select model</div>
     {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
-      connected.map(model=><button role="option" aria-selected={selected?.id===model.id&&selected?.source===model.source} key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
-        <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
-        <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name+' · current tab'}</small></span>
-        {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
-      </button>)}
+      connected.map(model=>{
+        const active=selected?.id===model.id&&selected?.source===model.source;
+        const siblings=connected.filter(item=>item.connected!==false&&modelGroupKey(item)===modelGroupKey(model)).length;
+        return <button
+          role="option"
+          aria-selected={active}
+          aria-disabled={model.connected===false}
+          disabled={model.connected===false}
+          key={(model.source||'browser')+model.id}
+          className={'pickerRow '+(model.connected===false?'disconnected':'')}
+          onClick={()=>choose(model)}
+        >
+          <ProviderBadge model={model}/>
+          <span className="pickerText">
+            <b>{modelLabel(model)}</b>
+            <small>{modelInstanceLabel(model)}{siblings>1?' · '+siblings+' matching tabs':''}{model.connected===false?' · reconnecting…':''}</small>
+          </span>
+          {active&&<Check size={16}/>}
+        </button>;
+      })}
+    {selected?.source==='browser'&&maxParallel>1&&<div className="parallelPicker">
+      <span><b>Parallel instances</b><small>Send this prompt to multiple open tabs of the same model.</small></span>
+      <select value={parallel} onChange={e=>setParallelCount?.(Number(e.target.value))} aria-label="Parallel model instances">
+        {matchingInstances.map((_,index)=><option value={index+1} key={index+1}>{index+1===maxParallel?'All '+maxParallel:index+1}</option>)}
+      </select>
+    </div>}
   </div>
 }
 
 function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
   const primary=modelKey(selected);
-  const eligible=connected.filter(model=>modelKey(model)!==primary);
+  const eligible=connected.filter(model=>model.connected!==false&&modelKey(model)!==primary);
+  const eligibleKeys=eligible.map(modelKey);
   const toggle=key=>{
     const current=Array.isArray(selectedKeys)?selectedKeys:[];
     if(current.includes(key)){choose(current.filter(item=>item!==key));return}
-    if(current.length>=3)return;
     choose([...current,key]);
   };
+  const allSelected=eligible.length>0&&eligibleKeys.every(key=>selectedKeys.includes(key));
+  const useAll=()=>choose(allSelected?[]:eligibleKeys);
   return <div className="floatingMenu teamPicker" role="menu" aria-label="Super AI team">
-    <div className="teamPickerHead"><span><b>Super AI team</b><small>Controller + up to 3 specialist/reviewer models</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
-    {selected&&<div className="teamControllerRow"><span className={'providerBadge '+(selected.source==='api'?'api':selected.id)}>{modelLabel(selected).slice(0,1)}</span><span><b>{modelLabel(selected)}</b><small>Primary controller</small></span><Check size={14}/></div>}
+    <div className="teamPickerHead"><span><b>Super AI team</b><small>One controller with parallel specialist/reviewer agents</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
+    {selected&&<div className="teamControllerRow"><ProviderBadge model={selected}/><span><b>{modelLabel(selected)}</b><small>Primary controller · {modelInstanceLabel(selected)}</small></span><Check size={14}/></div>}
+    {eligible.length>0&&<button className={'teamUseAll '+(allSelected?'active':'')} onClick={useAll}><Bot size={14}/><span>{allSelected?'Use controller only':'Use all '+eligible.length+' connected agents'}</span>{allSelected&&<Check size={13}/>}</button>}
     <div className="floatingTitle section">Specialists / reviewers</div>
     {eligible.length===0?<div className="menuEmpty compact">Connect another model to build a multi-agent team.</div>:eligible.map(model=>{
-      const key=modelKey(model),checked=selectedKeys.includes(key),limitReached=!checked&&selectedKeys.length>=3;
-      return <button key={key} className={'teamModelRow '+(checked?'active ':'')+(limitReached?'disabled':'')} disabled={limitReached} onClick={()=>toggle(key)}>
-        <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
-        <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API model':'Connected browser model'}</small></span>
+      const key=modelKey(model),checked=selectedKeys.includes(key);
+      return <button key={key} className={'teamModelRow '+(checked?'active ':'')} onClick={()=>toggle(key)}>
+        <ProviderBadge model={model}/>
+        <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
         <span className={'teamCheck '+(checked?'checked':'')}>{checked?<Check size={13}/>:null}</span>
       </button>;
     })}
-    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' additional agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
+    <div className="teamPickerFoot">{selectedKeys.length?selectedKeys.length+' parallel agent'+(selectedKeys.length===1?'':'s')+' selected':'Controller-only mode'}</div>
   </div>
 }
 
