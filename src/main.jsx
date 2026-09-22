@@ -1554,6 +1554,8 @@ function App(){
                 approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+                 onWorkProject={task=>{const project=projects.find(item=>item.id===task?.projectId);if(project){setActiveProjectId(project.id);setPage('project');setMobileNavOpen(false)}}}
+                 onWorkAgent={(task,agent)=>{const chat=chats.find(item=>item.taskId===task?.id&&item.agentId===agent?.id);if(chat)openChat(chat)}}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
@@ -1605,6 +1607,8 @@ function App(){
                   approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+                 onWorkProject={task=>{const project=projects.find(item=>item.id===task?.projectId);if(project){setActiveProjectId(project.id);setPage('project');setMobileNavOpen(false)}}}
+                 onWorkAgent={(task,agent)=>{const chat=chats.find(item=>item.taskId===task?.id&&item.agentId===agent?.id);if(chat)openChat(chat)}}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
@@ -1620,7 +1624,10 @@ function App(){
       </section>}
 
       {page==='project'&&isWindowsDesktop&&activeProject&&<ProjectPage
-        project={activeProject} chats={projectChats} onBack={()=>{setActiveProjectId(null);setPage('chat')}}
+        project={activeProject} chats={projectChats}
+        task={workTask?.projectId===activeProject.id?workTask:null}
+        onApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+        onBack={()=>{setActiveProjectId(null);setPage('chat')}}
         onStart={nextMode=>startProjectConversation(activeProject.id,nextMode)}
         onOpenChat={openChat} onSave={patch=>updateProject(activeProject.id,patch)}
       />}
@@ -1692,7 +1699,7 @@ function NewProjectDialog({draft,setDraft,onCreate,onClose}){
   </div>
 }
 
-function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
+function ProjectPage({project,chats,task,onApproval,onBack,onStart,onOpenChat,onSave}){
   const [draft,setDraft]=useState({name:project.name,icon:project.icon||'folder',color:project.color||'blue',instructions:project.instructions||''});
   const [saved,setSaved]=useState(false);
   const orchestration=project.kind==='orchestration'||project.product==='super';
@@ -1720,6 +1727,16 @@ function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
             : <><button onClick={()=>onStart('chat')}><SquarePen size={15}/>Chat</button><button onClick={()=>onStart('work')}><Briefcase size={15}/>Work</button></>}
         </div>
       </div>
+      {orchestration&&task&&<div className="projectLiveTask">
+        <WorkTaskStatus
+          task={task}
+          onApproval={onApproval}
+          onOpenAgent={(_task,agent)=>{
+            const chat=agentChats.find(item=>item.agentId===agent.id);
+            if(chat)onOpenChat(chat);
+          }}
+        />
+      </div>}
 
       {orchestration?<>
         <section className="projectSection">
@@ -1763,7 +1780,7 @@ function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onWorkProject,onWorkAgent,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
     mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
   }=props;
@@ -1883,7 +1900,7 @@ function Composer(props){
   },[listening]);
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
-    {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval}/>}
+    {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval} onOpenProject={onWorkProject} onOpenAgent={onWorkAgent}/>} 
     {product==='super'&&windowsDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
@@ -2099,7 +2116,7 @@ function PermissionModeMenu({value,choose}){
   </div>
 }
 
-function WorkTaskStatus({task,onApproval}){
+function WorkTaskStatus({task,onApproval,onOpenProject,onOpenAgent}){
   const labels={running:'Running',waiting_approval:'Waiting for approval',completed:'Completed',failed:'Failed',stopped:'Stopped'};
   const active=task.status==='running'||task.status==='waiting_approval';
   const agents=Array.isArray(task.agents)?task.agents:[];
@@ -2107,14 +2124,18 @@ function WorkTaskStatus({task,onApproval}){
     <div className="workTaskHead">
       <span className="workTaskStateIcon">{task.status==='completed'?<Check size={15}/>:task.status==='failed'?<X size={15}/>:task.status==='stopped'?<Square size={13}/>:<RefreshCw className={active?'spin':''} size={14}/>}</span>
       <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
+      {task.projectId&&onOpenProject&&<button className="workTaskProjectButton" onClick={()=>onOpenProject(task)}><Folder size={12}/>Project</button>}
     </div>
     {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
     {task.folder&&<div className="workWorkspaceLine"><Folder size={12}/><span>{task.folder.name}</span><small>Local Files</small></div>}
     {Array.isArray(task.apps)&&task.apps.length>0&&<div className="workAppsLine"><Plug size={12}/><span>{task.apps.map(app=>app.name).join(' · ')}</span><small>{task.apps.reduce((sum,app)=>sum+(Number(app.toolCount)||0),0)} direct MCP tools</small></div>}
-    {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
-      <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
-    </div>)}</div>}
-    {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-4).map(item=><span key={item.id}>{item.text}</span>)}</div>}
+    {agents.length>0&&<div className="workAgentList">{agents.map(agent=>{
+      const body=<><span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>{Array.isArray(agent.thread)&&agent.thread.length>0&&<span className="agentMessageCount">{agent.thread.length}</span>}</>;
+      return onOpenAgent&&!agent.controller
+        ? <button type="button" className={'workAgent '+agent.status+' clickable'} key={agent.id} onClick={()=>onOpenAgent(task,agent)}>{body}</button>
+        : <div className={'workAgent '+agent.status} key={agent.id}>{body}</div>;
+    })}</div>}
+    {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-6).map(item=><span key={item.id}>{item.text}</span>)}</div>}
     {task.status==='waiting_approval'&&task.approval&&<div className="workApprovalCard">
       <ShieldCheck size={18}/>
       <div><b>{task.approval.title}</b><span>{task.approval.summary}</span>{task.approval.detail&&<small>{task.approval.detail}</small>}</div>
