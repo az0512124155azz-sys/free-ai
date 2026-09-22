@@ -1753,11 +1753,30 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
   async function executeAction(action){
     setControlError('');
     try{
-      if(action.text)await window.desktopApi.computerClickAndType(action);
-      else await window.desktopApi.computerClick(action);
+      if(isWindowsDesktop){
+        const viewport={width:action.viewportWidth,height:action.viewportHeight};
+        const x=Math.round(action.nx*Math.max(1,viewport.width-1));
+        const y=Math.round(action.ny*Math.max(1,viewport.height-1));
+        let result=await window.desktopApi.computerPerformAction({
+          displayId:action.displayId,
+          viewport,
+          action:{type:'click',button:'left',x,y}
+        });
+        if(action.text){
+          result=await window.desktopApi.computerPerformAction({
+            displayId:action.displayId,
+            viewport,
+            action:{type:'type',text:action.text}
+          });
+        }
+        if(Array.isArray(result?.screens))setScreens(result.screens);
+      }else{
+        if(action.text)await window.desktopApi.computerClickAndType(action);
+        else await window.desktopApi.computerClick(action);
+        setTimeout(refresh,500);
+      }
       setLastPoint(action);
       setPendingAction(null);
-      setTimeout(refresh,500);
     }catch(e){setControlError(e?.message||'Computer action failed.')}
   }
 
@@ -1771,6 +1790,8 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
       displayId:screen.displayId,
       nx:(e.clientX-rect.left)/rect.width,
       ny:(e.clientY-rect.top)/rect.height,
+      viewportWidth:Number(screen.width)||800,
+      viewportHeight:Number(screen.height)||450,
       text:typeText||''
     };
     if(approvalMode==='ask'||(approvalMode==='auto'&&!!action.text)){setPendingAction(action);return}
