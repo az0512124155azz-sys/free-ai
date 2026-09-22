@@ -924,12 +924,13 @@ public static class FreeAIInput {
 
 function windowsMouseButton(button){
   switch(String(button||'left').toLowerCase()){
+    case 'left':return {down:2,up:4,data:0};
     case 'right':return {down:8,up:16,data:0};
     case 'wheel':
     case 'middle':return {down:32,up:64,data:0};
     case 'back':return {down:128,up:256,data:1};
     case 'forward':return {down:128,up:256,data:2};
-    default:return {down:2,up:4,data:0};
+    default:throw new Error('Computer Use requested an unsupported mouse button.');
   }
 }
 
@@ -938,7 +939,7 @@ function windowsKeyCode(key){
   if(/^[A-Z]$/.test(name))return name.charCodeAt(0);
   if(/^[0-9]$/.test(name))return name.charCodeAt(0);
   const codes={
-    CTRL:0x11,CONTROL:0x11,SHIFT:0x10,ALT:0x12,META:0x5B,WIN:0x5B,WINDOWS:0x5B,
+    CTRL:0x11,CONTROL:0x11,SHIFT:0x10,ALT:0x12,META:0x5B,CMD:0x5B,COMMAND:0x5B,WIN:0x5B,WINDOWS:0x5B,
     ENTER:0x0D,RETURN:0x0D,TAB:0x09,ESC:0x1B,ESCAPE:0x1B,SPACE:0x20,
     BACKSPACE:0x08,DELETE:0x2E,INSERT:0x2D,HOME:0x24,END:0x23,
     PAGEUP:0x21,PAGEDOWN:0x22,ARROWLEFT:0x25,LEFT:0x25,ARROWUP:0x26,UP:0x26,
@@ -994,9 +995,9 @@ async function keypressWindows(keys){
 async function dragWindowsPath(points){
   if(!Array.isArray(points)||points.length<2)throw new Error('Drag requires at least two valid points.');
   const safe=points.map(point=>({x:Math.round(Number(point.x)||0),y:Math.round(Number(point.y)||0)}));
-  let body=`if(-not [FreeAIInput]::SetPhysicalCursorPos(${safe[0].x},${safe[0].y})) { throw "SetPhysicalCursorPos failed." }\n[FreeAIInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero)\n`;
+  let body=`if(-not [FreeAIInput]::SetPhysicalCursorPos(${safe[0].x},${safe[0].y})) { throw "SetPhysicalCursorPos failed." }\n[FreeAIInput]::mouse_event(2,0,0,0,[UIntPtr]::Zero)\ntry {\n`;
   for(const point of safe.slice(1))body+=`Start-Sleep -Milliseconds 45\nif(-not [FreeAIInput]::SetPhysicalCursorPos(${point.x},${point.y})) { throw "SetPhysicalCursorPos failed." }\n`;
-  body+='[FreeAIInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero)\n';
+  body+='} finally { [FreeAIInput]::mouse_event(4,0,0,0,[UIntPtr]::Zero) }\n';
   await runPowerShell(windowsInputPreamble()+body);
 }
 
@@ -1413,9 +1414,15 @@ async function captureScreens(){
 }
 
 function computerViewportPoint(displayId,x,y,width,height){
-  const w=Math.max(1,Number(width)||1);
-  const h=Math.max(1,Number(height)||1);
-  return displayPoint(displayId,Number(x)/Math.max(1,w-1),Number(y)/Math.max(1,h-1));
+  const w=Number(width);
+  const h=Number(height);
+  if(!Number.isFinite(w)||!Number.isFinite(h)||w<=1||h<=1){
+    throw new Error('Computer Use action is missing a valid screenshot viewport.');
+  }
+  if(!Number.isFinite(Number(x))||!Number.isFinite(Number(y))){
+    throw new Error('Computer Use action is missing valid screen coordinates.');
+  }
+  return displayPoint(displayId,Number(x)/(w-1),Number(y)/(h-1));
 }
 
 async function performWindowsComputerAction(payload={}){
