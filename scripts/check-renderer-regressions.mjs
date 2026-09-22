@@ -47,7 +47,7 @@ for(const marker of ['ResearchSetupDialog','DEFAULT_RESEARCH_PLAN','Only these s
   if(!source.includes(marker))fail('Windows 6.8 research UI is missing "'+marker+'".');
 }
 const researchRuntime=fs.readFileSync('electron/research.cjs','utf8');
-for(const marker of ['runOwnedResearch','format=json','allowedByScope','retrievedAt','printToPDF','reportDocx']){
+for(const marker of ['runOwnedResearch',"searchParams.set('format','json')",'allowedByScope','retrievedAt','printToPDF','reportDocx']){
   if(!researchRuntime.includes(marker))fail('Windows 6.8 research runtime is missing "'+marker+'".');
 }
 if(researchRuntime.includes('api.duckduckgo.com')){
