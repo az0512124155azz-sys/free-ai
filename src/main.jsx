@@ -603,7 +603,7 @@ function App(){
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
-    setWorkTask({id:taskId,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,finalMessage:'',error:''});
+    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,finalMessage:'',error:''});
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
