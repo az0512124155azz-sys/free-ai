@@ -1391,6 +1391,7 @@ function App(){
                   compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
+                  parallelCount={parallelCount} setParallelCount={setParallelCount}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
@@ -1738,8 +1739,8 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
       <div className="mobilePickerSectionTitle">Models</div>
       <div className="mobileModelList">
         {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Connect your desktop or add an API model first.</span></div>:connected.map(model=><button key={(model.source||'browser')+model.id} className={(selected?.id===model.id&&selected?.source===model.source)?'active':''} onClick={()=>choose(model)}>
-          <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
-          <span><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Desktop · '+model.name}</small></span>
+          <ProviderBadge model={model}/>
+          <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
           {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
         </button>)}
       </div>
