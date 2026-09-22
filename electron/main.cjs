@@ -645,7 +645,10 @@ app.whenReady().then(()=>{
 });
 
 app.on('before-quit',()=>{
-  closeBrowserView();
+  hideBrowserView();
+  for(const view of browserTabs.values()){try{view.webContents.close()}catch{}}
+  browserTabs.clear();
+  activeBrowserTabId=null;
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
   pending.clear();
