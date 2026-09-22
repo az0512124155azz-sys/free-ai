@@ -546,6 +546,27 @@ button:disabled{opacity:.42;cursor:default}
 .authCard form{display:grid;gap:8px}.authCard form input{height:39px;background:var(--canvas);border:1px solid var(--border);border-radius:9px;padding:0 10px;color:var(--text)}
 .authSwitch{background:transparent;color:var(--text-tertiary);margin-top:13px;font-size:11px}
 
+.voiceOverlay{position:fixed;inset:32px 0 0;z-index:190;background:var(--canvas);display:flex;flex-direction:column}
+.voiceTopbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--border-soft)}
+.voiceTopbar>span{display:flex;align-items:center;gap:8px}.voiceTopbar b{font-size:13px}.voiceTopbar small{font-size:10px;color:var(--muted);margin-left:2px}
+.voiceTopbar>button{width:32px;height:32px;border-radius:50%;background:var(--surface-secondary);display:grid;place-items:center;color:var(--text-secondary)}
+.voiceStage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:30px 18px 110px;overflow:auto}
+.voiceCore{width:116px;height:116px;border-radius:50%;background:radial-gradient(circle at 35% 30%,color-mix(in srgb,var(--accent) 78%,white 22%),var(--accent-strong));display:flex;align-items:center;justify-content:center;gap:5px;box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 24%,transparent);transition:transform 180ms var(--ease),box-shadow 180ms var(--ease)}
+.voiceCore span{width:5px;height:28px;border-radius:999px;background:#fff;opacity:.92;transform-origin:center}
+.voiceCore span:nth-child(2){height:42px}.voiceCore span:nth-child(3){height:22px}
+.voiceCore.listening{transform:scale(1.04);box-shadow:0 0 0 16px color-mix(in srgb,var(--accent) 12%,transparent)}
+.voiceCore.listening span{animation:voiceBars .7s ease-in-out infinite alternate}.voiceCore.listening span:nth-child(2){animation-delay:.12s}.voiceCore.listening span:nth-child(3){animation-delay:.24s}
+.voiceCore.speaking{box-shadow:0 0 0 12px color-mix(in srgb,var(--accent) 10%,transparent)}
+.voiceStage h2{font-size:21px;font-weight:500;margin:24px 0 18px}
+.voiceTranscript{width:min(680px,90vw);padding:11px 14px;border-radius:16px;background:var(--surface-primary);margin-top:8px}.voiceTranscript small{display:block;color:var(--muted);font-size:10px;margin-bottom:5px}.voiceTranscript p{margin:0;font-size:14px;line-height:1.5;color:var(--text-secondary)}
+.voiceTranscript.assistant{background:transparent;border:1px solid var(--border-soft)}
+.voiceError{margin-top:10px;color:#ff9e9e;font-size:11px}
+.voiceControls{position:absolute;left:0;right:0;bottom:26px;display:flex;align-items:center;justify-content:center;gap:14px}
+.voiceMicControl,.voiceExitControl{width:54px;height:54px;border-radius:50%;display:grid;place-items:center}
+.voiceMicControl{background:var(--text);color:var(--canvas)}.voiceMicControl.active{background:var(--accent);color:#fff}.voiceMicControl:disabled{opacity:.45}
+.voiceExitControl{background:#343437;color:#fff}
+@keyframes voiceBars{from{transform:scaleY(.65)}to{transform:scaleY(1.35)}}
+
 .spin{animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
 @keyframes popoverIn{from{opacity:0;transform:translateY(4px) scale(.985)}to{opacity:1;transform:translateY(0) scale(1)}}
 .muted{color:var(--muted);font-size:11px}
