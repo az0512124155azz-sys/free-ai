@@ -66,6 +66,11 @@ function applyInitialWindowsVisualPrefs(){
 }
 applyInitialWindowsVisualPrefs();
 
+function normalizeApprovalMode(value){
+  if(value==='low'||value==='auto'||value==='full')return 'low';
+  if(value==='read')return 'read';
+  return 'ask';
+}
 function randomKey(){
   const b=new Uint8Array(32);crypto.getRandomValues(b);
   return [...b].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -193,14 +198,19 @@ function App(){
   const [attachmentError,setAttachmentError]=useState('');
   const [dragActive,setDragActive]=useState(false);
   const [screens,setScreens]=useState([]);
+  const [workTask,setWorkTask]=useState(null);
+  const handledWorkTerminalRef=useRef(null);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
-  const [appPrefs,setAppPrefs]=useState(()=>({
-    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
-    autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,
-    spellCheckEnabled:true,hapticsEnabled:true,
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,language:'English',showBottomPanel:true})
-  }));
+  const [appPrefs,setAppPrefs]=useState(()=>{
+    const saved=readJSON('freeai.prefs',{});
+    return {
+      appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,voiceLanguage:'auto',
+      customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,showBottomPanel:true,
+      ...saved,
+      approvalMode:normalizeApprovalMode(saved.approvalMode)
+    };
+  });
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
@@ -224,6 +234,7 @@ function App(){
     let active=true;
     window.desktopApi.getStatus().then(s=>active&&setStatus(s)).catch(()=>{});
     const offStatus=window.desktopApi.onStatus(s=>active&&setStatus(s));
+    const offWork=window.desktopApi.onWorkTask?.(state=>active&&setWorkTask(state));
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
       if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
@@ -232,7 +243,7 @@ function App(){
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
-    return()=>{active=false;offStatus?.();offCommand?.()};
+    return()=>{active=false;offStatus?.();offWork?.();offCommand?.()};
   },[]);
 
   useEffect(()=>{
