@@ -1698,7 +1698,10 @@ async function runWorkTask(task){
       const prompt=workPlannerPrompt(task,browserContext,computerContext,previousResult);
       const requestId=task.id+':'+task.step;
       task.activeRequestId=requestId;
-      const attachments=computerContext?[computerContext.attachment]:[];
+      const attachments=[
+        ...(task.step===1&&Array.isArray(task.initialAttachments)?task.initialAttachments:[]),
+        ...(computerContext?[computerContext.attachment]:[])
+      ];
       const result=await routePrompt({
         requestId,
         provider:task.provider,
@@ -1765,6 +1768,7 @@ function startWorkTask(payload={}){
     product:payload.product||'free',
     approvalMode:['ask','auto','full'].includes(payload.approvalMode)?payload.approvalMode:'ask',
     modelFileUpload:payload.modelFileUpload===true,
+    initialAttachments:Array.isArray(payload.attachments)?payload.attachments:[],
     state:'running',
     statusText:'Starting Work task',
     step:0,
