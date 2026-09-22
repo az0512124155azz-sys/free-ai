@@ -584,11 +584,96 @@ function App(){
     setLocalFolderWorkspace(null);
   }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
+  function orchestrationProjectTitle(text){
+    const value=String(text||'').replace(/\s+/g,' ').trim();
+    if(!value)return 'Super AI task';
+    return value.length>56?value.slice(0,56)+'…':value;
+  }
+  function ensureOrchestrationProject(taskText,teamCount){
+    if(activeProject&&activeProject.product==='super'){
+      workTaskProjectIdRef.current=activeProject.id;
+      return activeProject.id;
+    }
+    const project={
+      id:crypto.randomUUID(),
+      name:orchestrationProjectTitle(taskText),
+      icon:'sparkles',
+      color:'purple',
+      instructions:'',
+      product:'super',
+      kind:'orchestration',
+      agentCount:Number(teamCount)||0,
+      createdAt:Date.now(),
+      updatedAt:Date.now()
+    };
+    setProjects(prev=>{
+      const next=[project,...prev];
+      localStorage.setItem('freeai.projects',JSON.stringify(next));
+      return next;
+    });
+    setActiveProjectId(project.id);
+    workTaskProjectIdRef.current=project.id;
+    return project.id;
+  }
+  function syncWorkTaskAgentChats(state){
+    if(!state||state.product!=='super'||!Array.isArray(state.agents))return;
+    const projectId=state.projectId||workTaskProjectIdRef.current;
+    const masterChatId=state.masterChatId||workTaskMasterChatIdRef.current;
+    if(!projectId||!masterChatId)return;
+    const now=Date.now();
+    const agentChats=state.agents.filter(agent=>!agent.controller).map(agent=>{
+      const thread=Array.isArray(agent.thread)?agent.thread.map(message=>({
+        role:message.role==='assistant'?'assistant':'user',
+        text:String(message.text||''),
+        phase:message.phase||'',
+        at:message.at||0
+      })):[];
+      const latestAt=thread.reduce((max,message)=>Math.max(max,Number(message.at)||0),0);
+      return {
+        id:'agent:'+state.id+':'+agent.id,
+        title:(agent.modelName||agent.name||'Agent')+' · '+(agent.role||'Agent'),
+        providerId:agent.providerId||'',
+        source:agent.source||'browser',
+        modelName:agent.modelName||agent.name||'Agent',
+        messages:thread,
+        mode:'chat',
+        pinned:false,
+        projectId,
+        parentChatId:masterChatId,
+        isAgentThread:true,
+        agentId:agent.id,
+        agentRole:agent.role||'Agent',
+        agentStatus:agent.status||'idle',
+        agentDetail:agent.detail||'',
+        taskId:state.id,
+        superTeamKeys:[],
+        updatedAt:latestAt||now
+      };
+    });
+    const storageKey='freeai.chats.super';
+    setChats(prev=>{
+      const viewingSuper=localStorage.getItem('freeai.product')==='super';
+      const base=viewingSuper?prev:readJSON(storageKey,[]);
+      const incomingIds=new Set(agentChats.map(chat=>chat.id));
+      const existingById=new Map(base.map(chat=>[chat.id,chat]));
+      const merged=agentChats.map(chat=>{
+        const existing=existingById.get(chat.id);
+        if(existing?.detachedFromTask)return existing;
+        return {...existing,...chat,pinned:!!existing?.pinned};
+      });
+      const next=[
+        ...merged,
+        ...base.filter(chat=>!incomingIds.has(chat.id))
+      ].sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0)).slice(0,120);
+      localStorage.setItem(storageKey,JSON.stringify(next));
+      return viewingSuper?next:prev;
+    });
+  }
   function createProject(){
     stopActiveWorkTask();
     const name=String(projectDraft.name||'').trim();
     if(!name)return;
-    const project={id:crypto.randomUUID(),name,icon:projectDraft.icon||'folder',color:projectDraft.color||'blue',instructions:'',createdAt:Date.now(),updatedAt:Date.now()};
+    const project={id:crypto.randomUUID(),name,icon:projectDraft.icon||'folder',color:projectDraft.color||'blue',instructions:'',product,kind:product==='super'?'orchestration':'standard',createdAt:Date.now(),updatedAt:Date.now()};
     persistProjects([project,...projects]);
     setActiveProjectId(project.id);setProjectDialogOpen(false);setProjectDraft({name:'',icon:'folder',color:'blue'});setPage('project');
   }
@@ -607,26 +692,38 @@ function App(){
     setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setLocalFolderWorkspace(null);
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
-  function saveCurrentChat(nextMessages,model=selected){
-    if(!model||!nextMessages.length)return;
+  function saveCurrentChat(nextMessages,model=selected,options={}){
+    if(!model||!nextMessages.length)return null;
     const firstUser=nextMessages.find(m=>m.role==='user')?.text||'New chat';
-    const title=firstUser.length>46?firstUser.slice(0,46)+'…':firstUser;
-    let id=currentChatId;
-    if(!id){id=crypto.randomUUID();setCurrentChatId(id)}
+    const defaultTitle=firstUser.length>46?firstUser.slice(0,46)+'…':firstUser;
+    const id=options.chatId||currentChatId||crypto.randomUUID();
+    if(!options.chatId&&!currentChatId&&options.setCurrent!==false)setCurrentChatId(id);
     setChats(prev=>{
       const existing=prev.find(c=>c.id===id);
+      const metadata=options.meta&&typeof options.meta==='object'?options.meta:{};
       const chat={
-        id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,
-        mode:product==='super'?'work':mode,pinned:!!existing?.pinned,
-        projectId:existing?.projectId||activeProjectId||null,
-        workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:null,
-        localFolder:mode==='work'&&localFolderWorkspace?localFolderWorkspace:null,
-        superTeamKeys:product==='super'?superTeamKeys:[],
+        ...existing,
+        id,
+        title:options.title||existing?.title||defaultTitle,
+        providerId:model.id,
+        source:model.source,
+        modelName:modelLabel(model),
+        messages:nextMessages,
+        mode:options.mode||existing?.mode||(product==='super'?'work':mode),
+        pinned:!!existing?.pinned,
+        projectId:options.projectId!==undefined?options.projectId:(existing?.projectId||activeProjectId||null),
+        workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:(existing?.workspace||null),
+        localFolder:mode==='work'&&localFolderWorkspace?localFolderWorkspace:(existing?.localFolder||null),
+        superTeamKeys:product==='super'&&!metadata.isAgentThread?superTeamKeys:(existing?.superTeamKeys||[]),
+        ...metadata,
         updatedAt:Date.now()
       };
-      const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
-      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
+      const limit=product==='super'?120:60;
+      const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,limit);
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
     });
+    return id;
   }
   function togglePinChat(id){
     setChats(prev=>{
@@ -666,9 +763,10 @@ function App(){
     if(product==='free')setMode(chat.mode||'chat');
     if(product==='super'){
       setRepositoryWorkspace(chat.workspace||null);
-      setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
+      setSuperTeamKeys(chat.isAgentThread?[]:(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]));
+      setMode(chat.isAgentThread?'chat':'work');
     }
-    setLocalFolderWorkspace((chat.mode==='work'||product==='super')?(chat.localFolder||null):null);
+    setLocalFolderWorkspace((chat.mode==='work'||(product==='super'&&!chat.isAgentThread))?(chat.localFolder||null):null);
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
@@ -882,7 +980,11 @@ function App(){
     cancelledRequestRef.current=null;
     activeRequestRef.current=requestId;
     const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true}]:withUser;
-    setMessages(initial);saveCurrentChat(withUser,model);
+    const currentChatMeta=chats.find(chat=>chat.id===currentChatId)||null;
+    const directAgentMeta=currentChatMeta?.isAgentThread
+      ? {isAgentThread:true,parentChatId:currentChatMeta.parentChatId,agentId:currentChatMeta.agentId,agentRole:currentChatMeta.agentRole,taskId:currentChatMeta.taskId,detachedFromTask:true}
+      : {};
+    setMessages(initial);saveCurrentChat(withUser,model,{mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
