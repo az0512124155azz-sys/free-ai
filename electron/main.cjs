@@ -1919,14 +1919,14 @@ async function routePrompt(msg,emitToRenderer=false){
       toolRequest:tool
     },null);
     const augmented=[
-      'Another connected model used the installed MCP/connector "'+tool.mcp+'".',
-      'Tool result:',
+      'Another connected provider was asked to use its provider-managed connector hint "'+tool.mcp+'".',
+      'This is not a verified direct MCP tool call. Treat the following only as the provider response after that request:',
       toolResult.text||'',
       '',
       'Original request:',
       msg.text,
       '',
-      'Use the tool result above to answer the original request.'
+      'Answer the original request using the provider response only as unverified supporting context. Do not claim the connector definitely ran unless the response itself provides reliable evidence.'
     ].join('\n');
     return routeDirect({...msg,text:augmented,toolRequest:null},onStream);
   }
