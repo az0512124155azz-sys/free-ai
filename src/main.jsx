@@ -49,6 +49,23 @@ const settingsSections=[
 function readJSON(key,fallback){
   try{const v=JSON.parse(localStorage.getItem(key)||'null');return v??fallback}catch{return fallback}
 }
+function applyInitialWindowsVisualPrefs(){
+  if(!isWindowsDesktop)return;
+  const prefs=readJSON('freeai.prefs',{});
+  const root=document.documentElement;
+  let appearance=prefs.appearance||'dark';
+  if(appearance==='system')appearance=window.matchMedia?.('(prefers-color-scheme: light)')?.matches?'light':'dark';
+  root.dataset.theme=appearance;
+  root.dataset.contrast=prefs.contrast==='system'
+    ? (window.matchMedia?.('(prefers-contrast: more)')?.matches?'increased':'medium')
+    : (prefs.contrast||'medium');
+  root.dataset.accent=prefs.accent||'blue';
+  const scale=(Number(prefs.textSize)||100)/100;
+  root.style.setProperty('--ui-scale',String(scale));
+  if(document.body)document.body.style.zoom=String(scale);
+}
+applyInitialWindowsVisualPrefs();
+
 function randomKey(){
   const b=new Uint8Array(32);crypto.getRandomValues(b);
   return [...b].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -1482,13 +1499,22 @@ function GeneralSettings({prefs,setPrefs}){
 }
 function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
 function AppearanceSettings({prefs,setPrefs}){
+  const textSizes=[90,100,110,125];
+  const currentTextSize=Number(prefs.textSize)||100;
+  const nearestIndex=textSizes.reduce((best,value,index)=>Math.abs(value-currentTextSize)<Math.abs(textSizes[best]-currentTextSize)?index:best,0);
+  const setTextSizeIndex=index=>setPrefs({...prefs,textSize:textSizes[Math.max(0,Math.min(textSizes.length-1,index))]});
   return <div className="settingsPane">
     <h3>Theme</h3>
     <div className="settingBlock">
       <SettingRow title="Appearance" desc="Follow the system or choose a fixed theme." control={<select value={prefs.appearance||'dark'} onChange={e=>setPrefs({...prefs,appearance:e.target.value})}><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>}/>
       {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<SettingRow title="Contrast" desc="Adjust separation between controls and surfaces." control={<select value={prefs.contrast||'medium'} onChange={e=>setPrefs({...prefs,contrast:e.target.value})}><option value="system">System</option><option value="medium">Medium</option><option value="increased">Increased</option></select>}/>}
       <SettingRow title="Accent color" desc="Used for active controls, message highlights and voice actions." control={<select value={prefs.accent||'blue'} onChange={e=>setPrefs({...prefs,accent:e.target.value})}><option value="blue">Blue</option><option value="green">Green</option><option value="yellow">Yellow</option><option value="pink">Pink</option><option value="orange">Orange</option><option value="purple">Purple</option><option value="neutral">Neutral</option></select>}/>
-      {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Text size" desc="Zoom the entire Free AI interface." control={<select value={String(prefs.textSize||100)} onChange={e=>setPrefs({...prefs,textSize:Number(e.target.value)})}><option value="90">90%</option><option value="100">100%</option><option value="110">110%</option><option value="125">125%</option></select>}/>} 
+      {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Text size" desc="Zoom the entire Free AI interface." control={<div className="confirmInline" role="group" aria-label="Text size">
+        <button type="button" aria-label="Decrease text size" disabled={nearestIndex===0} onClick={()=>setTextSizeIndex(nearestIndex-1)}>−</button>
+        <span className="valuePill">{textSizes[nearestIndex]}%</span>
+        <button type="button" aria-label="Increase text size" disabled={nearestIndex===textSizes.length-1} onClick={()=>setTextSizeIndex(nearestIndex+1)}>+</button>
+        <button type="button" disabled={textSizes[nearestIndex]===100} onClick={()=>setPrefs({...prefs,textSize:100})}>Reset</button>
+      </div>}/>} 
     </div>
   </div>
 }
