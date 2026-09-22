@@ -2790,9 +2790,8 @@ function normalizeSuperTeam(input,primary){
     if(!model)continue;
     seen.add(key);
     out.push(model);
-    if(out.length>=3)break;
   }
-  return out;
+  return out.slice(0,16);
 }
 
 function updateTaskAgent(task,id,patch){
