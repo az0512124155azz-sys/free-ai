@@ -42,7 +42,8 @@
     "@capgo/capacitor-speech-recognition": "^8.3.2",
     "@capgo/capacitor-inappbrowser": "^8.18.0",
     "@capgo/capacitor-social-login": "^8.5.10",
-    "sharp": "^0.35.4"
+    "sharp": "^0.35.4",
+    "@capacitor/haptics": "^8.0.0"
   },
   "build": {
     "appId": "com.freeai.desktop",
