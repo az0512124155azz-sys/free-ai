@@ -15,6 +15,7 @@ let apiConnections=[];
 const pending=new Map();
 const extensionBrowserPending=new Map();
 const activePrompts=new Map();
+const workTasks=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
 const browserTabs=new Map();
