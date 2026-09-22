@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
   browserForward:()=>ipcRenderer.invoke('browser:forward'),
   browserReload:()=>ipcRenderer.invoke('browser:reload'),
   browserClearData:()=>ipcRenderer.invoke('browser:clearData'),
+  browserHide:()=>ipcRenderer.invoke('browser:hide'),
   browserClose:()=>ipcRenderer.invoke('browser:close'),
   openAuthUrl:(url)=>ipcRenderer.invoke('auth:openExternal',url),
   onBrowserState:(cb)=>{
