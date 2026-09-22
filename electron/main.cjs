@@ -2115,6 +2115,13 @@ ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',()=>{sendExtension({type:'scanProviders'});return status()});
 ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{},true));
 ipcMain.handle('bridge:cancelPrompt',(_e,id)=>cancelPrompt(id));
+ipcMain.handle('work:startTask',(_e,payload)=>startWorkTask(payload||{}));
+ipcMain.handle('work:stopTask',(_e,id)=>stopWorkTask(id));
+ipcMain.handle('work:resolveApproval',(_e,{taskId,approvalId,allow}={})=>resolveWorkApproval(taskId,approvalId,!!allow));
+ipcMain.handle('work:getTask',(_e,id)=>{
+  const task=workTasks.get(String(id||''));
+  return task?publicWorkTask(task):null;
+});
 ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{
   relayConfig={relayUrl:String(cfg?.relayUrl||'').trim(),pairKey:String(cfg?.pairKey||'').trim()};
   connectRelay();
