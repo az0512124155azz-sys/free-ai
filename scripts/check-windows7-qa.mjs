@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 const main=fs.readFileSync('electron/main.cjs','utf8');
+const research=fs.readFileSync('electron/research.cjs','utf8');
 const source=fs.readFileSync('src/main.jsx','utf8');
 const background=fs.readFileSync('extension/background.js','utf8');
 const contentScript=fs.readFileSync('extension/content.js','utf8');
@@ -103,5 +104,12 @@ has(main,"stopRendererOwnedWork('main renderer started a document reload/navigat
 has(main,"win.webContents.on('render-process-gone',(_event,details)=>",'Main renderer crash lifecycle handler is missing.');
 has(main,"stopRendererOwnedWork('main renderer process '+String(details?.reason||'stopped'))",'Renderer crash must stop renderer-owned Work tasks.');
 has(main,"if(stopWorkTask(task.id))stopped++",'Renderer-loss cleanup must use the normal Work Stop path so prompts and approvals are cancelled.');
+
+// Windows 7.9 secure API transport coverage.
+has(main,"apiTransportUrl(connection.baseUrl,connection.apiKey)",'API connection save path must validate credential transport.');
+has(main,"const base=apiTransportUrl(cfg.baseUrl,cfg.apiKey);",'API chat send path must revalidate credential transport.');
+has(research,"function apiTransportUrl(value,apiKey='')",'Shared API transport validator is missing.');
+has(research,"API keys require HTTPS for remote endpoints. HTTP is allowed only for local loopback models.",'Remote keyed HTTP rejection is missing.');
+has(research,"const loopback=host==='localhost'||host==='[::1]'||host==='::1'||/^127", 'Loopback exception for local models is missing.');
 
 console.log('Windows 7 QA regression checks passed.');
