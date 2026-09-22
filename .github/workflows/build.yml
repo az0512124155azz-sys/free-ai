@@ -2,6 +2,12 @@ name: Build Free AI
 
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: Publish the final GitHub Release
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -212,7 +218,7 @@ jobs:
 
 
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
     needs: [desktop, android, extension]
     runs-on: ubuntu-latest
 
