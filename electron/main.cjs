@@ -192,6 +192,14 @@ function closeBrowserTab(id){
   return browserSnapshot();
 }
 
+function hideBrowserView(){
+  const tab=activeBrowserTab();
+  if(tab){
+    try{win?.contentView.removeChildView(tab.view)}catch{}
+  }
+  emitBrowserState();
+}
+
 function closeBrowserView(){
   for(const tab of browserTabs){
     try{win?.contentView.removeChildView(tab.view)}catch{}
@@ -671,6 +679,7 @@ ipcMain.handle('browser:setBounds',(_e,bounds)=>{setBrowserBounds(bounds);return
 ipcMain.handle('browser:back',()=>{const tab=activeBrowserTab();if(tab?.view.webContents.canGoBack())tab.view.webContents.goBack();return browserSnapshot()});
 ipcMain.handle('browser:forward',()=>{const tab=activeBrowserTab();if(tab?.view.webContents.canGoForward())tab.view.webContents.goForward();return browserSnapshot()});
 ipcMain.handle('browser:reload',()=>{activeBrowserTab()?.view.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:hide',()=>{hideBrowserView();return true});
 ipcMain.handle('browser:close',()=>{closeBrowserView();return true});
 ipcMain.handle('browser:clearData',async()=>{
   closeBrowserView();
