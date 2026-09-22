@@ -4,10 +4,7 @@
   "version":"0.3.0",
   "description":"Connects your Chromium tabs and supported AI provider chats to the Free AI desktop app.",
   "permissions":["tabs","scripting","storage"],
-  "host_permissions":[
-    "http://*/*",
-    "https://*/*"
-  ],
+  "host_permissions":["<all_urls>"],
   "background":{"service_worker":"background.js"},
   "content_scripts":[{
     "matches":[
