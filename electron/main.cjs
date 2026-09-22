@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences,session,dialog}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences,session,dialog,net}=require('electron');
 const path=require('path');
 const {pathToFileURL}=require('url');
 const fs=require('fs');
@@ -67,6 +67,47 @@ function registerAuthProtocol(){
   }else{
     app.setAsDefaultProtocolClient(AUTH_SCHEME);
   }
+}
+
+function parseVersionParts(value){
+  return String(value||'').replace(/^v/i,'').split('.').map(part=>Number.parseInt(part,10)||0).slice(0,4);
+}
+
+function isVersionNewer(candidate,current){
+  const a=parseVersionParts(candidate),b=parseVersionParts(current);
+  const len=Math.max(a.length,b.length,3);
+  for(let i=0;i<len;i++){
+    const av=a[i]||0,bv=b[i]||0;
+    if(av!==bv)return av>bv;
+  }
+  return false;
+}
+
+function windowsAppInfo(){
+  return {
+    version:app.getVersion(),
+    platform:process.platform,
+    packaged:app.isPackaged,
+    authProtocolRegistered:process.platform==='win32'?app.isDefaultProtocolClient(AUTH_SCHEME):false
+  };
+}
+
+async function checkForWindowsUpdates(){
+  if(process.platform!=='win32')throw new Error('Update checks are currently available on Windows.');
+  const response=await net.fetch('https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest',{
+    headers:{'Accept':'application/vnd.github+json','User-Agent':'Free-AI-Desktop'}
+  });
+  if(!response.ok)throw new Error('Could not check GitHub Releases right now.');
+  const release=await response.json();
+  const latestVersion=String(release?.tag_name||release?.name||'').replace(/^v/i,'');
+  if(!latestVersion)throw new Error('The latest release did not include a version.');
+  const url=String(release?.html_url||'');
+  return {
+    currentVersion:app.getVersion(),
+    latestVersion,
+    updateAvailable:isVersionNewer(latestVersion,app.getVersion()),
+    url
+  };
 }
 
 
@@ -3653,6 +3694,9 @@ app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
 ipcMain.handle('shell:showMenu',(_e,label)=>showAppMenu(String(label||'')));
 ipcMain.handle('shell:setTitleBarTheme',(_e,theme)=>setWindowChromeTheme(theme||{}));
+ipcMain.handle('shell:getAppInfo',()=>windowsAppInfo());
+ipcMain.handle('shell:checkForUpdates',()=>checkForWindowsUpdates());
+ipcMain.handle('shell:openExternal',async(_e,url)=>{const value=String(url||'');if(!/^https:\/\//i.test(value))throw new Error('Only HTTPS links can be opened.');await shell.openExternal(value);return true;});
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',()=>{sendExtension({type:'scanProviders'});return status()});
 ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{},true));
