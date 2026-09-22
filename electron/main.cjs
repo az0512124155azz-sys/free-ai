@@ -1102,6 +1102,14 @@ function status(){
   return {
     extension:!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN),
     relay:!!(relaySocket&&relaySocket.readyState===WebSocket.OPEN),
+    computerUse:process.platform==='win32'?{
+      available:true,
+      actions:['screenshot','click','double_click','move','scroll','keypress','type','drag','wait'],
+      coordinateSpace:'captured-screen-pixels'
+    }:{
+      available:false,
+      actions:[]
+    },
     providers:[
       ...browserProviders.map(p=>({...p,source:'browser'})),
       ...apiConnections.map(publicApiConnection)
