@@ -109,6 +109,30 @@ button:disabled{opacity:.42;cursor:default}
 .desktopShell.sidebarHidden{grid-template-columns:minmax(0,1fr)}
 .desktopShell.hasSidePanel{grid-template-columns:260px minmax(420px,1fr) minmax(430px,.93fr)}
 .desktopShell.sidebarHidden.hasSidePanel{grid-template-columns:minmax(420px,1fr) minmax(430px,.93fr)}
+.desktopShell.windowsDesktop{position:relative;padding-top:32px}
+.windowsTitlebar{
+  position:absolute;inset:0 0 auto 0;height:32px;z-index:300;
+  display:flex;align-items:center;background:#1f1f21;border-bottom:1px solid rgba(255,255,255,.055);
+  padding:0 138px 0 8px;-webkit-app-region:drag;user-select:none
+}
+.windowsTitlebarLeft{height:100%;display:flex;align-items:center;gap:2px;-webkit-app-region:no-drag}
+.windowsTitlebar .freeAiMark{margin:0 6px 0 2px}
+.titleNavButton,.titleMenuAnchor>button{
+  height:26px;border-radius:6px;background:transparent;color:#aaa9ad;display:grid;place-items:center
+}
+.titleNavButton{width:28px}
+.titleMenuAnchor>button{padding:0 9px;font-size:11.5px}
+.titleNavButton:hover,.titleMenuAnchor>button:hover,.titleMenuAnchor>button.active{background:rgba(255,255,255,.075);color:#f3f3f4}
+.titleMenuAnchor{position:relative;height:100%;display:flex;align-items:center}
+.titleMenuPopup{
+  position:absolute;top:29px;left:0;width:220px;background:var(--popover);border:1px solid var(--border);
+  border-radius:10px;padding:6px;box-shadow:var(--shadow-lg);z-index:500;-webkit-app-region:no-drag;animation:popoverIn 110ms var(--ease)
+}
+.titleMenuPopup button{width:100%;min-height:32px;border-radius:7px;padding:0 8px;background:transparent;color:var(--text-secondary);display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left;font-size:11.5px}
+.titleMenuPopup button:hover{background:var(--hover);color:var(--text)}
+.titleMenuPopup kbd{font:10px/1 ui-sans-serif,system-ui;color:var(--muted);white-space:nowrap}
+.titleMenuDivider{display:block;height:1px;background:var(--border-soft);margin:5px 4px}
+.windowsDragRegion{flex:1;align-self:stretch;-webkit-app-region:drag}
 
 .gptSidebar{
   min-width:0;
