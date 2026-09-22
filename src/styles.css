@@ -366,7 +366,7 @@ button:disabled{opacity:.42;cursor:default}
 .teamControllerRow>span:nth-child(2),.teamModelRow>span:nth-child(2){display:flex;min-width:0;flex-direction:column}.teamControllerRow b,.teamModelRow b{font-size:11px}.teamControllerRow small,.teamModelRow small{font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .teamCheck{width:18px;height:18px;border:1px solid var(--border);border-radius:5px;display:grid;place-items:center}.teamCheck.checked{background:var(--text);color:var(--canvas);border-color:var(--text)}
 .teamPickerFoot{padding:9px 7px 4px;color:var(--muted);font-size:9.5px;border-top:1px solid var(--border-soft);margin-top:5px}
-.workWorkspaceLine{display:flex;align-items:center;gap:6px;margin:7px 0 0 32px;color:var(--text-secondary);font-size:9.5px}.workWorkspaceLine small{color:var(--muted);margin-left:2px}
+.workWorkspaceLine,.workAppsLine{display:flex;align-items:center;gap:6px;margin:7px 0 0 32px;color:var(--text-secondary);font-size:9.5px}.workWorkspaceLine small,.workAppsLine small{color:var(--muted);margin-left:2px}
 .workAgentList{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:5px;margin:8px 0 0 32px}
 .workAgent{display:grid;grid-template-columns:8px minmax(0,1fr);gap:6px;align-items:start;padding:6px 7px;border-radius:9px;background:var(--surface-secondary)}
 .workAgentDot{width:7px;height:7px;border-radius:50%;background:var(--muted);margin-top:4px}.workAgent.running .workAgentDot{background:var(--work);box-shadow:0 0 0 3px color-mix(in srgb,var(--work) 15%,transparent)}.workAgent.completed .workAgentDot{background:#72d69a}.workAgent.failed .workAgentDot{background:#ff8d8b}
