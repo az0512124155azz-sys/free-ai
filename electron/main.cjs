@@ -379,6 +379,19 @@ function createBrowserView(webPreferences={}){
   });
 }
 
+function popupLoadOptions(details={}){
+  const options={};
+  if(details.referrer)options.httpReferrer=details.referrer;
+  const postBody=details.postBody;
+  if(Array.isArray(postBody?.data)&&postBody.data.length){
+    options.postData=postBody.data;
+    let contentType=String(postBody.contentType||'').trim();
+    if(contentType==='multipart/form-data'&&postBody.boundary)contentType+='; boundary='+postBody.boundary;
+    if(contentType)options.extraHeaders='Content-Type: '+contentType+'\n';
+  }
+  return options;
+}
+
 function removeBrowserTabState(id){
   browserTabs.delete(id);
   browserSiteTools.delete(id);
@@ -490,7 +503,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
           preserveHidden:!browserWasAttached
         });
         if(details.disposition==='background-tab'&&details.url&&details.url!=='about:blank'){
-          popup.view.webContents.loadURL(details.url).catch(error=>{
+          popup.view.webContents.loadURL(details.url,popupLoadOptions(details)).catch(error=>{
             if(browserTabs.has(popup.id))browserErrors.set(popup.id,{
               type:'load',
               description:String(error?.message||'This page could not be loaded.'),
