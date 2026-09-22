@@ -2001,7 +2001,7 @@ function BrowserSettings({prefs,setPrefs,onBrowser,status}){
     <div className="settingBlock">
       <SettingRow title="Enable site tools" desc="Discover WebMCP tools exposed by supported websites in Free AI's built-in browser." control={<Toggle value={prefs.siteToolsEnabled!==false} onChange={v=>setPrefs({...prefs,siteToolsEnabled:v})}/>}/>
       <SettingRow title="Open built-in browser" desc={isWindowsDesktop?"Use Free AI's separate browser profile. Sign-ins persist across app restarts; open tabs stay only while Free AI is running.":"Use Free AI's separate browser profile, tabs, sign-ins and downloads."} control={<button className="settingsInlineButton" onClick={onBrowser}>Open</button>}/>
-      <SettingRow title="Browser extension" desc="Use your existing Chromium profile, signed-in sessions and open tabs as a separate Browser Use channel." control={<span className={'connectionStatus '+(status?.browserExtension?.connected?'good':'')}>{status?.browserExtension?.connected?'Connected · '+((status.browserExtension.tabs?.length||0))+' tabs':'Disconnected'}</span>}/>
+      <SettingRow title="Browser extension" desc="Use your existing Chromium profile, signed-in sessions and open tabs as a separate Browser Use channel." control={<span className={'connectionStatus '+(status?.browserExtension?.connected?'good':'')}>{status?.browserExtension?.connected?'Connected · '+((status.browserExtension.tabCount||0))+' tabs':'Disconnected'}</span>}/>
       <SettingRow title="Clear browsing data" desc="Clear cookies, signed-in website state, local storage and browser cache for the Free AI browser profile." control={confirmClear
         ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={clearData}>Clear</button></span>
         : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
@@ -2013,7 +2013,7 @@ function ConnectionsSettings({status,settings,setSettings,saveSettings,connected
   return <div className="settingsPane">
     <h3>Desktop bridge</h3>
     <div className="settingBlock">
-      <SettingRow title="Browser extension" desc="Browser Use plus supported AI-provider bridge for Chromium browsers." control={<span className={'connectionStatus '+(status.extension?'good':'')}>{status.extension?'Connected · '+((status.browserExtension?.tabs?.length||0))+' tabs':'Disconnected'}</span>}/>
+      <SettingRow title="Browser extension" desc="Browser Use plus supported AI-provider bridge for Chromium browsers." control={<span className={'connectionStatus '+(status.extension?'good':'')}>{status.extension?'Connected · '+((status.browserExtension?.tabCount||0))+' tabs':'Disconnected'}</span>}/>
       <label className="formLabel">Relay URL<input value={settings.relayUrl} onChange={e=>setSettings({...settings,relayUrl:e.target.value})} placeholder="wss://your-relay.example.com"/></label>
       <label className="formLabel">Android pairing API key<div className="keyLine"><input value={settings.pairKey} onChange={e=>setSettings({...settings,pairKey:e.target.value})}/>{isDesktop&&<button onClick={()=>setSettings({...settings,pairKey:randomKey()})}>Generate</button>}</div></label>
       <button className="primaryAction" onClick={saveSettings}>Save connection</button>
