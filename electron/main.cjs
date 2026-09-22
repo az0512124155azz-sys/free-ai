@@ -1697,6 +1697,9 @@ function loadMcpConnections(){
     const raw=JSON.parse(fs.readFileSync(mcpStorePath(),'utf8'));
     const decoded=decodeSecret(raw);
     mcpConnections=Array.isArray(decoded)?decoded.filter(item=>item&&item.id&&item.url):[];
+    if(raw?.mode==='plain'&&mcpConnections.some(item=>item?.token)&&safeStorage.isEncryptionAvailable()){
+      try{saveMcpConnections()}catch(error){console.error('Failed to migrate legacy MCP credentials to secure storage',error)}
+    }
   }catch{mcpConnections=[]}
 }
 
@@ -3890,9 +3893,14 @@ ipcMain.handle('mcp:addConnection',async(_e,input)=>{
 });
 ipcMain.handle('mcp:removeConnection',(_e,id)=>{
   const key=String(id||'');
+  const previous=mcpConnections;
   mcpConnections=mcpConnections.filter(item=>item.id!==key);
+  try{saveMcpConnections()}
+  catch(error){
+    mcpConnections=previous;
+    throw error;
+  }
   mcpSessions.delete(key);
-  saveMcpConnections();
   return mcpConnections.map(publicMcpConnection);
 });
 ipcMain.handle('mcp:refreshConnection',(_e,id)=>refreshMcpConnection(id));
