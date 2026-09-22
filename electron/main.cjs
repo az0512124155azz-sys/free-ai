@@ -513,6 +513,7 @@ function setBrowserProtocolError(tabId,value){
 }
 
 function createBrowserView(webPreferences={}){
+  if(process.platform==='win32')persistentBrowserSession();
   return new WebContentsView({
     webPreferences:{
       ...(webPreferences&&typeof webPreferences==='object'?webPreferences:{}),
@@ -538,6 +539,7 @@ function popupLoadOptions(details={}){
 }
 
 function removeBrowserTabState(id){
+  cancelBrowserPermissionsForTab(id);
   browserTabs.delete(id);
   browserSiteTools.delete(id);
   browserErrors.delete(id);
@@ -629,6 +631,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
       createBrowserTab(details.url,true);
       return {action:'deny'};
     }
+    if(setBrowserProtocolError(id,details.url))return {action:'deny'};
     const activatePopup=details.disposition!=='background-tab';
     const browserWasAttached=browserAttached;
     return {
@@ -661,10 +664,17 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
       }
     };
   });
+  wc.on('will-navigate',(details)=>{
+    if(process.platform!=='win32')return;
+    if(setBrowserProtocolError(id,details?.url)){
+      details.preventDefault();
+    }
+  });
   wc.on('did-start-navigation',(_event,details)=>{
     if(process.platform!=='win32'||details?.isMainFrame===false)return;
     if(typeof details?.url==='string'&&details.url)browserUrls.set(id,details.url);
     if(!details?.isSameDocument){
+      cancelBrowserPermissionsForTab(id);
       browserTitles.set(id,'New tab');
       browserFavicons.delete(id);
     }
@@ -713,12 +723,15 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   });
   wc.on('did-fail-load',(_event,errorCode,errorDescription,validatedURL,isMainFrame)=>{
     if(process.platform!=='win32'||isMainFrame===false||Number(errorCode)===-3)return;
-    browserErrors.set(id,{
-      type:'load',
-      code:Number(errorCode)||0,
-      description:String(errorDescription||'This page could not be loaded.'),
-      url:String(validatedURL||wc.getURL()||'')
-    });
+    const existing=browserErrors.get(id);
+    if(existing?.type!=='certificate'){
+      browserErrors.set(id,{
+        type:'load',
+        code:Number(errorCode)||0,
+        description:String(errorDescription||'This page could not be loaded.'),
+        url:String(validatedURL||wc.getURL()||'')
+      });
+    }
     browserSiteTools.set(id,[]);
     emitBrowserState();
   });
@@ -731,9 +744,10 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   });
   wc.on('render-process-gone',(_event,details)=>{
     browserSiteTools.set(id,[]);
+    cancelBrowserPermissionsForTab(id);
     if(process.platform==='win32')browserErrors.set(id,{
       type:'crash',
-      description:'The page process stopped unexpectedly.',
+      description:'The page process stopped unexpectedly. Retry reloads this tab in a new renderer process.',
       reason:String(details?.reason||'crashed'),
       url:String(wc.getURL()||'')
     });
