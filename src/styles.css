@@ -414,6 +414,7 @@ button:disabled{opacity:.42;cursor:default}
 .siteToolRun{align-self:flex-end;border-radius:8px;background:var(--text);color:var(--canvas);padding:6px 9px;font-size:9.5px;font-weight:650}.siteToolRun.consequential{background:#d78b27;color:#16110a}
 .siteToolStatus{margin:1px 0 0;max-height:70px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:var(--canvas);border:1px solid var(--border-soft);border-radius:7px;padding:6px;color:var(--text-tertiary);font:9px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}
 .siteToolStatus.empty{margin:8px 10px 10px}
+.siteToolsDisabled{padding:13px;color:var(--muted);font-size:10px;line-height:1.45}
 .nativeBrowserSurface{flex:1;min-height:0;background:var(--canvas);position:relative}
 .fileMeta{padding:10px 14px;border-bottom:1px solid var(--border-soft);display:flex;flex-direction:column}
 .fileMeta span{font-size:12px}.fileMeta small{font-size:10px;color:var(--muted);margin-top:3px}
@@ -463,6 +464,7 @@ button:disabled{opacity:.42;cursor:default}
 .customInstructionsField textarea:focus{border-color:color-mix(in srgb,var(--accent) 58%,var(--border));outline:0}
 .confirmInline{display:flex;gap:6px}.confirmInline button{border-radius:8px;padding:6px 9px;font-size:10px;background:var(--surface-secondary);color:var(--text-secondary)}
 .confirmInline .dangerAction{background:rgba(160,45,45,.26);border:1px solid rgba(255,100,100,.22);color:#ffb3b3}.dangerText{color:#ffaaa9}
+.settingsStatus{margin-top:10px;color:var(--muted);font-size:10.5px}
 .toggle{width:31px;height:19px;border-radius:999px;background:var(--surface-tertiary);padding:2px}.toggle span{width:15px;height:15px;border-radius:50%;display:block;background:var(--text-tertiary);transition:transform 180ms var(--ease),background 180ms var(--ease)}
 .toggle.on{background:var(--accent)}.toggle.on span{transform:translateX(12px);background:#fff}
 .valuePill,.connectionStatus{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:999px;padding:5px 9px;font-size:10px;color:var(--text-secondary)}
