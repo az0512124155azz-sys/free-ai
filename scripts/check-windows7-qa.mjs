@@ -62,8 +62,8 @@ has(main,"if(mcpConnections.some(item=>item.token)&&!safeStorage.isEncryptionAva
 has(main,"Free AI will not save an MCP bearer token in plaintext.",'MCP secure-storage failure must be explicit.');
 has(main,"raw?.mode==='plain'&&mcpConnections.some(item=>item?.token)&&safeStorage.isEncryptionAvailable()",'Legacy plaintext MCP credentials must migrate when secure storage becomes available.');
 has(main,"Failed to migrate legacy MCP credentials to secure storage",'Legacy MCP credential migration must fail safely without destroying the loaded connection list.');
-has(main,"ipcMain.handle('mcp:removeConnection',(_e,id)=>{\n  const key=String(id||'');\n  const previous=mcpConnections;",'MCP removal must preserve previous in-memory state until persistence succeeds.');
-has(main,"catch(error){\n    mcpConnections=previous;\n    throw error;\n  }\n  mcpSessions.delete(key);",'Failed MCP removal persistence must roll back before deleting the live session.');
+has(main,'const previous=mcpConnections;','MCP removal must preserve previous in-memory state until persistence succeeds.');
+ok(/ipcMain\.handle\('mcp:removeConnection'[\s\S]*?const previous=mcpConnections;[\s\S]*?try\{saveMcpConnections\(\)\}[\s\S]*?catch\(error\)\{[\s\S]*?mcpConnections=previous;[\s\S]*?throw error;[\s\S]*?\}[\s\S]*?mcpSessions\.delete\(key\);/.test(main),'Failed MCP removal persistence must roll back before deleting the live session.');
 
 has(workflow,'Windows clean install and first-launch smoke','Windows CI is not running the packaged installer smoke.');
 has(workflow,"matrix.artifact == 'windows'",'Installer smoke must remain Windows-only.');
