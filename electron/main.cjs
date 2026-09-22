@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences,session}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -31,6 +31,7 @@ let siteToolsEnabled=true;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
+const BROWSER_PARTITION='persist:freeai-browser';
 
 function handleAuthCallback(url){
   if(typeof url!=='string'||!url.startsWith(AUTH_CALLBACK_PREFIX))return false;
@@ -360,6 +361,59 @@ function syncBrowserDownloadRecord(record,item,state=undefined,terminal=false){
 
 function browserDownloadById(id){
   return browserDownloads.find(entry=>entry.id===id)||null;
+}
+
+function persistentBrowserSession(){
+  return session.fromPartition(BROWSER_PARTITION);
+}
+
+function createBrowserView(webPreferences={}){
+  return new WebContentsView({
+    webPreferences:{
+      ...(webPreferences&&typeof webPreferences==='object'?webPreferences:{}),
+      sandbox:true,
+      contextIsolation:true,
+      nodeIntegration:false,
+      partition:BROWSER_PARTITION
+    }
+  });
+}
+
+function removeBrowserTabState(id){
+  browserTabs.delete(id);
+  browserSiteTools.delete(id);
+  browserErrors.delete(id);
+  browserUrls.delete(id);
+  browserTitles.delete(id);
+  browserFavicons.delete(id);
+}
+
+function handleBrowserTabDestroyed(id,view){
+  if(browserTabs.get(id)!==view)return;
+  const ids=[...browserTabs.keys()];
+  const index=ids.indexOf(id);
+  const wasActive=activeBrowserTabId===id;
+  const wasAttached=wasActive&&browserAttached;
+  if(wasAttached){
+    try{win?.contentView.removeChildView(view)}catch{}
+    browserAttached=false;
+  }
+  removeBrowserTabState(id);
+  if(wasActive){
+    activeBrowserTabId=null;
+    const nextId=ids[index+1]||ids[index-1]||[...browserTabs.keys()][0]||null;
+    if(nextId){
+      if(wasAttached)activateBrowserTab(nextId);
+      else{
+        activeBrowserTabId=nextId;
+        emitBrowserState();
+      }
+    }else{
+      createBrowserTab('https://www.google.com/',true,{preserveHidden:!wasAttached});
+    }
+  }else{
+    emitBrowserState();
+  }
 }
 
 function hookBrowserDownloads(wc){
