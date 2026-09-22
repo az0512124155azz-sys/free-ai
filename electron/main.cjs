@@ -75,7 +75,7 @@ function installAppMenu(){
     },
     {label:'Edit',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
     {label:'View',submenu:[
-      {label:'Toggle browser',accelerator:'CmdOrCtrl+Shift+B',click:()=>win?.webContents.send('app-command','open-browser')},
+      {label:'Toggle browser',accelerator:'CmdOrCtrl+Shift+B',click:()=>win?.webContents.send('app-command',process.platform==='win32'?'toggle-browser':'open-browser')},
       {label:'Toggle sidebar',accelerator:'CmdOrCtrl+Shift+S',click:()=>win?.webContents.send('app-command','toggle-sidebar')},
       {type:'separator'},{role:'reload'},{role:'forceReload'},{type:'separator'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{type:'separator'},{role:'togglefullscreen'}
     ]},
@@ -210,6 +210,26 @@ function normalizeBrowserUrl(input){
   return 'https://www.google.com/search?q='+encodeURIComponent(raw);
 }
 
+function clampBrowserBounds(bounds){
+  if(!bounds)return null;
+  const content=win&&!win.isDestroyed()?win.getContentBounds():null;
+  const contentWidth=Math.max(1,Math.round(Number(content?.width)||1));
+  const contentHeight=Math.max(1,Math.round(Number(content?.height)||1));
+  const x=Math.min(contentWidth-1,Math.max(0,Math.round(Number(bounds.x)||0)));
+  const y=Math.min(contentHeight-1,Math.max(0,Math.round(Number(bounds.y)||0)));
+  const width=Math.min(contentWidth-x,Math.max(1,Math.round(Number(bounds.width)||1)));
+  const height=Math.min(contentHeight-y,Math.max(1,Math.round(Number(bounds.height)||1)));
+  return {x,y,width,height};
+}
+
+function applyBrowserBounds(view=activeBrowserEntry()){
+  if(!view||view.webContents.isDestroyed()||!browserBounds)return false;
+  const next=clampBrowserBounds(browserBounds);
+  if(!next)return false;
+  browserBounds=next;
+  try{view.setBounds(next);return true}catch{return false}
+}
+
 function attachBrowserView(view){
   if(!win||win.isDestroyed()||!view)return;
   if(browserAttached){
@@ -219,7 +239,7 @@ function attachBrowserView(view){
     }
   }
   try{win.contentView.addChildView(view);browserAttached=true}catch{}
-  if(browserBounds)view.setBounds(browserBounds);
+  applyBrowserBounds(view);
 }
 
 async function refreshBrowserSiteTools(id){
@@ -626,6 +646,14 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   }
   const wc=view.webContents;
   hookBrowserDownloads(wc);
+  wc.on('before-input-event',(event,input)=>{
+    if(process.platform!=='win32'||input.type!=='keyDown')return;
+    const key=String(input.key||'').toLowerCase();
+    if(key==='b'&&input.control&&input.shift&&!input.alt&&!input.meta){
+      event.preventDefault();
+      win?.webContents.send('app-command','toggle-browser');
+    }
+  });
   wc.setWindowOpenHandler((details)=>{
     if(process.platform!=='win32'){
       createBrowserTab(details.url,true);
@@ -803,15 +831,11 @@ function ensureBrowserView(){
 }
 
 function setBrowserBounds(bounds){
-  if(!bounds)return;
-  browserBounds={
-    x:Math.max(0,Math.round(Number(bounds.x)||0)),
-    y:Math.max(0,Math.round(Number(bounds.y)||0)),
-    width:Math.max(1,Math.round(Number(bounds.width)||1)),
-    height:Math.max(1,Math.round(Number(bounds.height)||1))
-  };
-  const view=activeBrowserEntry();
-  if(view)view.setBounds(browserBounds);
+  const next=clampBrowserBounds(bounds);
+  if(!next)return false;
+  browserBounds=next;
+  if(browserAttached)applyBrowserBounds();
+  return true;
 }
 
 function closeBrowserTab(id){
@@ -1304,7 +1328,12 @@ function createWindow(){
     }
   });
 
-  if(process.platform==='win32')win.setMenuBarVisibility(false);
+  if(process.platform==='win32'){
+    win.setMenuBarVisibility(false);
+    win.on('resize',()=>{
+      if(browserAttached&&browserBounds)applyBrowserBounds();
+    });
+  }
 
   win.once('ready-to-show',()=>{
     if(!win.isDestroyed())win.show();

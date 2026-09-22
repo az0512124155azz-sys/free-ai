@@ -651,6 +651,7 @@ function App(){
 
   async function openBrowser(){
     setPlusMenu(false);
+    if(isWindowsDesktop)setSettingsOpen(false);
     if(isNative){
       try{
         await InAppBrowser.openWebView({
@@ -673,6 +674,19 @@ function App(){
     if(isWindowsDesktop&&product==='free'&&mode!=='work')selectExperience('work');
     setSidePanel('browser');
   }
+
+  useEffect(()=>{
+    if(!isWindowsDesktop||!isDesktop)return;
+    const off=window.desktopApi.onAppCommand?.(command=>{
+      if(command!=='toggle-browser')return;
+      if(sidePanel==='browser'){
+        setSidePanel(null);
+        return;
+      }
+      openBrowser();
+    });
+    return()=>off?.();
+  },[sidePanel,product,mode,currentChatId,messages.length]);
 
   async function openHelp(){
     const url='https://github.com/az0512124155azz-sys/free-ai#readme';
@@ -1441,19 +1455,37 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   useEffect(()=>{
     if(!isDesktop||!surfaceRef.current)return;
     const el=surfaceRef.current;
-    const sync=()=>{
+    let frame=0;
+    const measure=()=>{
       const r=el.getBoundingClientRect();
-      window.desktopApi.browserSetBounds({x:r.x,y:r.y,width:r.width,height:r.height}).catch(()=>{});
+      const zoom=isWindowsDesktop?Math.max(.25,Number(window.desktopApi?.rendererZoomFactor?.())||1):1;
+      return {x:r.x*zoom,y:r.y*zoom,width:r.width*zoom,height:r.height*zoom};
+    };
+    const syncNow=()=>{
+      if(!el.isConnected)return;
+      const bounds=measure();
+      if(bounds.width<1||bounds.height<1)return;
+      window.desktopApi.browserSetBounds(bounds).catch(()=>{});
+    };
+    const sync=()=>{
+      cancelAnimationFrame(frame);
+      frame=requestAnimationFrame(syncNow);
     };
     const ro=new ResizeObserver(sync);
     ro.observe(el);
     window.addEventListener('resize',sync);
-    sync();
-    const r=el.getBoundingClientRect();
-    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).then(next=>{
+    if(isWindowsDesktop)window.visualViewport?.addEventListener('resize',sync);
+    syncNow();
+    const bounds=measure();
+    window.desktopApi.browserOpen({url,bounds}).then(next=>{
       if(next){setState(next);if(next.url)setUrl(next.url)}
     }).catch(()=>{});
-    return()=>{ro.disconnect();window.removeEventListener('resize',sync)};
+    return()=>{
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+      window.removeEventListener('resize',sync);
+      if(isWindowsDesktop)window.visualViewport?.removeEventListener('resize',sync);
+    };
   },[]);
 
   async function navigate(){
