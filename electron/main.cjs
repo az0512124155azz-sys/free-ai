@@ -479,10 +479,9 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
       createWindow:(windowOptions={})=>{
         let popupView=null;
         const supplied=windowOptions.webContents;
-        if(supplied&&supplied.session===persistentBrowserSession()){
+        if(supplied){
           popupView=new WebContentsView({webContents:supplied});
         }else{
-          if(supplied)try{supplied.close()}catch{}
           popupView=createBrowserView(windowOptions.webPreferences);
         }
         const popup=createBrowserTab(details.url||'about:blank',activatePopup,{
@@ -1191,11 +1190,19 @@ app.whenReady().then(()=>{
 });
 
 app.on('before-quit',()=>{
+  if(process.platform==='win32'){
+    try{persistentBrowserSession().flushStorageData()}catch{}
+  }
   hideBrowserView();
-  for(const view of browserTabs.values()){try{view.webContents.close()}catch{}}
+  const closingBrowserViews=[...browserTabs.values()];
   browserTabs.clear();
   browserSiteTools.clear();
+  browserErrors.clear();
+  browserUrls.clear();
+  browserTitles.clear();
+  browserFavicons.clear();
   activeBrowserTabId=null;
+  for(const view of closingBrowserViews){try{view.webContents.close()}catch{}}
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
   pending.clear();
