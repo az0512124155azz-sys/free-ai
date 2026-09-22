@@ -1543,13 +1543,13 @@ function resolveWorkApproval(taskId,approvalId,allow){
   return true;
 }
 
-async function ensureWorkWebsiteAccess(task,channel){
+async function ensureWorkWebsiteAccess(task,channel,targetUrl=''){
   if(task.approvalMode==='full')return true;
-  let url='';
-  if(channel==='extension'){
+  let url=String(targetUrl||'');
+  if(!url&&channel==='extension'){
     const active=extensionBrowserState.tabs?.find(tab=>tab.id===extensionBrowserState.activeTabId);
     url=active?.url||'';
-  }else{
+  }else if(!url){
     url=browserSnapshot().url||'';
   }
   const host=workTaskHost(url);
@@ -1623,7 +1623,7 @@ function workPlannerPrompt(task,browserContext,computerContext,previousResult=''
     'Return exactly one JSON object and no markdown.',
     'Finish: {"kind":"final","text":"your final answer"}',
     'Browser built-in: {"kind":"browser","channel":"built-in","action":{"type":"snapshot|click|double_click|move|scroll|type|keypress|wait|navigate|back|forward|reload|new_tab|switch_tab|close_tab",...}}',
-    'Browser extension: {"kind":"browser","channel":"extension","action":{"type":"click|focus|type|select|scroll","elementId":"e1",...}}',
+    'Browser extension: {"kind":"browser","channel":"extension","action":{"type":"snapshot|click|focus|type|select|scroll|wait|navigate|new_tab|switch_tab|close_tab","elementId":"e1",...}}',
     'Computer: {"kind":"computer","action":{"type":"screenshot|click|double_click|move|scroll|keypress|type|drag|wait",...}}',
     'For built-in click/type coordinates, use current browser viewport pixels. For extension actions, use only elementId values from the latest snapshot.',
     'For computer coordinate actions, use screenshot pixels and the provided displayId/viewport. Never invent missing element IDs, coordinates, tabs or capabilities.',
@@ -1653,19 +1653,44 @@ async function executeWorkDecision(task,decision,browserContext,computerContext)
   const action=decision.action||{};
   if(kind==='browser'){
     const channel=decision.channel==='extension'?'extension':'built-in';
-    if(!(await ensureWorkWebsiteAccess(task,channel)))return {stopped:true,summary:'Website access was denied.'};
+    const type=String(action.type||'').toLowerCase();
+    const targetUrl=(type==='navigate'||type==='new_tab')?String(action.url||''):'';
+    if(!(await ensureWorkWebsiteAccess(task,channel,targetUrl)))return {stopped:true,summary:'Website access was denied.'};
     const approval=workActionApproval(task,{...decision,channel});
     if(approval&&!(await askWorkApproval(task,approval)))return {stopped:true,summary:'Browser action was denied.'};
     task.state='running';task.statusText='Using browser';emitWorkTask(task);
+
     if(channel==='extension'){
-      if(!extensionBrowserState.activeTabId)throw new Error('No active extension browser tab is available.');
-      const result=await requestExtensionBrowser('action',{
-        tabId:extensionBrowserState.activeTabId,
-        action,
-        settleMs:220
-      },20000);
-      return {summary:JSON.stringify({channel,tab:result?.tab,page:result?.page,result:result?.result}).slice(0,10000)};
+      let result=null;
+      if(type==='navigate'){
+        if(!extensionBrowserState.activeTabId)throw new Error('No active extension browser tab is available.');
+        result=await requestExtensionBrowser('navigate',{tabId:extensionBrowserState.activeTabId,url:action.url},20000);
+      }else if(type==='new_tab'){
+        result=await requestExtensionBrowser('createTab',{url:action.url||'https://www.google.com/',active:true},20000);
+      }else if(type==='switch_tab'){
+        result=await requestExtensionBrowser('activateTab',{tabId:action.tabId},20000);
+      }else if(type==='close_tab'){
+        const tabId=action.tabId??extensionBrowserState.activeTabId;
+        if(!tabId)throw new Error('No extension browser tab is available to close.');
+        result=await requestExtensionBrowser('closeTab',{tabId},20000);
+      }else if(type==='snapshot'){
+        if(!extensionBrowserState.activeTabId)throw new Error('No active extension browser tab is available.');
+        result=await requestExtensionBrowser('snapshot',{tabId:extensionBrowserState.activeTabId},20000);
+      }else if(type==='wait'){
+        await new Promise(resolve=>setTimeout(resolve,Math.max(100,Math.min(2500,Number(action.ms)||700))));
+        if(!extensionBrowserState.activeTabId)throw new Error('No active extension browser tab is available.');
+        result=await requestExtensionBrowser('snapshot',{tabId:extensionBrowserState.activeTabId},20000);
+      }else{
+        if(!extensionBrowserState.activeTabId)throw new Error('No active extension browser tab is available.');
+        result=await requestExtensionBrowser('action',{
+          tabId:extensionBrowserState.activeTabId,
+          action,
+          settleMs:220
+        },20000);
+      }
+      return {summary:JSON.stringify({channel,result}).slice(0,10000)};
     }
+
     const result=await performBuiltInBrowserAction({tabId:activeBrowserTabId,action,settleMs:220});
     return {summary:JSON.stringify({channel,tab:result?.tab,page:result?.page}).slice(0,10000)};
   }
