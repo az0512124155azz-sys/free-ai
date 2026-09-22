@@ -17,6 +17,8 @@ contextBridge.exposeInMainWorld('desktopApi',{
   browserNewTab:(url)=>ipcRenderer.invoke('browser:newTab',url),
   browserSelectTab:(id)=>ipcRenderer.invoke('browser:selectTab',id),
   browserCloseTab:(id)=>ipcRenderer.invoke('browser:closeTab',id),
+  browserSetSiteToolsEnabled:(value)=>ipcRenderer.invoke('browser:setSiteToolsEnabled',value),
+  browserClearData:()=>ipcRenderer.invoke('browser:clearData'),
   browserRefreshSiteTools:()=>ipcRenderer.invoke('browser:refreshSiteTools'),
   browserExecuteSiteTool:(payload)=>ipcRenderer.invoke('browser:executeSiteTool',payload),
   browserNavigate:(url)=>ipcRenderer.invoke('browser:navigate',url),
