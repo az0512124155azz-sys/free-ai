@@ -483,6 +483,8 @@ button:disabled{opacity:.42;cursor:default}
 .siteToolsHeader{height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 13px;border-bottom:1px solid var(--border-soft)}
 .siteToolsHeader>span{display:flex;min-width:0;flex-direction:column}.siteToolsHeader b{font-size:11.5px}.siteToolsHeader small{font-size:9.5px;color:var(--muted);margin-top:2px}
 .siteToolsHeader button{display:flex;align-items:center;gap:5px;background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:8px;padding:6px 8px;color:var(--text-secondary);font-size:9.5px}
+.browserPermissionActions{display:flex;align-items:center;gap:6px}
+.browserPermissionBar{background:color-mix(in srgb,var(--accent) 7%,var(--surface-primary))}
 .siteToolsBody{display:grid;grid-template-columns:minmax(145px,.82fr) minmax(190px,1.18fr);min-height:0;max-height:263px}
 .siteToolsList{min-width:0;overflow:auto;border-right:1px solid var(--border-soft);padding:6px}
 .siteToolsList>button{width:100%;display:grid;grid-template-columns:18px minmax(0,1fr);align-items:start;gap:7px;text-align:left;background:transparent;border-radius:9px;padding:8px;color:var(--text-secondary)}

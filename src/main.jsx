@@ -1417,7 +1417,7 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
 function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
   const addressEditingRef=useRef(false);
-  const [state,setState]=useState({url:'',title:'New tab',favicon:'',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[],error:null});
+  const [state,setState]=useState({url:'',title:'New tab',favicon:'',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[],permissionRequests:[],error:null});
   const [siteToolsOpen,setSiteToolsOpen]=useState(false);
   const [downloadsOpen,setDownloadsOpen]=useState(false);
   const [downloadActionStatus,setDownloadActionStatus]=useState('');
@@ -1464,6 +1464,26 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
     }catch{}
   }
   function retryPage(){window.desktopApi?.browserReload?.()}
+  async function resolvePermission(id,allow){
+    try{
+      const next=await window.desktopApi?.browserResolvePermission?.({id,allow});
+      if(next)setState(next);
+    }catch{}
+  }
+  async function dismissBrowserError(){
+    try{
+      const next=await window.desktopApi?.browserDismissError?.();
+      if(next)setState(next);
+    }catch{}
+  }
+  async function openExternalProtocol(){
+    const target=state.error?.url;
+    if(!target)return;
+    try{
+      const result=await window.desktopApi?.browserOpenExternalProtocol?.(target);
+      if(result?.ok===false)setSiteToolStatus(result.error||'Could not open this link.');
+    }catch(e){setSiteToolStatus(e?.message||'Could not open this link.')}
+  }
   function chooseTab(id){
     addressEditingRef.current=false;
     window.desktopApi?.browserCancelAnnotation?.().catch(()=>{});
@@ -1549,6 +1569,15 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       setSiteToolStatus(typeof value==='string'?value:JSON.stringify(value??'Done',null,2));
     }catch(e){setSiteToolStatus(e?.message||'Site tool failed.')}
   }
+  const permissionRequests=Array.isArray(state.permissionRequests)?state.permissionRequests:[];
+  const permissionRequest=permissionRequests[0]||null;
+  const permissionLabel=permission=>{
+    const labels={media:'camera or microphone',geolocation:'your location',notifications:'notifications','clipboard-read':'clipboard access','clipboard-sanitized-write':'clipboard write',fullscreen:'fullscreen',pointerLock:'pointer lock',midi:'MIDI devices',midiSysex:'MIDI system access',openExternal:'external application access'};
+    return labels[permission]||String(permission||'website permission').replace(/-/g,' ');
+  };
+  const permissionHost=request=>{
+    try{return new URL(request?.origin||request?.requestingUrl||'').host||request?.origin||'This site'}catch{return request?.origin||'This site'}
+  };
   const downloads=Array.isArray(state.downloads)?state.downloads:[];
   const activeDownloads=downloads.filter(d=>!d.terminal&&(d.state==='progressing'||d.state==='interrupted')).length;
   const siteTools=Array.isArray(state.siteTools)?state.siteTools:[];
@@ -1592,9 +1621,18 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
 
+    {isWindowsDesktop&&permissionRequest&&<div className="siteToolsHeader browserPermissionBar" role="dialog" aria-label="Website permission request">
+      <span><b>{permissionHost(permissionRequest)} wants {permissionLabel(permissionRequest.permission)}</b><small>{permissionRequest.userGesture?'Requested after your action.':'Requested by this page.'} Allow for this Free AI session?</small></span>
+      <span className="browserPermissionActions"><button onClick={()=>resolvePermission(permissionRequest.id,false)}>Deny</button><button onClick={()=>resolvePermission(permissionRequest.id,true)}>Allow</button></span>
+    </div>}
+
     {isWindowsDesktop&&state.error&&<div className="siteToolsHeader browserErrorBar" role="alert">
-      <span><b>{state.error.type==='crash'?'Page stopped':'Page unavailable'}</b><small>{state.error.description||'This page could not be loaded.'}</small></span>
-      <button onClick={retryPage}><RefreshCw size={14}/>Retry</button>
+      <span><b>{state.error.type==='crash'?'Page stopped':state.error.type==='certificate'?'Certificate error':state.error.type==='protocol'?'Unsupported link':'Page unavailable'}</b><small>{state.error.description||'This page could not be loaded.'}</small></span>
+      {state.error.type==='protocol'
+        ? state.error.canOpenExternal
+          ? <button onClick={openExternalProtocol}><ExternalLink size={14}/>Open externally</button>
+          : <button onClick={dismissBrowserError}>Dismiss</button>
+        : <button onClick={retryPage}><RefreshCw size={14}/>Retry</button>}
     </div>}
 
     {isWindowsDesktop&&downloadsOpen&&downloads.length>0&&<div className="siteToolsPanel">

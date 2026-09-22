@@ -27,11 +27,16 @@ let browserDownloads=[];
 let browserDownloadHooked=false;
 const browserDownloadItems=new Map();
 const browserSiteTools=new Map();
+const browserPermissionGrants=new Set();
+const browserPermissionRequests=new Map();
+let browserPermissionsConfigured=false;
 let siteToolsEnabled=true;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
 const BROWSER_PARTITION='persist:freeai-browser';
+const BROWSER_RENDERABLE_PROTOCOLS=new Set(['http:','https:','about:','data:','blob:']);
+const BROWSER_EXTERNAL_PROTOCOLS=new Set(['mailto:','tel:','sms:','webcal:']);
 
 function handleAuthCallback(url){
   if(typeof url!=='string'||!url.startsWith(AUTH_CALLBACK_PREFIX))return false;
@@ -150,11 +155,29 @@ function browserTabMeta(id,view){
   };
 }
 
+function browserPermissionPublic(record){
+  return {
+    id:record.id,
+    tabId:record.tabId,
+    permission:record.permission,
+    origin:record.origin,
+    requestingUrl:record.requestingUrl,
+    userGesture:!!record.userGesture
+  };
+}
+
+function browserPermissionSnapshot(tabId){
+  if(process.platform!=='win32'||!tabId)return [];
+  return [...browserPermissionRequests.values()]
+    .filter(record=>record.tabId===tabId)
+    .map(browserPermissionPublic);
+}
+
 function browserSnapshot(){
   const entry=activeBrowserEntry();
   const tabs=[...browserTabs.entries()].map(([id,view])=>browserTabMeta(id,view));
   if(!entry){
-    return {url:'',title:'New tab',favicon:'',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[],error:null};
+    return {url:'',title:'New tab',favicon:'',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[],permissionRequests:[],error:null};
   }
   const wc=entry.webContents;
   const activeMeta=browserTabMeta(activeBrowserTabId,entry);
@@ -169,6 +192,7 @@ function browserSnapshot(){
     activeTabId:activeBrowserTabId,
     downloads:browserDownloads,
     siteTools:browserSiteTools.get(activeBrowserTabId)||[],
+    permissionRequests:browserPermissionSnapshot(activeBrowserTabId),
     error:browserErrors.get(activeBrowserTabId)||null
   };
 }
@@ -364,10 +388,132 @@ function browserDownloadById(id){
 }
 
 function persistentBrowserSession(){
-  return session.fromPartition(BROWSER_PARTITION);
+  const ses=session.fromPartition(BROWSER_PARTITION);
+  if(process.platform==='win32'&&!browserPermissionsConfigured){
+    browserPermissionsConfigured=true;
+    ses.setPermissionCheckHandler((webContents,permission,requestingOrigin,details={})=>{
+      const origin=browserPermissionOrigin(details.requestingUrl||requestingOrigin||webContents?.getURL?.()||'');
+      return !!origin&&browserPermissionGrants.has(browserPermissionKey(origin,permission));
+    });
+    ses.setPermissionRequestHandler((webContents,permission,callback,details={})=>{
+      const tabId=browserTabIdForWebContents(webContents);
+      const requestingUrl=String(details.requestingUrl||webContents?.getURL?.()||'');
+      const origin=browserPermissionOrigin(requestingUrl);
+      if(!tabId||tabId!==activeBrowserTabId||!browserAttached||!origin){
+        callback(false);
+        return;
+      }
+      const key=browserPermissionKey(origin,permission);
+      if(browserPermissionGrants.has(key)){
+        callback(true);
+        return;
+      }
+      const existing=[...browserPermissionRequests.values()].find(record=>record.tabId===tabId&&record.key===key);
+      if(existing){
+        existing.callbacks.push(callback);
+        emitBrowserState();
+        return;
+      }
+      const id=crypto.randomUUID();
+      browserPermissionRequests.set(id,{
+        id,
+        tabId,
+        permission:String(permission||'unknown'),
+        origin,
+        requestingUrl,
+        userGesture:!!details.isUserGesture,
+        key,
+        callbacks:[callback]
+      });
+      emitBrowserState();
+    });
+  }
+  return ses;
+}
+
+function browserPermissionOrigin(value){
+  try{
+    const parsed=new URL(String(value||''));
+    if(parsed.protocol!=='https:'&&parsed.protocol!=='http:')return '';
+    return parsed.origin;
+  }catch{return ''}
+}
+
+function browserPermissionKey(origin,permission){
+  return String(origin||'')+'\n'+String(permission||'unknown');
+}
+
+function browserTabIdForWebContents(webContents){
+  if(!webContents)return null;
+  for(const [id,view] of browserTabs){
+    if(view.webContents===webContents)return id;
+  }
+  return null;
+}
+
+function resolveBrowserPermission(id,allow){
+  const record=browserPermissionRequests.get(id);
+  if(!record)return browserSnapshot();
+  browserPermissionRequests.delete(id);
+  if(allow)browserPermissionGrants.add(record.key);
+  for(const callback of record.callbacks){
+    try{callback(!!allow)}catch{}
+  }
+  emitBrowserState();
+  return browserSnapshot();
+}
+
+function cancelBrowserPermissionsForTab(tabId){
+  for(const [id,record] of [...browserPermissionRequests]){
+    if(record.tabId!==tabId)continue;
+    browserPermissionRequests.delete(id);
+    for(const callback of record.callbacks){
+      try{callback(false)}catch{}
+    }
+  }
+}
+
+function clearBrowserPermissions(){
+  browserPermissionGrants.clear();
+  for(const [id,record] of [...browserPermissionRequests]){
+    browserPermissionRequests.delete(id);
+    for(const callback of record.callbacks){
+      try{callback(false)}catch{}
+    }
+  }
+}
+
+function browserProtocolInfo(value){
+  try{
+    const parsed=new URL(String(value||''));
+    if(BROWSER_RENDERABLE_PROTOCOLS.has(parsed.protocol))return null;
+    return {
+      scheme:parsed.protocol.replace(/:$/,'')||'unknown',
+      url:parsed.href,
+      canOpenExternal:BROWSER_EXTERNAL_PROTOCOLS.has(parsed.protocol)
+    };
+  }catch{return null}
+}
+
+function setBrowserProtocolError(tabId,value){
+  const info=browserProtocolInfo(value);
+  if(!info||!tabId)return false;
+  browserSiteTools.set(tabId,[]);
+  browserErrors.set(tabId,{
+    type:'protocol',
+    description:info.canOpenExternal
+      ? info.scheme.toUpperCase()+' links open in another app, not inside Free AI.'
+      : 'The '+info.scheme+': protocol is not supported inside Free AI.',
+    url:info.url,
+    scheme:info.scheme,
+    canOpenExternal:info.canOpenExternal
+  });
+  emitBrowserState();
+  return true;
 }
 
 function createBrowserView(webPreferences={}){
+  if(process.platform==='win32')persistentBrowserSession();
   return new WebContentsView({
     webPreferences:{
       ...(webPreferences&&typeof webPreferences==='object'?webPreferences:{}),
@@ -393,6 +539,7 @@ function popupLoadOptions(details={}){
 }
 
 function removeBrowserTabState(id){
+  cancelBrowserPermissionsForTab(id);
   browserTabs.delete(id);
   browserSiteTools.delete(id);
   browserErrors.delete(id);
@@ -484,6 +631,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
       createBrowserTab(details.url,true);
       return {action:'deny'};
     }
+    if(setBrowserProtocolError(id,details.url))return {action:'deny'};
     const activatePopup=details.disposition!=='background-tab';
     const browserWasAttached=browserAttached;
     return {
@@ -516,10 +664,17 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
       }
     };
   });
+  wc.on('will-navigate',(details)=>{
+    if(process.platform!=='win32')return;
+    if(setBrowserProtocolError(id,details?.url)){
+      details.preventDefault();
+    }
+  });
   wc.on('did-start-navigation',(_event,details)=>{
     if(process.platform!=='win32'||details?.isMainFrame===false)return;
     if(typeof details?.url==='string'&&details.url)browserUrls.set(id,details.url);
     if(!details?.isSameDocument){
+      cancelBrowserPermissionsForTab(id);
       browserTitles.set(id,'New tab');
       browserFavicons.delete(id);
     }
@@ -568,12 +723,15 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   });
   wc.on('did-fail-load',(_event,errorCode,errorDescription,validatedURL,isMainFrame)=>{
     if(process.platform!=='win32'||isMainFrame===false||Number(errorCode)===-3)return;
-    browserErrors.set(id,{
-      type:'load',
-      code:Number(errorCode)||0,
-      description:String(errorDescription||'This page could not be loaded.'),
-      url:String(validatedURL||wc.getURL()||'')
-    });
+    const existing=browserErrors.get(id);
+    if(existing?.type!=='certificate'){
+      browserErrors.set(id,{
+        type:'load',
+        code:Number(errorCode)||0,
+        description:String(errorDescription||'This page could not be loaded.'),
+        url:String(validatedURL||wc.getURL()||'')
+      });
+    }
     browserSiteTools.set(id,[]);
     emitBrowserState();
   });
@@ -586,9 +744,10 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   });
   wc.on('render-process-gone',(_event,details)=>{
     browserSiteTools.set(id,[]);
+    cancelBrowserPermissionsForTab(id);
     if(process.platform==='win32')browserErrors.set(id,{
       type:'crash',
-      description:'The page process stopped unexpectedly.',
+      description:'The page process stopped unexpectedly. Retry reloads this tab in a new renderer process.',
       reason:String(details?.reason||'crashed'),
       url:String(wc.getURL()||'')
     });
@@ -620,7 +779,9 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
 function activateBrowserTab(id){
   const view=browserTabs.get(id);
   if(!view)return false;
+  const previousId=activeBrowserTabId;
   const previous=activeBrowserEntry();
+  if(previousId&&previousId!==id)cancelBrowserPermissionsForTab(previousId);
   if(previous&&previous!==view&&browserAttached){
     try{win?.contentView.removeChildView(previous)}catch{}
     browserAttached=false;
@@ -685,6 +846,7 @@ function closeBrowserTab(id){
 
 function hideBrowserView(){
   const view=activeBrowserEntry();
+  if(activeBrowserTabId)cancelBrowserPermissionsForTab(activeBrowserTabId);
   if(view&&browserAttached){
     try{win?.contentView.removeChildView(view)}catch{}
   }
@@ -1185,6 +1347,22 @@ if(!gotSingleInstanceLock){
   });
 }
 
+app.on('certificate-error',(event,webContents,url,error,_certificate,callback,isMainFrame)=>{
+  if(process.platform!=='win32'||isMainFrame===false)return;
+  const tabId=browserTabIdForWebContents(webContents);
+  if(!tabId)return;
+  event.preventDefault();
+  browserSiteTools.set(tabId,[]);
+  browserErrors.set(tabId,{
+    type:'certificate',
+    description:'Certificate verification failed. Free AI did not bypass the invalid certificate.',
+    url:String(url||webContents.getURL()||''),
+    code:String(error||'certificate-error')
+  });
+  emitBrowserState();
+  callback(false);
+});
+
 app.whenReady().then(()=>{
   installAppMenu();
   registerAuthProtocol();
@@ -1207,6 +1385,7 @@ app.whenReady().then(()=>{
 
 app.on('before-quit',()=>{
   if(process.platform==='win32'){
+    clearBrowserPermissions();
     try{persistentBrowserSession().flushStorageData()}catch{}
   }
   hideBrowserView();
@@ -1300,6 +1479,7 @@ ipcMain.handle('browser:setSiteToolsEnabled',(_e,value)=>{
 });
 ipcMain.handle('browser:clearData',async()=>{
   if(process.platform==='win32'){
+    clearBrowserPermissions();
     const ses=persistentBrowserSession();
     await ses.clearStorageData();
     await ses.clearCache();
@@ -1343,6 +1523,24 @@ ipcMain.handle('browser:showDownload',(_e,id)=>{
   shell.showItemInFolder(record.savePath);
   return {ok:true};
 });
+ipcMain.handle('browser:resolvePermission',(_e,{id,allow}={})=>resolveBrowserPermission(id,!!allow));
+ipcMain.handle('browser:dismissError',()=>{
+  if(activeBrowserTabId)browserErrors.delete(activeBrowserTabId);
+  emitBrowserState();
+  return browserSnapshot();
+});
+ipcMain.handle('browser:openExternalProtocol',async(_e,url)=>{
+  if(process.platform!=='win32')return {ok:false,error:'External protocol handling is currently available on Windows.'};
+  const activeError=activeBrowserTabId?browserErrors.get(activeBrowserTabId):null;
+  const info=browserProtocolInfo(url);
+  if(!activeError||activeError.type!=='protocol'||activeError.url!==String(url||'')||!info?.canOpenExternal){
+    return {ok:false,error:'This external link is not approved for opening.'};
+  }
+  await shell.openExternal(info.url);
+  browserErrors.delete(activeBrowserTabId);
+  emitBrowserState();
+  return {ok:true};
+});
 ipcMain.handle('browser:startAnnotation',()=>activeBrowserTabId?startBrowserAnnotation(activeBrowserTabId):null);
 ipcMain.handle('browser:cancelAnnotation',()=>activeBrowserTabId?cancelBrowserAnnotation(activeBrowserTabId):false);
 ipcMain.handle('browser:refreshSiteTools',()=>activeBrowserTabId?refreshBrowserSiteTools(activeBrowserTabId):[]);
@@ -1375,7 +1573,15 @@ ipcMain.handle('browser:navigate',async(_e,input)=>{
 ipcMain.handle('browser:setBounds',(_e,bounds)=>{setBrowserBounds(bounds);return true});
 ipcMain.handle('browser:back',()=>{browserGoBack(activeBrowserEntry()?.webContents);return browserSnapshot()});
 ipcMain.handle('browser:forward',()=>{browserGoForward(activeBrowserEntry()?.webContents);return browserSnapshot()});
-ipcMain.handle('browser:reload',()=>{activeBrowserEntry()?.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:reload',()=>{
+  const entry=activeBrowserEntry();
+  if(entry&&!entry.webContents.isDestroyed()){
+    if(activeBrowserTabId)browserErrors.delete(activeBrowserTabId);
+    entry.webContents.reload();
+    emitBrowserState();
+  }
+  return browserSnapshot();
+});
 ipcMain.handle('browser:close',()=>{hideBrowserView();return true});
 
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
