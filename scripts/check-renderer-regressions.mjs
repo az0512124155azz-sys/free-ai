@@ -58,6 +58,10 @@ if(/const\s+BRAND_LOGO_SRC\s*=\s*['"]\//.test(source)){
   fail('Packaged Electron assets must not use an absolute /free-ai-logo.svg path.');
 }
 
+for(const marker of ['className="messageBody" dir="auto"','ref={textareaRef}\n      dir="auto"','input autoFocus dir="auto" value={draft.name}','textarea dir="auto" value={prefs.customInstructions']){
+  if(!source.includes(marker))fail('Windows 7 RTL/LTR protection is missing "'+marker+'".');
+}
+
 const packageJson=JSON.parse(fs.readFileSync('package.json','utf8'));
 for(const platform of ['win','mac','linux']){
   const icon=packageJson?.build?.[platform]?.icon;
