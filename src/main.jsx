@@ -703,7 +703,11 @@ function App(){
       return next;
     });
   }
-  function openProject(project){stopActiveWorkTask();setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openProject(project){
+    const sameLiveProject=!!activeWorkTaskIdRef.current&&workTaskProjectIdRef.current===project.id;
+    if(!sameLiveProject)stopActiveWorkTask();
+    setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false);
+  }
   function openPluginsPage(){stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false)}
   function startProjectConversation(projectId,nextMode){
     stopActiveWorkTask();
@@ -774,7 +778,8 @@ function App(){
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
-    stopActiveWorkTask();
+    const sameLiveTask=!!activeWorkTaskIdRef.current&&chat?.taskId===activeWorkTaskIdRef.current;
+    if(!sameLiveTask)stopActiveWorkTask();
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
