@@ -351,6 +351,12 @@ button:disabled{opacity:.42;cursor:default}
 .repositoryContextChip{display:flex;align-items:center;gap:7px;margin:0 2px 8px;padding:7px 9px;border:1px solid var(--border-soft);border-radius:11px;background:var(--surface-secondary);color:var(--text-secondary)}
 .repositoryContextChip>span{display:flex;min-width:0;flex:1;flex-direction:column}.repositoryContextChip b{font-size:10.5px;font-weight:600}.repositoryContextChip small{font-size:9px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .repositoryContextChip>button{width:24px;height:24px;border-radius:50%;background:transparent;display:grid;place-items:center;color:var(--muted)}.repositoryContextChip>button:hover:not(:disabled){background:var(--hover);color:var(--text)}
+.mcpSelectionTray{display:flex;flex-wrap:wrap;gap:5px;margin:0 2px 8px}
+.mcpSelectionChip{display:grid;grid-template-columns:14px minmax(0,1fr) 22px;align-items:center;gap:6px;max-width:260px;padding:6px 7px;border:1px solid var(--border-soft);border-radius:10px;background:var(--surface-secondary);color:var(--text-secondary)}
+.mcpSelectionChip>span{display:flex;min-width:0;flex-direction:column}.mcpSelectionChip b{font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.mcpSelectionChip small{font-size:8.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mcpSelectionChip>button{width:22px;height:22px;border-radius:50%;background:transparent;display:grid;place-items:center;color:var(--muted)}.mcpSelectionChip>button:hover:not(:disabled){background:var(--hover);color:var(--text)}
+.mcpMenuRow.active{background:var(--selected);color:var(--text)}
+.menuHint{font-size:9px;color:var(--muted);line-height:1.4;padding:5px 8px 7px}
 .teamButton{min-width:0;height:32px;border-radius:999px;background:transparent;color:var(--text-secondary);display:flex;align-items:center;gap:5px;padding:0 9px;font-size:12px;white-space:nowrap}
 .teamButton:hover:not(:disabled){background:var(--hover);color:var(--text)}.teamButton:disabled{opacity:.55}
 .teamPicker{right:0;bottom:41px;width:340px;max-height:430px}
@@ -471,6 +477,16 @@ button:disabled{opacity:.42;cursor:default}
 .detectedToolRow>span:last-child,.pluginHint>div{display:flex;min-width:0;flex-direction:column}
 .detectedToolRow b,.pluginHint b{font-size:12.5px;font-weight:580}.detectedToolRow small,.pluginHint span{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.4}
 .pluginHint{border:1px solid var(--border-soft);background:var(--surface-primary);padding:13px}
+.warningHint{margin:12px 0 2px}
+.directMcpGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;margin-top:14px}
+.directMcpCard{min-width:0;border:1px solid var(--border-soft);border-radius:14px;background:var(--surface-primary);padding:11px}
+.directMcpTop{display:grid;grid-template-columns:35px minmax(0,1fr) auto;gap:9px;align-items:center}.directMcpTop>span:nth-child(2){display:flex;min-width:0;flex-direction:column}.directMcpTop b{font-size:12px}.directMcpTop small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.directMcpMeta{display:flex;flex-wrap:wrap;gap:5px;margin:9px 0}.directMcpMeta span,.directMcpTools span{font-size:8.5px;color:var(--text-tertiary);background:var(--surface-secondary);border-radius:999px;padding:4px 6px}
+.directMcpTools{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;max-height:82px;overflow:auto}
+.directMcpActions{display:flex;justify-content:flex-end;gap:6px;margin-top:10px}.directMcpActions button{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:8px;padding:5px 8px;font-size:9.5px}
+.mcpAddCard{margin-top:12px;border:1px solid var(--border-soft);border-radius:14px;background:var(--surface-primary);padding:12px}.mcpAddCard>div:first-child{display:flex;flex-direction:column}.mcpAddCard b{font-size:12px}.mcpAddCard small{font-size:9.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.mcpAddForm{display:grid;grid-template-columns:.8fr 1.5fr 1fr auto;gap:6px;margin-top:10px}.mcpAddForm input{min-width:0;background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:9px;color:var(--text);padding:8px 9px;font-size:10px}.mcpAddForm .primaryAction{white-space:nowrap}
+@media(max-width:900px){.directMcpGrid{grid-template-columns:1fr}.mcpAddForm{grid-template-columns:1fr}}
 .exploreInner{max-width:850px}.exploreInner h3{color:var(--text-tertiary);font-weight:500;font-size:12px;margin:24px 8px 8px}
 .placeholderPage{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--text-tertiary);text-align:center}
 .placeholderPage h1{color:var(--text);font-size:24px;font-weight:550;margin:12px 0 4px}.placeholderPage p{margin:0;font-size:13px;max-width:440px}
