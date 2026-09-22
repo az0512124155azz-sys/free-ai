@@ -467,6 +467,16 @@ button:disabled{opacity:.42;cursor:default}
 .browserToolbar input:focus{border-color:var(--border);color:var(--text);text-align:left}
 .downloadStatus{height:28px;min-width:28px;padding:0 7px;border-radius:var(--r-lg);display:flex;align-items:center;justify-content:center;gap:3px;color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
 .downloadStatus small{font-size:9px;font-weight:650}
+.downloadList{min-height:0;overflow:auto;padding:6px}
+.downloadItem{display:grid;grid-template-columns:18px minmax(0,1fr) auto;align-items:start;gap:7px;padding:8px;border-bottom:1px solid var(--border-soft);color:var(--text-secondary)}
+.downloadItem:last-child{border-bottom:0}
+.downloadDetails{min-width:0;display:flex;flex-direction:column;gap:3px}
+.downloadDetails b{font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.downloadDetails small{font-size:9px;color:var(--muted);line-height:1.35}
+.downloadDetails progress{width:100%}
+.downloadPath{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.downloadActions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.downloadActions button{display:flex;align-items:center;gap:5px;background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:8px;padding:6px 8px;color:var(--text-secondary);font-size:9.5px}
 .browserToolButton{position:relative}.browserToolButton small{position:absolute;right:2px;top:1px;min-width:12px;height:12px;padding:0 3px;border-radius:999px;background:var(--accent);color:var(--accent-contrast);font-size:8px;line-height:12px;font-weight:700}
 .browserToolButton.active{background:var(--selected)!important;color:var(--text)!important}
 .siteToolsPanel{flex:none;max-height:310px;overflow:hidden;border-bottom:1px solid var(--border-soft);background:var(--surface-primary);display:flex;flex-direction:column}
