@@ -567,6 +567,13 @@ button:disabled{opacity:.42;cursor:default}
 .authCard form{display:grid;gap:8px}.authCard form input{height:39px;background:var(--canvas);border:1px solid var(--border);border-radius:9px;padding:0 10px;color:var(--text)}
 .authSwitch{background:transparent;color:var(--text-tertiary);margin-top:13px;font-size:11px}
 
+.quickChatWindow{width:100%;height:100%;background:var(--canvas);display:flex;flex-direction:column;padding:8px}
+.quickChatHeader{height:38px;display:flex;align-items:center;justify-content:space-between;padding:0 3px 0 5px;-webkit-app-region:drag}
+.quickChatHeader>span{display:flex;align-items:center;gap:7px}.quickChatHeader b{font-size:12.5px}
+.quickChatHeader>div{display:flex;gap:2px;-webkit-app-region:no-drag}.quickChatHeader button{width:30px;height:30px;border-radius:8px;background:transparent;color:var(--muted);display:grid;place-items:center}.quickChatHeader button:hover{background:var(--hover);color:var(--text)}
+.quickChatResult{flex:1;min-height:0;overflow:auto;margin:4px 4px 8px;border:1px solid var(--border-soft);border-radius:12px;padding:9px 11px;background:var(--surface-primary)}.quickChatResult>span{font-size:9.5px;color:var(--muted)}.quickChatResult p{margin:5px 0 0;white-space:pre-wrap;font-size:11.5px;line-height:1.48;color:var(--text-secondary)}.quickChatResult.error p{color:#ff9e9e}
+.quickChatComposer{background:var(--composer);border:1px solid var(--border);border-radius:18px;padding:8px}.quickChatComposer textarea{width:100%;height:62px;resize:none;border:0;background:transparent;color:var(--text);padding:3px 5px;font-size:13px;line-height:1.45}.quickChatComposer textarea::placeholder{color:var(--muted)}
+.quickChatBottom{display:flex;align-items:center;justify-content:space-between;gap:8px}.quickChatBottom select{max-width:220px;height:30px;border:0;background:transparent;color:var(--text-secondary);font-size:10.5px}.quickSend{width:32px;height:32px;border-radius:50%;background:var(--surface-tertiary);color:var(--muted);display:grid;place-items:center}.quickSend.ready{background:var(--text);color:var(--canvas)}
 .voiceOverlay{position:fixed;inset:32px 0 0;z-index:190;background:var(--canvas);display:flex;flex-direction:column}
 .voiceTopbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--border-soft)}
 .voiceTopbar>span{display:flex;align-items:center;gap:8px}.voiceTopbar b{font-size:13px}.voiceTopbar small{font-size:10px;color:var(--muted);margin-left:2px}
