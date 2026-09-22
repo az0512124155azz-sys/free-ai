@@ -11,10 +11,10 @@ import {SocialLogin} from '@capgo/capacitor-social-login';
 import {
   AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,Camera,
   CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,Download,ExternalLink,
-  File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
+  Ellipsis,File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
   Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
-  SquarePen,Table2,Target,SquareTerminal,UserRound,Volume2,X
+  SquarePen,Table2,Target,SquareTerminal,Trash2,Upload,UserRound,Volume2,X
 } from 'lucide-react';
 import './styles.css';
 
@@ -32,7 +32,7 @@ const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 
 const settingsSections=[
-  ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
+  ['personal','General',Settings],['personal','Import',Upload],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
   ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
   ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
@@ -157,6 +157,8 @@ function App(){
   const [selectedFile,setSelectedFile]=useState(null);
   const [screens,setScreens]=useState([]);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
+  const [archivedChats,setArchivedChats]=useState(()=>readJSON('freeai.archived.free',[]));
+  const [chatMenuId,setChatMenuId]=useState(null);
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
@@ -282,6 +284,7 @@ function App(){
   useEffect(()=>{
     localStorage.setItem('freeai.product',product);
     setChats(readJSON('freeai.chats.'+product,[]));
+    setArchivedChats(readJSON('freeai.archived.'+product,[]));
     setCurrentChatId(null);
     setMessages([]);
     setSelectedTool(null);
@@ -303,8 +306,11 @@ function App(){
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
-    return q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):chats;
-  },[chats,sidebarSearch]);
+    if(!q)return chats;
+    const active=chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q));
+    const archived=archivedChats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)).map(chat=>({...chat,archived:true}));
+    return [...active,...archived];
+  },[chats,archivedChats,sidebarSearch]);
 
   function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
   function saveCurrentChat(nextMessages,model=selected){
@@ -319,6 +325,68 @@ function App(){
       localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
     });
   }
+  function archiveChat(chat){
+    if(!chat)return;
+    setChats(prev=>{
+      const next=prev.filter(c=>c.id!==chat.id);
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
+    });
+    setArchivedChats(prev=>{
+      const next=[{...chat,archivedAt:Date.now()},...prev.filter(c=>c.id!==chat.id)];
+      localStorage.setItem('freeai.archived.'+product,JSON.stringify(next));
+      return next;
+    });
+    if(currentChatId===chat.id)newChat();
+    setChatMenuId(null);
+  }
+  function unarchiveChat(chat){
+    if(!chat)return;
+    setArchivedChats(prev=>{
+      const next=prev.filter(c=>c.id!==chat.id);
+      localStorage.setItem('freeai.archived.'+product,JSON.stringify(next));
+      return next;
+    });
+    setChats(prev=>{
+      const clean={...chat};delete clean.archived;delete clean.archivedAt;
+      const next=[clean,...prev.filter(c=>c.id!==chat.id)];
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
+    });
+  }
+  function deleteChat(chat,fromArchive=false){
+    if(!chat)return;
+    if(fromArchive){
+      setArchivedChats(prev=>{const next=prev.filter(c=>c.id!==chat.id);localStorage.setItem('freeai.archived.'+product,JSON.stringify(next));return next});
+    }else{
+      setChats(prev=>{const next=prev.filter(c=>c.id!==chat.id);localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next});
+    }
+    if(currentChatId===chat.id)newChat();
+    setChatMenuId(null);
+  }
+  function archiveAllChats(){
+    const merged=[...chats.map(c=>({...c,archivedAt:Date.now()})),...archivedChats.filter(a=>!chats.some(c=>c.id===a.id))];
+    localStorage.setItem('freeai.archived.'+product,JSON.stringify(merged));
+    localStorage.setItem('freeai.chats.'+product,'[]');
+    setArchivedChats(merged);setChats([]);newChat();
+  }
+  function deleteAllChats(){
+    localStorage.setItem('freeai.chats.'+product,'[]');
+    localStorage.setItem('freeai.archived.'+product,'[]');
+    setChats([]);setArchivedChats([]);newChat();
+  }
+  async function importLocalData(file){
+    if(!file)return;
+    const parsed=JSON.parse(await file.text());
+    if(!parsed||parsed.product!=='Free AI'||!parsed.chats)throw new Error('This is not a Free AI data export.');
+    const free=Array.isArray(parsed.chats.free)?parsed.chats.free:[];
+    const superChats=Array.isArray(parsed.chats.super)?parsed.chats.super:[];
+    localStorage.setItem('freeai.chats.free',JSON.stringify(free));
+    localStorage.setItem('freeai.chats.super',JSON.stringify(superChats));
+    if(parsed.preferences&&typeof parsed.preferences==='object')persistPrefs({...appPrefs,...parsed.preferences});
+    setChats(product==='super'?superChats:free);
+  }
+
   function newChat(){
     setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
@@ -368,7 +436,9 @@ function App(){
     localStorage.removeItem('freeai.chats');
     localStorage.removeItem('freeai.chats.free');
     localStorage.removeItem('freeai.chats.super');
-    setChats([]);setMessages([]);setCurrentChatId(null);
+    localStorage.removeItem('freeai.archived.free');
+    localStorage.removeItem('freeai.archived.super');
+    setChats([]);setArchivedChats([]);setMessages([]);setCurrentChatId(null);
   }
 
   async function exportLocalData(){
@@ -377,6 +447,7 @@ function App(){
       exportedAt:new Date().toISOString(),
       account:session?.user?.email||null,
       chats:{free:readJSON('freeai.chats.free',[]),super:readJSON('freeai.chats.super',[])},
+      archived:{free:readJSON('freeai.archived.free',[]),super:readJSON('freeai.archived.super',[])},
       preferences:appPrefs
     };
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
@@ -507,7 +578,14 @@ function App(){
         </button>
         <div className="sidebarGroupTitle">Recents</div>
         {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
-          <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
+          <div key={chat.id} className={'recentRow '+(currentChatId===chat.id?'active':'')}>
+            <button className="recentItem" onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}{chat.archived&&<small>Archived</small>}</button>
+            {!chat.archived&&<button className="recentMore" aria-label="Chat actions" onClick={()=>setChatMenuId(v=>v===chat.id?null:chat.id)}><Ellipsis size={15}/></button>}
+            {chatMenuId===chat.id&&<div className="recentMenu">
+              <button onClick={()=>archiveChat(chat)}><Archive size={14}/>Archive</button>
+              <button className="dangerText" onClick={()=>deleteChat(chat,false)}><Trash2 size={14}/>Delete</button>
+            </div>}
+          </div>
         )}
       </div>
       <div className="sidebarFooter">
@@ -636,7 +714,8 @@ function App(){
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
       saveSettings={saveSettings} connected={connected} apiDraft={apiDraft} setApiDraft={setApiDraft}
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
-      onExportData={exportLocalData} onClearHistory={clearLocalHistory}
+      onExportData={exportLocalData} onImportData={importLocalData} onClearHistory={clearLocalHistory}
+      archivedChats={archivedChats} onUnarchiveChat={unarchiveChat} onDeleteArchived={chat=>deleteChat(chat,true)} onArchiveAll={archiveAllChats} onDeleteAll={deleteAllChats}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
       onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
       onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
@@ -1240,7 +1319,7 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onImportData,onClearHistory,archivedChats,onUnarchiveChat,onDeleteArchived,onArchiveAll,onDeleteAll,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
   const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
@@ -1261,6 +1340,7 @@ function SettingsView(props){
         <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
       </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Import'&&!isNative&&<ImportSettings onImportData={onImportData}/>}
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
@@ -1363,15 +1443,42 @@ function PersonalizationSettings({prefs,setPrefs}){
     </div>
   </div>
 }
-function DataControlsSettings({onExportData,onClearHistory}){
-  const [confirmClear,setConfirmClear]=useState(false);
+function ImportSettings({onImportData}){
+  const inputRef=useRef(null);
+  const [state,setState]=useState('');
+  async function importFile(event){
+    const file=event.target.files?.[0];if(!file)return;
+    setState('Importing…');
+    try{await onImportData(file);setState('Import complete')}catch(e){setState(e?.message||'Import failed')}
+    event.target.value='';
+  }
   return <div className="settingsPane">
-    <h3>Local data</h3>
+    <h3>Import</h3>
+    <div className="settingBlock">
+      <SettingRow title="Free AI data export" desc="Import chats and preferences from a Free AI JSON export on this computer." control={<button className="settingsInlineButton" onClick={()=>inputRef.current?.click()}>Choose file</button>}/>
+      <input ref={inputRef} type="file" accept="application/json,.json" hidden onChange={importFile}/>
+    </div>
+    {state&&<div className="settingsStatus">{state}</div>}
+  </div>
+}
+function DataControlsSettings({archivedChats=[],onUnarchiveChat,onDeleteArchived,onArchiveAll,onDeleteAll,onExportData,onClearHistory}){
+  const [confirm,setConfirm]=useState('');
+  return <div className="settingsPane">
+    <h3>Chat history</h3>
+    <div className="settingBlock">
+      <SettingRow title="Archived chats" desc={archivedChats.length?archivedChats.length+' archived chat'+(archivedChats.length===1?'':'s'):'No archived chats'} control={<span className="valuePill">{archivedChats.length}</span>}/>
+      {archivedChats.slice(0,20).map(chat=><div className="archivedChatRow" key={chat.id}><span>{chat.title}</span><div><button onClick={()=>onUnarchiveChat(chat)}>Unarchive</button><button className="dangerText" onClick={()=>onDeleteArchived(chat)}>Delete</button></div></div>)}
+      <SettingRow title="Archive all chats" desc="Remove every active chat from the sidebar without deleting it." control={<button className="settingsInlineButton" onClick={onArchiveAll}>Archive all</button>}/>
+      <SettingRow title="Delete all chats" desc="Delete active and archived local chats from this device." control={confirm==='delete'
+        ? <span className="confirmInline"><button onClick={()=>setConfirm('')}>Cancel</button><button className="dangerAction" onClick={()=>{onDeleteAll();setConfirm('')}}>Delete all</button></span>
+        : <button className="settingsInlineButton dangerText" onClick={()=>setConfirm('delete')}>Delete all…</button>}/>
+    </div>
+    <h3>Data</h3>
     <div className="settingBlock">
       <SettingRow title="Export Free AI data" desc="Export locally stored chats and preferences as JSON." control={<button className="settingsInlineButton" onClick={onExportData}>Export</button>}/>
-      <SettingRow title="Clear local chat history" desc="Delete locally stored Free AI and Super AI chats on this device." control={confirmClear
-        ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={()=>{onClearHistory();setConfirmClear(false)}}>Clear</button></span>
-        : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
+      <SettingRow title="Clear local data" desc="Clear local Free AI chat data on this device." control={confirm==='clear'
+        ? <span className="confirmInline"><button onClick={()=>setConfirm('')}>Cancel</button><button className="dangerAction" onClick={()=>{onClearHistory();setConfirm('')}}>Clear</button></span>
+        : <button className="settingsInlineButton dangerText" onClick={()=>setConfirm('clear')}>Clear…</button>}/>
     </div>
   </div>
 }
