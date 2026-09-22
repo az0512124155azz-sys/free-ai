@@ -1416,7 +1416,8 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
 
 function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
-  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[],error:null});
+  const [addressEditing,setAddressEditing]=useState(false);
+  const [state,setState]=useState({url:'',title:'New tab',favicon:'',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[],error:null});
   const [siteToolsOpen,setSiteToolsOpen]=useState(false);
   const [selectedSiteTool,setSelectedSiteTool]=useState(null);
   const [siteToolInput,setSiteToolInput]=useState('{}');
@@ -1430,10 +1431,10 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
     if(!isDesktop)return;
     const off=window.desktopApi.onBrowserState?.(next=>{
       setState(next);
-      if(next.url)setUrl(next.url);
+      if(next.url&&!addressEditing)setUrl(next.url);
     });
     return()=>{off?.();window.desktopApi.browserCancelAnnotation?.().catch(()=>{});window.desktopApi.browserClose?.().catch(()=>{})};
-  },[]);
+  },[addressEditing]);
 
   useEffect(()=>{
     if(!isDesktop||!surfaceRef.current)return;
@@ -1454,6 +1455,7 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   },[]);
 
   async function navigate(){
+    setAddressEditing(false);
     try{
       const next=await window.desktopApi?.browserNavigate(url);
       if(next){setState(next);if(next.url)setUrl(next.url)}
@@ -1524,8 +1526,13 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   return <aside className="sidePane browserPane">
     <div className="paneTabs browserTabsBar">
       <div className="browserTabsScroll">
-        {(state.tabs||[]).map(tab=><button key={tab.id} className={'browserTab '+(tab.id===state.activeTabId?'active':'')} onClick={()=>chooseTab(tab.id)}>
-          <Globe2 size={13}/><span>{tab.title||'New tab'}</span>
+        {(state.tabs||[]).map(tab=><button key={tab.id} className={'browserTab '+(tab.id===state.activeTabId?'active':'')} aria-current={tab.id===state.activeTabId?'page':undefined} onClick={()=>chooseTab(tab.id)}>
+          {tab.loading
+            ? <RefreshCw className="spin" size={13}/>
+            : tab.favicon
+              ? <img className="browserFavicon" src={tab.favicon} alt=""/>
+              : <Globe2 size={13}/>}
+          <span>{tab.title||'New tab'}</span>
           <span className="tabClose" role="button" aria-label="Close tab" onClick={e=>closeTab(e,tab.id)}><X size={12}/></span>
         </button>)}
         <button className="newBrowserTab" onClick={newTab} title="New tab"><Plus size={15}/></button>
@@ -1537,7 +1544,7 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       <button disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
       <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
-      <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
+      <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onFocus={()=>setAddressEditing(true)} onBlur={()=>{setAddressEditing(false);if(state.url)setUrl(state.url)}} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL" aria-label="Address and search"/></form>
       {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
       {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
       <button className={annotating?'active':''} onClick={annotating?cancelAnnotation:startAnnotation} title={annotating?'Cancel annotation':'Annotate page'}><PenLine size={15}/></button>
