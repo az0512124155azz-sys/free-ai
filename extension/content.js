@@ -452,6 +452,155 @@
     throw new Error('Could not activate the connected tool "'+desired+'" in this provider tab. Open the provider tool menu once and confirm that the tool is connected.');
   }
 
+  function nativeToolLabelMatches(kind,label){
+    const value=cleanLabel(label);
+    if(kind==='search')return /^(search|web search|search the web|search web|browse the web|browse web)$/i.test(value)||/\b(web search|search the web|browse the web)\b/i.test(value);
+    if(kind==='deep-research')return /^(deep research|research|deepsearch|deep search)$/i.test(value)||/\b(deep research|deepsearch|deep search)\b/i.test(value);
+    return false;
+  }
+
+  function nativeToolCandidates(kind){
+    const selectors='button,[role="button"],[role="menuitem"],[role="menuitemradio"],[role="option"]';
+    const items=[];
+    for(const el of document.querySelectorAll(selectors)){
+      if(!visible(el)||el.disabled||el.getAttribute?.('aria-disabled')==='true')continue;
+      const label=controlLabel(el);
+      if(!nativeToolLabelMatches(kind,label))continue;
+      const role=String(el.getAttribute?.('role')||'').toLowerCase();
+      const context=el.closest?.('[role="menu"],[role="listbox"],[role="dialog"],form,[class*="popover"],[class*="menu"]');
+      let score=0;
+      if(role==='menuitem'||role==='menuitemradio'||role==='option')score+=8;
+      if(context)score+=5;
+      if(/tool|search|research/i.test(String(el.getAttribute?.('data-testid')||el.getAttribute?.('data-test-id')||el.className||'')))score+=5;
+      if(el.getAttribute?.('aria-pressed')==='true'||el.getAttribute?.('aria-checked')==='true'||el.getAttribute?.('aria-selected')==='true')score+=4;
+      const rect=el.getBoundingClientRect();
+      if(rect.top>innerHeight*.45)score+=2;
+      items.push({el,label,score});
+    }
+    return items.sort((a,b)=>b.score-a.score);
+  }
+
+  function composerToolTriggers(){
+    const input=first([
+      '#prompt-textarea','textarea','rich-textarea div[contenteditable="true"]',
+      'div[contenteditable="true"][role="textbox"]','div.ProseMirror[contenteditable="true"]'
+    ]);
+    const roots=[];
+    let node=input;
+    for(let depth=0;depth<6&&node;depth++,node=node.parentElement)roots.push(node);
+    const candidates=[];
+    const seen=new Set();
+    for(const root of roots){
+      for(const el of root.querySelectorAll?.('button,[role="button"]')||[]){
+        if(!visible(el)||seen.has(el)||el.disabled)continue;
+        seen.add(el);
+        const label=controlLabel(el);
+        const hint=label+' '+String(el.getAttribute?.('data-testid')||el.getAttribute?.('data-test-id')||'');
+        if(/tools?|view all tools|more|add|plus|\+/i.test(hint))candidates.push(el);
+      }
+    }
+    for(const el of document.querySelectorAll('button,[role="button"]')){
+      if(candidates.length>=12)break;
+      if(!visible(el)||seen.has(el)||el.disabled)continue;
+      const label=controlLabel(el);
+      const hint=label+' '+String(el.getAttribute?.('data-testid')||el.getAttribute?.('data-test-id')||'');
+      if(/^(tools?|view all tools|more|add)$/i.test(label)||/tool/i.test(hint)){
+        seen.add(el);candidates.push(el);
+      }
+    }
+    return candidates.slice(0,12);
+  }
+
+  async function activateProviderNativeTool(kind){
+    let candidate=nativeToolCandidates(kind)[0];
+    if(candidate){
+      const selected=candidate.el.getAttribute?.('aria-pressed')==='true'||candidate.el.getAttribute?.('aria-checked')==='true'||candidate.el.getAttribute?.('aria-selected')==='true';
+      if(!selected){candidate.el.click();await sleep(220)}
+      return {ok:true,name:candidate.label};
+    }
+
+    for(const trigger of composerToolTriggers()){
+      const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
+      if(!wasExpanded){
+        try{trigger.click();await sleep(180)}catch{continue}
+      }
+      candidate=nativeToolCandidates(kind)[0];
+      if(candidate){
+        candidate.el.click();
+        await sleep(240);
+        return {ok:true,name:candidate.label};
+      }
+
+      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(tools?|more tools|view all tools)$/i.test(cleanLabel(controlLabel(el))));
+      for(const item of nested.slice(0,3)){
+        try{item.click();await sleep(160)}catch{continue}
+        candidate=nativeToolCandidates(kind)[0];
+        if(candidate){
+          candidate.el.click();
+          await sleep(240);
+          return {ok:true,name:candidate.label};
+        }
+      }
+      if(!wasExpanded)await closeTransientControl(trigger);
+    }
+
+    throw new Error(kind==='search'
+      ? 'This provider tab does not expose a live web-search tool. Choose a browser model with Search available in its composer.'
+      : 'This provider tab does not expose Deep Research in its current composer.');
+  }
+
+  function latestAnswerElement(config){
+    for(const selector of config?.answers||[]){
+      const els=[...document.querySelectorAll(selector)].filter(visible);
+      if(els.length)return els.at(-1);
+    }
+    return null;
+  }
+
+  function unwrapSourceUrl(raw){
+    try{
+      const parsed=new URL(String(raw||''),location.href);
+      if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return '';
+      if(parsed.hostname===location.hostname){
+        for(const key of ['url','u','target','dest','destination']){
+          const value=parsed.searchParams.get(key);
+          if(!value)continue;
+          try{
+            const nested=new URL(decodeURIComponent(value));
+            if(nested.protocol==='http:'||nested.protocol==='https:')return nested.toString();
+          }catch{}
+        }
+      }
+      return parsed.toString();
+    }catch{return ''}
+  }
+
+  function extractResponseSources(config){
+    const answer=latestAnswerElement(config);
+    if(!answer)return [];
+    const roots=[answer];
+    const article=answer.closest?.('article,[role="article"],[data-testid*="message"]');
+    if(article&&article!==answer)roots.push(article);
+    const seen=new Set();
+    const sources=[];
+    for(const root of roots){
+      for(const link of root.querySelectorAll?.('a[href]')||[]){
+        const url=unwrapSourceUrl(link.getAttribute('href')||link.href);
+        if(!url)continue;
+        let parsed;try{parsed=new URL(url)}catch{continue}
+        if(parsed.hostname===location.hostname)continue;
+        const key=(parsed.origin+parsed.pathname+parsed.search).replace(/\/$/,'');
+        if(seen.has(key))continue;
+        seen.add(key);
+        let title=cleanLabel(link.getAttribute('aria-label')||link.getAttribute('title')||link.innerText||link.textContent||'');
+        if(!title||/^(source|citation|link|\d+)$/i.test(title))title=parsed.hostname.replace(/^www\./,'');
+        sources.push({title,url:parsed.toString(),domain:parsed.hostname.replace(/^www\./,'')});
+        if(sources.length>=12)return sources;
+      }
+    }
+    return sources;
+  }
+
   function detectFileUpload(){
     return !!document.querySelector('input[type="file"]');
   }
@@ -674,7 +823,7 @@
     throw new Error('Timed out waiting for the AI response.');
   }
 
-  async function prompt(provider,text,toolRequest,effort,requestId,attachments){
+  async function prompt(provider,text,toolRequest,effort,requestId,attachments,nativeTool){
     const c=configs[provider];
     if(!c) throw new Error('Unsupported provider.');
     const input=first(c.inputs);
@@ -683,6 +832,7 @@
     const prefixes=[];
     if(effort&&effort!=='default') await selectProviderEffort(effort);
     if(toolRequest?.mcp)await activateProviderTool(toolRequest.mcp);
+    if(nativeTool==='search')await activateProviderNativeTool('search');
     const finalText=[...prefixes,String(text||'')].filter(Boolean).join('\n\n');
 
     const before=lastText(c.answers);
@@ -700,7 +850,12 @@
     }
 
     const answer=await waitForAnswer(c,before,requestId);
-    return {text:answer,requestedTool:toolRequest?.mcp||null};
+    return {
+      text:answer,
+      requestedTool:toolRequest?.mcp||null,
+      requestedNativeTool:nativeTool||null,
+      sources:nativeTool==='search'?extractResponseSources(c):[]
+    };
   }
 
   chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
@@ -771,7 +926,7 @@
     if(m?.type!=='freeai:prompt') return;
 
     (async()=>{
-      try{sendResponse(await prompt(m.provider,m.text,m.toolRequest,m.effort,m.id,m.attachments||[]))}
+      try{sendResponse(await prompt(m.provider,m.text,m.toolRequest,m.effort,m.id,m.attachments||[],m.nativeTool||null))}
       catch(e){sendResponse({error:e?.message||String(e)})}
     })();
 
