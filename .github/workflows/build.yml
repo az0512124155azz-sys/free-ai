@@ -173,6 +173,9 @@ jobs:
       - name: Configure stable Android OAuth signing
         run: npm run android:configure-signing
 
+      - name: Configure native Google login MainActivity
+        run: npm run android:configure-social-login
+
       - name: Verify Android signing fingerprint
         run: chmod +x android/gradlew && cd android && ./gradlew signingReport && cd .. && cat android-oauth-info.txt
 
