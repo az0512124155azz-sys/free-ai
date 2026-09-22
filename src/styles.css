@@ -80,6 +80,21 @@
 *{box-sizing:border-box}
 html,body,#root{margin:0;width:100%;height:100%;overflow:hidden;background:var(--canvas)}
 body{font-family:inherit;color:var(--text);background:var(--canvas);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.windowsDesktopRoot{width:100%;height:100%;display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--canvas)}
+.appViewport{flex:1;min-width:0;min-height:0;overflow:hidden}
+.windowsChrome{
+  height:env(titlebar-area-height,30px);flex:none;background:var(--canvas);color:var(--text-secondary);
+  app-region:drag;-webkit-app-region:drag;user-select:none
+}
+.windowsChromeSafe{
+  height:100%;margin-left:env(titlebar-area-x,0px);width:env(titlebar-area-width,100%);
+  display:flex;align-items:stretch
+}
+.windowsChromeMenus{display:flex;align-items:stretch;app-region:no-drag;-webkit-app-region:no-drag}
+.windowsChromeMenus button{
+  height:100%;padding:0 .8em;background:transparent;border-radius:0;color:var(--text-secondary);font:menu
+}
+.windowsChromeMenus button:hover,.windowsChromeMenus button:focus-visible{background:var(--hover);color:var(--text)}
 body,button,input,textarea,select{font:inherit}
 button,input,textarea,select{outline:none}
 button{border:0;color:inherit}

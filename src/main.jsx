@@ -27,6 +27,7 @@ const supabase=supabaseUrl&&supabaseKey
 const isDesktop=!!window.desktopApi;
 const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
+const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
@@ -68,6 +69,25 @@ function BrandMark({size=22,className=''}) {
       <path className="markArc" d="M358 400 A182 182 0 0 1 112 154"/>
     </svg>
   </span>;
+}
+
+function WindowsChrome(){
+  const menus=['File','Edit','View','Help'];
+  return <div className="windowsChrome" role="menubar" aria-label="Application menu">
+    <div className="windowsChromeSafe">
+      <div className="windowsChromeMenus">
+        {menus.map(label=><button key={label} role="menuitem" aria-haspopup="menu" onClick={()=>window.desktopApi?.showAppMenu?.(label)}>{label}</button>)}
+      </div>
+    </div>
+  </div>;
+}
+
+function Root(){
+  if(!isWindowsDesktop)return <App/>;
+  return <div className="windowsDesktopRoot">
+    <WindowsChrome/>
+    <div className="appViewport"><App/></div>
+  </div>;
 }
 
 function App(){
@@ -186,6 +206,13 @@ function App(){
       const canZoom=(!isNative&&!isDesktop)||(isDesktop&&desktopPlatform==='win32');
       root.style.setProperty('--ui-scale',String(canZoom?scale:1));
       document.body.style.zoom=String(canZoom?scale:1);
+      if(isWindowsDesktop){
+        const styles=getComputedStyle(root);
+        window.desktopApi?.setTitleBarTheme?.({
+          color:styles.getPropertyValue('--canvas').trim(),
+          symbolColor:styles.getPropertyValue('--text').trim()
+        }).catch(()=>{});
+      }
     };
     apply();
     if(appPrefs.appearance==='system')scheme?.addEventListener?.('change',apply);
@@ -1464,4 +1491,4 @@ function sendRemote(url,key,payload){
   });
 }
 
-createRoot(document.getElementById('root')).render(<App/>);
+createRoot(document.getElementById('root')).render(<Root/>);

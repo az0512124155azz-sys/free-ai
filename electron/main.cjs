@@ -72,6 +72,24 @@ function installAppMenu(){
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+function showAppMenu(label){
+  if(!win||win.isDestroyed())return false;
+  const item=Menu.getApplicationMenu()?.items?.find(entry=>entry.label===label);
+  if(!item?.submenu)return false;
+  item.submenu.popup({window:win});
+  return true;
+}
+
+function setWindowChromeTheme({color,symbolColor}={}){
+  if(process.platform!=='win32'||!win||win.isDestroyed())return false;
+  const options={};
+  if(typeof color==='string'&&color.trim())options.color=color.trim();
+  if(typeof symbolColor==='string'&&symbolColor.trim())options.symbolColor=symbolColor.trim();
+  if(!Object.keys(options).length)return false;
+  win.setTitleBarOverlay(options);
+  return true;
+}
+
 function activeBrowserEntry(){
   return activeBrowserTabId?browserTabs.get(activeBrowserTabId)||null:null;
 }
@@ -761,7 +779,8 @@ function createWindow(){
     autoHideMenuBar:false,
     title:'Free AI',
     icon:path.join(__dirname,'..','build','icon.png'),
-    titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',
+    titleBarStyle:process.platform==='win32'?'hidden':process.platform==='darwin'?'hiddenInset':'default',
+    ...(process.platform==='win32'?{titleBarOverlay:true}:{}),
     webPreferences:{
       preload:path.join(__dirname,'preload.cjs'),
       contextIsolation:true,
@@ -769,6 +788,8 @@ function createWindow(){
       sandbox:true
     }
   });
+
+  if(process.platform==='win32')win.setMenuBarVisibility(false);
 
   win.once('ready-to-show',()=>{
     if(!win.isDestroyed())win.show();
@@ -844,6 +865,8 @@ app.on('before-quit',()=>{
 
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
+ipcMain.handle('shell:showMenu',(_e,label)=>showAppMenu(String(label||'')));
+ipcMain.handle('shell:setTitleBarTheme',(_e,theme)=>setWindowChromeTheme(theme||{}));
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',()=>{sendExtension({type:'scanProviders'});return status()});
 ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{}));
