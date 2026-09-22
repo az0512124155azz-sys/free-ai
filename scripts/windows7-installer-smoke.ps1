@@ -62,22 +62,30 @@ Write-Host ("Product version: " + [string]$exeInfo.ProductVersion)
 New-Item -ItemType Directory -Path $userDataDir -Force | Out-Null
 
 $launchArgs = @("--user-data-dir=$userDataDir", '--disable-gpu')
-$app = Start-Process -FilePath $appExe -ArgumentList $launchArgs -PassThru
 
-Start-Sleep -Seconds 8
-$app.Refresh()
-if ($app.HasExited) {
-  Fail ("Installed app exited during first-launch smoke with code " + $app.ExitCode + '.')
+function Start-FreeAISmokeLaunch([string]$Label) {
+  $process = Start-Process -FilePath $appExe -ArgumentList $launchArgs -PassThru
+  Start-Sleep -Seconds 8
+  $process.Refresh()
+  if ($process.HasExited) {
+    Fail ($Label + " exited during smoke with code " + $process.ExitCode + '.')
+  }
+
+  $actualPath = (Get-Process -Id $process.Id -ErrorAction Stop).Path
+  if (-not $actualPath.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Fail ($Label + " did not execute the installed binary. Process path: " + $actualPath)
+  }
+
+  Write-Host ($Label + " stayed alive. PID=" + $process.Id)
+  & taskkill.exe /PID $process.Id /T /F | Out-Host
+  Start-Sleep -Seconds 1
 }
 
-$actualPath = (Get-Process -Id $app.Id -ErrorAction Stop).Path
-if (-not $actualPath.StartsWith($installDir, [System.StringComparison]::OrdinalIgnoreCase)) {
-  Fail ("First launch did not execute the installed binary. Process path: " + $actualPath)
-}
+Start-FreeAISmokeLaunch 'First launch'
 
-Write-Host ("First launch stayed alive. PID=" + $app.Id)
-& taskkill.exe /PID $app.Id /T /F | Out-Host
-Start-Sleep -Seconds 1
+Wait-Until { (Test-Path -LiteralPath $userDataDir -PathType Container) -and ((Get-ChildItem -LiteralPath $userDataDir -Force -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0) } 15 'First launch did not initialize the isolated userData profile.'
+
+Start-FreeAISmokeLaunch 'Second launch with existing profile'
 
 $uninstaller = Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $uninstaller) {
@@ -102,6 +110,8 @@ $summary = @(
   '- NSIS silent clean install: PASS',
   '- Installed executable + ASAR: PASS',
   '- First launch process survival: PASS',
+  '- Isolated userData profile initialization: PASS',
+  '- Second launch / restart with same profile: PASS',
   '- Installed-binary path verification: PASS',
   '- NSIS silent uninstall: PASS'
 ) -join [Environment]::NewLine

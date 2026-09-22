@@ -72,9 +72,13 @@ has(installerSmoke,"@('/S', \"/D=$installDir\")",'Installer smoke must perform a
 has(installerSmoke,"Join-Path $installDir 'Free AI.exe'",'Installer smoke must verify the installed Free AI executable.');
 has(installerSmoke,"Join-Path $installDir 'resources\\app.asar'",'Installer smoke must verify the packaged ASAR.');
 has(installerSmoke,"Start-Process -FilePath $appExe",'Installer smoke must launch the installed application.');
-has(installerSmoke,"$app.HasExited",'Installer smoke must detect first-launch crashes.');
+has(installerSmoke,"$process.HasExited",'Installer smoke must detect launch crashes through the shared restart helper.');
 has(installerSmoke,"Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe'",'Installer smoke must find the installed NSIS uninstaller.');
 has(installerSmoke,'/S _?=$installDir','Installer smoke must silently uninstall the exact smoke-test installation.');
+has(installerSmoke,"Start-FreeAISmokeLaunch 'First launch'",'Installer smoke must exercise packaged first launch through the shared launch helper.');
+has(installerSmoke,"First launch did not initialize the isolated userData profile.",'Installer smoke must verify first launch initializes the profile before restart.');
+has(installerSmoke,"Start-FreeAISmokeLaunch 'Second launch with existing profile'",'Installer smoke must validate a second launch using the same userData profile.');
+has(installerSmoke,"Second launch / restart with same profile: PASS",'Installer smoke summary must report restart validation.');
 
 ok(/extensionSocket=null;\s*browserProviders=\[\];\s*extensionBrowserState=\{tabs:\[\],activeTabId:null,activeWindowId:null\};/.test(main),'Extension disconnect must clear stale browser provider and tab state.');
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
