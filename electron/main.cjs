@@ -1242,7 +1242,13 @@ async function canonicalLocalFolderRoot(input){
   if(process.platform!=='win32')throw new Error('Local folder access is currently available on Windows.');
   const requested=path.resolve(String(input||''));
   if(!requested||!fs.existsSync(requested)||!fs.statSync(requested).isDirectory())throw new Error('Local folder is not available.');
-  return fs.realpathSync(requested);
+  const realRoot=fs.realpathSync(requested);
+  const rootParts=realRoot.replace(/\\/g,'/').toLowerCase().split('/').filter(Boolean);
+  const blockedRoots=new Set(['.git','.ssh','.aws','.azure','.kube','.gnupg']);
+  if(rootParts.some(part=>blockedRoots.has(part))){
+    throw new Error('Free AI will not grant automated folder access to credential, keychain, or repository-metadata directories. Choose a narrower non-sensitive folder instead.');
+  }
+  return realRoot;
 }
 
 function sensitiveLocalFile(relativePath){
