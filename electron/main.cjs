@@ -2,7 +2,7 @@ const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,W
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
-const {execFile}=require('child_process');
+const {execFile,spawn}=require('child_process');
 const {WebSocketServer,WebSocket}=require('ws');
 
 let win;
@@ -22,6 +22,7 @@ let browserDownloads=[];
 let browserDownloadHooked=false;
 const browserSiteTools=new Map();
 let siteToolsEnabled=true;
+let appshotWatcher=null;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
