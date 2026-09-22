@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,session}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -672,6 +672,15 @@ ipcMain.handle('browser:back',()=>{const tab=activeBrowserTab();if(tab?.view.web
 ipcMain.handle('browser:forward',()=>{const tab=activeBrowserTab();if(tab?.view.webContents.canGoForward())tab.view.webContents.goForward();return browserSnapshot()});
 ipcMain.handle('browser:reload',()=>{activeBrowserTab()?.view.webContents.reload();return browserSnapshot()});
 ipcMain.handle('browser:close',()=>{closeBrowserView();return true});
+ipcMain.handle('browser:clearData',async()=>{
+  closeBrowserView();
+  const browserSession=session.fromPartition('persist:freeai-browser');
+  await Promise.allSettled([
+    browserSession.clearStorageData(),
+    browserSession.clearCache()
+  ]);
+  return {ok:true};
+});
 
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
   if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows. Screen preview still works on this platform.');
