@@ -915,6 +915,7 @@ app.whenReady().then(()=>{
   loadApiConnections();
   startLocalBridge();
   createWindow();
+  startAppshotWatcher();
 
   const startupAuthUrl=findAuthUrl(process.argv);
   if(startupAuthUrl)pendingAuthUrl=startupAuthUrl;
@@ -930,6 +931,7 @@ app.whenReady().then(()=>{
 });
 
 app.on('before-quit',()=>{
+  stopAppshotWatcher();
   hideBrowserView();
   for(const view of browserTabs.values()){try{view.webContents.close()}catch{}}
   browserTabs.clear();
@@ -942,6 +944,7 @@ app.on('before-quit',()=>{
 
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
+ipcMain.handle('appshot:capture',()=>captureForegroundAppshot());
 ipcMain.handle('app:quit',()=>{app.quit();return true});
 ipcMain.handle('app:reload',()=>{win?.webContents.reload();return true});
 ipcMain.handle('bridge:getStatus',()=>status());
