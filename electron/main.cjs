@@ -2408,6 +2408,7 @@ function publicWorkTask(task){
     workspace:task.workspace?{
       name:task.workspace.name,branch:task.workspace.branch,head:task.workspace.head,dirty:task.workspace.dirty
     }:null,
+    folder:task.localFolder?{name:task.localFolder.name}:null,
     apps:Array.isArray(task.mcpConnections)?task.mcpConnections.map(item=>({
       id:item.id,name:item.name,toolCount:Array.isArray(mcpSessions.get(item.id)?.tools)?mcpSessions.get(item.id).tools.length:0
     })):[],
@@ -2461,6 +2462,7 @@ function workActionIsReadOnly(tool,type){
   if(tool==='browser_builtin')return type==='snapshot'||type==='wait';
   if(tool==='browser_extension')return type==='snapshot'||type==='list_tabs';
   if(tool==='repository')return ['status','list','read','diff'].includes(type);
+  if(tool==='files')return ['list','stat','read','attach'].includes(type);
   return false;
 }
 
@@ -2469,6 +2471,7 @@ function workActionIsSensitive(tool,type){
   if(tool==='browser_builtin')return ['click','double_click','type','keypress','close_tab'].includes(type);
   if(tool==='browser_extension')return ['click','type','select','close_tab'].includes(type);
   if(tool==='repository')return type==='write';
+  if(tool==='files')return type==='write';
   return true;
 }
 
@@ -2515,6 +2518,10 @@ function workApprovalFor(task,decision){
       scopeTitle='Allow app access for this task?';
       scopeDetail='Free AI will send the requested tool arguments to the MCP app "'+resolved.connection.name+'" for this task.';
     }
+  }else if(tool==='files'&&task.localFolder?.root&&!task.approvedScopes.has('files:'+task.localFolder.root)){
+    scope='files:'+task.localFolder.root;
+    scopeTitle='Allow local folder access for this task?';
+    scopeDetail='Free AI will access files inside the selected local folder "'+task.localFolder.name+'" for this task. Credential and private-key files remain blocked.';
   }
 
   const resolvedMcp=tool==='mcp'&&type!=='list'?workMcpTool(task,action):null;
@@ -2543,6 +2550,9 @@ function workApprovalFor(task,decision){
   const repositoryTarget=tool==='repository'&&action.path
     ? 'Repository file: '+String(action.path).slice(0,500)+'.'
     : '';
+  const fileTarget=tool==='files'
+    ? 'Local folder: '+String(task.localFolder?.name||'selected folder')+'.'+(action.path?' Path: '+String(action.path).slice(0,500)+'.':'')
+    : '';
   const mcpTarget=tool==='mcp'&&resolvedMcp
     ? 'App: '+resolvedMcp.connection.name+'. Tool: '+resolvedMcp.tool.name+'. '+(
         type==='call'?(mcpReadOnly?'Declared read-only.':'Not declared read-only; confirmation is required.'):'Metadata only.'
@@ -2569,6 +2579,8 @@ function workApprovalFor(task,decision){
     target,
     repositoryTarget,
     repositoryWrite,
+    fileTarget,
+    tool==='files'&&type==='write'?'Write size: '+Buffer.byteLength(String(action.content??''),'utf8')+' bytes.':'',
     mcpTarget,
     typedText?'Text to enter: "'+typedText+(String(action.text).length>160?'…':'')+'"':'',
     keys?'Keys: '+keys+'.':''
@@ -2655,7 +2667,7 @@ function parseWorkDecision(raw){
   if(parsed.kind==='ask'){
     return {kind:'complete',message:String(parsed.message||'I need more information before I can continue.')};
   }
-  if(parsed.kind!=='tool'||!['browser_builtin','browser_extension','computer','repository','mcp'].includes(parsed.tool)||!parsed.action||typeof parsed.action!=='object'){
+  if(parsed.kind!=='tool'||!['browser_builtin','browser_extension','computer','repository','mcp','files'].includes(parsed.tool)||!parsed.action||typeof parsed.action!=='object'){
     throw new Error('The selected model returned an unsupported Work action.');
   }
   return {
