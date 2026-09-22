@@ -137,6 +137,7 @@ async function browserSnapshot(tabId){
   const tab=await requireBrowserTab(tabId);
   await ensureContentScript(tab.id);
   const page=await sendToTab(tab.id,{type:'freeai:browserSnapshot'});
+  if(page?.error)throw new Error(page.error);
   let screenshot='';
   if(tab.active){
     try{screenshot=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'jpeg',quality:70})}catch{}
