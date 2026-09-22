@@ -3662,8 +3662,8 @@ function createWindow(){
   win=new BrowserWindow({
     width:1380,
     height:880,
-    minWidth:980,
-    minHeight:650,
+    minWidth:process.platform==='win32'?500:980,
+    minHeight:process.platform==='win32'?420:650,
     backgroundColor:'#181818',
     show:false,
     autoHideMenuBar:false,
