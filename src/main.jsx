@@ -1214,7 +1214,12 @@ function App(){
         onStart={nextMode=>startProjectConversation(activeProject.id,nextMode)}
         onOpenChat={openChat} onSave={patch=>updateProject(activeProject.id,patch)}
       />}
-      {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')} onRefresh={()=>window.desktopApi?.scanProviders?.().catch(()=>{})}/>}
+      {page==='plugins'&&<PluginsPage
+        tools={mcpTools} connected={connected} directMcpConnections={mcpConnections}
+        mcpDraft={mcpDraft} setMcpDraft={setMcpDraft} mcpError={mcpError}
+        onAddMcp={addMcpConnection} onRemoveMcp={removeMcpConnection} onRefreshMcp={refreshMcpConnections}
+        onBack={()=>setPage('chat')} onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
+      />}}
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
 
@@ -1677,47 +1682,88 @@ function ProfileMenu({session,onSettings}){
   </div>
 }
 
-function PluginsPage({tools,connected,onBack,onRefresh}){
+function PluginsPage({
+  tools,connected,directMcpConnections=[],mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh
+}){
   const [query,setQuery]=useState('');
   const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
   const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
   const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
+  const visibleDirect=needle
+    ? directMcpConnections.filter(connection=>(
+        connection.name+' '+connection.url+' '+(connection.tools||[]).map(tool=>tool.name+' '+tool.title).join(' ')
+      ).toLowerCase().includes(needle))
+    : directMcpConnections;
   return <div className="contentPage">
     <PageTop onBack={onBack} title={pageName} action={isDesktop?'Refresh':null} onAction={onRefresh}/>
     <div className="contentInner">
       <h1>{pageName}</h1>
-      <p className="pageLead">Use MCP/connectors that are already installed and authorized in a connected AI provider.</p>
-      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search detected plugins"/></div>
+      <p className="pageLead">{isWindowsDesktop
+        ? 'Connect remote MCP apps directly to Free AI, then select the apps you want to use for each Work or Super AI task.'
+        : 'Provider-managed connectors are surfaced only when a connected AI provider exposes them in its own interface.'}</p>
+      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isWindowsDesktop?'Search apps and tools':'Search provider hints'}/></div>
+
+      {isWindowsDesktop&&<section className="pluginSection">
+        <div className="sectionHeading"><h2>Direct MCP apps</h2><span className="pluginMeta">{visibleDirect.length} apps</span></div>
+        <div className="directMcpGrid">
+          {visibleDirect.map(connection=><div className="directMcpCard" key={connection.id}>
+            <div className="directMcpTop">
+              <span className="pluginIcon"><Plug size={17}/></span>
+              <span><b>{connection.name}</b><small>{connection.url}</small></span>
+              <span className={'connectionStatus '+(connection.connected?'good':'')}>{connection.connected?'Connected':'Saved'}</span>
+            </div>
+            <div className="directMcpMeta">
+              <span>MCP {connection.protocolVersion||'2025-11-25'}</span>
+              <span>{connection.tools?.length||0} tools</span>
+              {connection.hasToken&&<span>Token saved securely</span>}
+            </div>
+            {connection.error&&<div className="formError">{connection.error}</div>}
+            {Array.isArray(connection.tools)&&connection.tools.length>0&&<div className="directMcpTools">
+              {connection.tools.slice(0,12).map(tool=><span key={tool.name} title={tool.description||tool.name}>
+                {tool.title||tool.name}{tool.annotations?.readOnlyHint===true?' · read-only':''}
+              </span>)}
+              {connection.tools.length>12&&<span>+{connection.tools.length-12} more</span>}
+            </div>}
+            <div className="directMcpActions">
+              <button onClick={()=>window.desktopApi?.refreshMcpConnection?.(connection.id).then(updated=>{
+                if(updated)onRefreshMcp?.();
+              }).catch(()=>onRefreshMcp?.())}>Refresh</button>
+              <button className="dangerText" onClick={()=>onRemoveMcp?.(connection.id)}>Remove</button>
+            </div>
+          </div>)}
+          {!visibleDirect.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{needle?'No direct MCP app matches':'No direct MCP apps yet'}</b><span>Add an HTTPS MCP endpoint below. Localhost HTTP is also allowed for local development.</span></div>}
+        </div>
+        <div className="mcpAddCard">
+          <div><b>Add remote MCP app</b><small>This checkpoint supports Streamable HTTP MCP 2025-11-25. The token is stored by the desktop process, not in the renderer.</small></div>
+          <div className="mcpAddForm">
+            <input placeholder="App name" value={mcpDraft?.name||''} onChange={e=>setMcpDraft?.({...mcpDraft,name:e.target.value})}/>
+            <input placeholder="https://example.com/mcp" value={mcpDraft?.url||''} onChange={e=>setMcpDraft?.({...mcpDraft,url:e.target.value})}/>
+            <input type="password" placeholder="Bearer token (optional)" value={mcpDraft?.token||''} onChange={e=>setMcpDraft?.({...mcpDraft,token:e.target.value})}/>
+            <button className="primaryAction" onClick={onAddMcp} disabled={!String(mcpDraft?.url||'').trim()}>Connect and add</button>
+          </div>
+          {mcpError&&<div className="formError">{mcpError}</div>}
+        </div>
+      </section>}
 
       <section className="pluginSection">
-        <div className="sectionHeading"><h2>Installed and detected</h2><span className="pluginMeta">{visibleTools.length} tools</span></div>
+        <div className="sectionHeading"><h2>Provider-managed connector hints</h2><span className="pluginMeta">{visibleTools.length} hints</span></div>
+        <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Not direct MCP verification</b><span>These labels come from visible provider UI detected by the browser extension. Free AI does not treat them as proof that a tool exists or that a provider actually used it.</span></div></div>
         <div className="installedStrip">
           {visibleTools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
-          {!visibleTools.length&&<span className="muted">{query?'No plugin matches your search.':'No MCP tools are currently detected.'}</span>}
+          {!visibleTools.length&&<span className="muted">{query?'No provider hint matches your search.':'No provider-managed connector hints detected.'}</span>}
         </div>
       </section>
 
       <section className="pluginSection">
-        <h2>Connected providers</h2>
+        <h2>Connected AI providers</h2>
         <div className="pluginGrid">
           {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
             <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
-            <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API connection':((provider.mcps?.length||0)+' MCP/connectors detected')}</small></span>
+            <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API model':((provider.mcps?.length||0)+' provider UI hints')}</small></span>
             <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
           </div>)}
-          {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider is connected</b><span>Open a supported AI site in Chrome with the Free AI extension, or add an API model in Settings.</span></div>}
-        </div>
-      </section>
-
-      <section className="pluginSection">
-        <h2>Tools available across models</h2>
-        <div className="toolList">
-          {visibleTools.map(t=><div className="detectedToolRow" key={t.key}>
-            <span className="pluginIcon"><Plug size={18}/></span>
-            <span><b>{t.mcp}</b><small>Installed in {t.ownerName}. Free AI can route its result to another connected model.</small></span>
-          </div>)}
-          {!visibleTools.length&&!query&&<div className="pluginHint"><Chrome size={20}/><div><b>Install or authorize the MCP in its provider first</b><span>Free AI only exposes tools that the connected provider reports as installed.</span></div></div>}
+          {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No AI provider is connected</b><span>Open a supported AI site in Chromium with the Free AI extension, or add an API model in Settings.</span></div>}
         </div>
       </section>
     </div>
