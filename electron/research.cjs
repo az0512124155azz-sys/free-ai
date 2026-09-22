@@ -385,6 +385,11 @@ async function runOwnedResearch({cfg,msg,onStream,emitActivity,activePrompts}){
       {role:'system',content:'You are a rigorous research synthesizer. Use only supplied evidence and preserve citation IDs exactly.'},
       {role:'user',content:synthesisPrompt}
     ],controller.signal,onStream);
+    const citedIds=[...String(report||'').matchAll(/\\[S(\\d+)\\]/g)].map(match=>Number(match[1]));
+    const invalidCitation=citedIds.find(id=>!Number.isInteger(id)||id<1||id>sources.length);
+    if(invalidCitation){
+      throw new Error('The research model returned a citation for a source Free AI did not read. The report was rejected to protect citation integrity.');
+    }
     const completedAt=new Date().toISOString();
     reportActivity('Research complete');
     return {
