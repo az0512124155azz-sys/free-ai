@@ -1326,7 +1326,7 @@ function Composer(props){
       spellCheck={spellCheckEnabled!==false}
       autoCorrect={spellCheckEnabled!==false?'on':'off'}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
-      placeholder={product==='super'?(isNative?'Message your desktop task':'Ask Super AI to build or debug'):mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
+      placeholder={product==='super'?(isNative?'Message your desktop task':'Give Super AI a task'):mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
     />
     <div className="composerBottom">
       <div className="composerLeft">
