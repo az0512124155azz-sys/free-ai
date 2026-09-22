@@ -12,7 +12,7 @@ import {
   AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,Camera,
   CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,Download,ExternalLink,
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
-  LogOut,Mail,Menu,Mic2,Monitor,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Plug,
+  LogOut,Mail,Menu,Mic2,Monitor,MoreHorizontal,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Pin,Plug,
   Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
   SquarePen,Table2,Target,SquareTerminal,UserRound,Volume2,X
 } from 'lucide-react';
@@ -106,6 +106,9 @@ function App(){
   const [mobileModeMenu,setMobileModeMenu]=useState(false);
   const [sidebarSearchOpen,setSidebarSearchOpen]=useState(false);
   const [sidebarSearch,setSidebarSearch]=useState('');
+  const [recentsFilter,setRecentsFilter]=useState('all');
+  const [recentsFilterOpen,setRecentsFilterOpen]=useState(false);
+  const [chatMenuId,setChatMenuId]=useState(null);
   const [page,setPage]=useState('chat');
   const [mode,setMode]=useState('chat');
   const [modelMenu,setModelMenu]=useState(false);
@@ -227,6 +230,8 @@ function App(){
     const onKey=e=>{
       if(e.key!=='Escape')return;
       if(profileMenu){setProfileMenu(false);return}
+      if(chatMenuId){setChatMenuId(null);return}
+      if(recentsFilterOpen){setRecentsFilterOpen(false);return}
       if(modelMenu){setModelMenu(false);return}
       if(effortMenu){setEffortMenu(false);return}
       if(plusMenu){setPlusMenu(false);return}
@@ -242,11 +247,13 @@ function App(){
       if(!target.closest('.productSwitcher'))setProductMenu(false);
       if(!target.closest('.profileMenu')&&!target.closest('.profileButton'))setProfileMenu(false);
       if(!target.closest('.mobileModeAnchor'))setMobileModeMenu(false);
+      if(!target.closest('.recentsFilterAnchor'))setRecentsFilterOpen(false);
+      if(!target.closest('.recentRow'))setChatMenuId(null);
     };
     window.addEventListener('keydown',onKey);
     document.addEventListener('pointerdown',onPointer);
     return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
-  },[profileMenu,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+  },[profileMenu,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
 
   useEffect(()=>{
     localStorage.setItem('freeai.product',product);
@@ -255,6 +262,9 @@ function App(){
     setMessages([]);
     setSelectedTool(null);
     setSidePanel(null);
+    setRecentsFilter('all');
+    setRecentsFilterOpen(false);
+    setChatMenuId(null);
     if(product==='super')setMode('work');
   },[product]);
 
@@ -272,8 +282,18 @@ function App(){
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
-    return q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):chats;
-  },[chats,sidebarSearch]);
+    let list=q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):[...chats];
+    if(isWindowsDesktop&&product==='free'&&recentsFilter!=='all'){
+      list=list.filter(chat=>(chat.mode||'chat')===recentsFilter);
+    }
+    if(isWindowsDesktop){
+      list=[...list].sort((a,b)=>{
+        const pinDelta=Number(!!b.pinned)-Number(!!a.pinned);
+        return pinDelta||((Number(b.updatedAt)||0)-(Number(a.updatedAt)||0));
+      });
+    }
+    return list;
+  },[chats,sidebarSearch,product,recentsFilter]);
 
   function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
   function saveCurrentChat(nextMessages,model=selected){
@@ -283,10 +303,22 @@ function App(){
     let id=currentChatId;
     if(!id){id=crypto.randomUUID();setCurrentChatId(id)}
     setChats(prev=>{
-      const chat={id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,updatedAt:Date.now()};
+      const existing=prev.find(c=>c.id===id);
+      const chat={
+        id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,
+        mode:product==='super'?'work':mode,pinned:!!existing?.pinned,updatedAt:Date.now()
+      };
       const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
       localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
     });
+  }
+  function togglePinChat(id){
+    setChats(prev=>{
+      const next=prev.map(chat=>chat.id===id?{...chat,pinned:!chat.pinned}:chat);
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
+    });
+    setChatMenuId(null);
   }
   function newChat(){
     setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
@@ -295,7 +327,8 @@ function App(){
   function openChat(chat){
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
-    setSelectedTool(null);setPage('chat');
+    if(product==='free')setMode(chat.mode||'chat');
+    setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
   async function send(){
     const text=prompt.trim();
@@ -458,18 +491,64 @@ function App(){
       <nav className="primaryNav desktopPrimaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
         <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
-        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>
+        {!isWindowsDesktop&&<NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>}
       </nav>
       <div className="sidebarScroll">
-        <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-        <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}>
-          {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
-          {product==='super'?'Repository workspace':'Free AI Workspace'}
-        </button>
-        <div className="sidebarGroupTitle">Recents</div>
-        {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
-          <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
-        )}
+        {isWindowsDesktop&&product==='free'?<>
+          <div className="sidebarGroupTitle">Projects</div>
+          <div className="sidebarEmpty projectEmpty">No projects</div>
+          <div className="sidebarSectionHeader">
+            <span>Recents</span>
+            <div className="recentsFilterAnchor">
+              <button
+                className={'recentsFilterButton '+(recentsFilter!=='all'?'active':'')}
+                aria-label="Filter Recents"
+                aria-haspopup="menu"
+                aria-expanded={recentsFilterOpen}
+                onClick={()=>setRecentsFilterOpen(v=>!v)}
+              ><SlidersHorizontal size={13}/></button>
+              {recentsFilterOpen&&<div className="recentsFilterMenu" role="menu" aria-label="Filter Recents">
+                {[
+                  ['all','All'],['chat','Chat'],['work','Work']
+                ].map(([value,label])=><button
+                  key={value}
+                  className={recentsFilter===value?'active':''}
+                  role="menuitemradio"
+                  aria-checked={recentsFilter===value}
+                  onClick={()=>{setRecentsFilter(value);setRecentsFilterOpen(false)}}
+                ><span>{label}</span>{recentsFilter===value&&<Check size={14}/>}</button>)}
+              </div>}
+            </div>
+          </div>
+          {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':recentsFilter==='all'?'No chats':'No '+(recentsFilter==='work'?'Work':'Chat')+' chats'}</div>:visibleChats.map(chat=>
+            <div className={'recentRow '+(currentChatId===chat.id?'active':'')} key={chat.id}>
+              <button className="recentItem" onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>
+                {chat.pinned&&<Pin size={11} className="recentPin"/>}
+                <span>{chat.title}</span>
+              </button>
+              <button
+                className="recentMore"
+                aria-label={'More options for '+chat.title}
+                aria-haspopup="menu"
+                aria-expanded={chatMenuId===chat.id}
+                onClick={e=>{e.stopPropagation();setChatMenuId(current=>current===chat.id?null:chat.id)}}
+              ><MoreHorizontal size={15}/></button>
+              {chatMenuId===chat.id&&<div className="recentContextMenu" role="menu">
+                <button role="menuitem" onClick={()=>togglePinChat(chat.id)}><Pin size={14}/><span>{chat.pinned?'Unpin chat':'Pin chat'}</span></button>
+              </div>}
+            </div>
+          )}
+        </>:<>
+          <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
+          <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}>
+            {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
+            {product==='super'?'Repository workspace':'Free AI Workspace'}
+          </button>
+          <div className="sidebarGroupTitle">Recents</div>
+          {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
+            <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
+          )}
+        </>}
       </div>
       <div className="sidebarFooter">
         <button className="profileButton" onClick={()=>setProfileMenu(v=>!v)}>
