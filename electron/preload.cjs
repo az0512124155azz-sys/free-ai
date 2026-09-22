@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('desktopApi',{
   startSystemDictation:()=>ipcRenderer.invoke('dictation:start'),
   recognizeSystemDictation:()=>ipcRenderer.invoke('dictation:recognize'),
   speakText:(text)=>ipcRenderer.invoke('voice:speak',text),
+  captureAppshot:()=>ipcRenderer.invoke('appshot:capture'),
+  onAppshot:(cb)=>listen('appshot-captured',cb),
   computerClick:(payload)=>ipcRenderer.invoke('computer:click',payload),
   computerClickAndType:(payload)=>ipcRenderer.invoke('computer:clickAndType',payload),
   browserOpen:(payload)=>ipcRenderer.invoke('browser:open',payload),
