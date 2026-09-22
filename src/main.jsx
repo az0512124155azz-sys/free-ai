@@ -169,14 +169,26 @@ function App(){
 
   useEffect(()=>{
     const root=document.documentElement;
-    let resolved=appPrefs.appearance||'dark';
-    if(resolved==='system')resolved=window.matchMedia?.('(prefers-color-scheme: light)').matches?'light':'dark';
-    root.dataset.theme=resolved;
-    root.dataset.contrast=appPrefs.contrast||'medium';
-    root.dataset.accent=appPrefs.accent||'blue';
-    const scale=(Number(appPrefs.textSize)||100)/100;
-    root.style.setProperty('--ui-scale',String(scale));
-    document.body.style.zoom=isNative?'1':String(scale);
+    const scheme=window.matchMedia?.('(prefers-color-scheme: light)');
+    const highContrast=window.matchMedia?.('(prefers-contrast: more)');
+    const apply=()=>{
+      let resolved=appPrefs.appearance||'dark';
+      if(resolved==='system')resolved=scheme?.matches?'light':'dark';
+      root.dataset.theme=resolved;
+      root.dataset.contrast=appPrefs.contrast==='system'?(highContrast?.matches?'increased':'medium'):(appPrefs.contrast||'medium');
+      root.dataset.accent=appPrefs.accent||'blue';
+      const scale=(Number(appPrefs.textSize)||100)/100;
+      const canZoom=(!isNative&&!isDesktop)||(isDesktop&&desktopPlatform==='win32');
+      root.style.setProperty('--ui-scale',String(canZoom?scale:1));
+      document.body.style.zoom=String(canZoom?scale:1);
+    };
+    apply();
+    if(appPrefs.appearance==='system')scheme?.addEventListener?.('change',apply);
+    if(appPrefs.contrast==='system')highContrast?.addEventListener?.('change',apply);
+    return()=>{
+      scheme?.removeEventListener?.('change',apply);
+      highContrast?.removeEventListener?.('change',apply);
+    };
   },[appPrefs.appearance,appPrefs.contrast,appPrefs.accent,appPrefs.textSize]);
 
   useEffect(()=>{
