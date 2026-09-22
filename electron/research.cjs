@@ -67,6 +67,20 @@ function validateSearxngUrl(value){
   return parsed.toString().replace(/\/$/,'');
 }
 
+function apiTransportUrl(value,apiKey=''){
+  let parsed;
+  try{parsed=new URL(String(value||'').trim())}catch{throw new Error('API endpoint must start with http:// or https://')}
+  if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')throw new Error('API endpoint must start with http:// or https://');
+  if(parsed.username||parsed.password)throw new Error('Do not put API credentials in the endpoint URL.');
+  const host=String(parsed.hostname||'').toLowerCase();
+  const loopback=host==='localhost'||host==='[::1]'||host==='::1'||/^127(?:\.\d{1,3}){3}$/.test(host);
+  if(String(apiKey||'').trim()&&parsed.protocol!=='https:'&&!loopback){
+    throw new Error('API keys require HTTPS for remote endpoints. HTTP is allowed only for local loopback models.');
+  }
+  parsed.hash='';
+  return parsed.toString().replace(/\/$/,'');
+}
+
 function addScopeOperators(query,scope){
   const parts=[String(query||'').trim()];
   if(scope.mode==='only'&&scope.sites.length){
@@ -200,8 +214,7 @@ async function readSource(candidate,scope,signal){
 }
 
 function apiEndpoint(cfg){
-  const base=String(cfg?.baseUrl||'').trim().replace(/\/$/,'');
-  if(!/^https?:\/\//i.test(base))throw new Error('API endpoint must start with http:// or https://');
+  const base=apiTransportUrl(cfg?.baseUrl,cfg?.apiKey);
   if(!cfg?.model)throw new Error('API model is required.');
   return base.endsWith('/chat/completions')?base:base+'/chat/completions';
 }
@@ -595,4 +608,4 @@ async function exportResearchReport(win,payload={}){
   }
 }
 
-module.exports={runOwnedResearch,exportResearchReport,normalizeSourceScope,reportMarkdown};
+module.exports={runOwnedResearch,exportResearchReport,normalizeSourceScope,reportMarkdown,apiTransportUrl};
