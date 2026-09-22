@@ -32,6 +32,11 @@ const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
+const projectIconOptions=[
+  ['folder','Folder',Folder],['briefcase','Briefcase',Briefcase],['code','Code',Code2],
+  ['sparkles','Ideas',Sparkles],['globe','Research',Globe2],['calendar','Planning',CalendarDays]
+];
+const projectColorOptions=['blue','green','orange','purple','pink','neutral'];
 
 const settingsSections=[
   ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
@@ -69,6 +74,12 @@ function BrandMark({size=22,className=''}) {
       <path className="markArc" d="M358 400 A182 182 0 0 1 112 154"/>
     </svg>
   </span>;
+}
+
+function ProjectMark({project,size=16}){
+  const entry=projectIconOptions.find(([key])=>key===(project?.icon||'folder'))||projectIconOptions[0];
+  const Icon=entry[2];
+  return <span className="projectMark" data-color={project?.color||'blue'} style={{'--project-mark-size':size+'px'}} aria-hidden="true"><Icon size={Math.max(12,size-3)}/></span>;
 }
 
 function WindowsChrome(){
@@ -109,6 +120,10 @@ function App(){
   const [recentsFilter,setRecentsFilter]=useState('all');
   const [recentsFilterOpen,setRecentsFilterOpen]=useState(false);
   const [chatMenuId,setChatMenuId]=useState(null);
+  const [projects,setProjects]=useState(()=>readJSON('freeai.projects',[]));
+  const [activeProjectId,setActiveProjectId]=useState(null);
+  const [projectDialogOpen,setProjectDialogOpen]=useState(false);
+  const [projectDraft,setProjectDraft]=useState({name:'',icon:'folder',color:'blue'});
   const [page,setPage]=useState('chat');
   const [mode,setMode]=useState('chat');
   const [modelMenu,setModelMenu]=useState(false);
@@ -229,6 +244,7 @@ function App(){
   useEffect(()=>{
     const onKey=e=>{
       if(e.key!=='Escape')return;
+      if(projectDialogOpen){setProjectDialogOpen(false);return}
       if(profileMenu){setProfileMenu(false);return}
       if(chatMenuId){setChatMenuId(null);return}
       if(recentsFilterOpen){setRecentsFilterOpen(false);return}
@@ -253,7 +269,7 @@ function App(){
     window.addEventListener('keydown',onKey);
     document.addEventListener('pointerdown',onPointer);
     return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
-  },[profileMenu,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+  },[projectDialogOpen,profileMenu,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
 
   useEffect(()=>{
     localStorage.setItem('freeai.product',product);
@@ -265,6 +281,8 @@ function App(){
     setRecentsFilter('all');
     setRecentsFilterOpen(false);
     setChatMenuId(null);
+    setActiveProjectId(null);
+    setProjectDialogOpen(false);
     if(product==='super')setMode('work');
   },[product]);
 
@@ -279,6 +297,11 @@ function App(){
       persistPrefs({...appPrefs,approvalMode:'ask'});
     }
   },[appPrefs.autoReviewEnabled,appPrefs.fullAccessEnabled]);
+
+  const activeProject=useMemo(()=>projects.find(project=>project.id===activeProjectId)||null,[projects,activeProjectId]);
+  const projectChats=useMemo(()=>activeProjectId
+    ? chats.filter(chat=>chat.projectId===activeProjectId).sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0))
+    : [],[chats,activeProjectId]);
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
@@ -296,6 +319,27 @@ function App(){
   },[chats,sidebarSearch,product,recentsFilter]);
 
   function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
+  function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
+  function createProject(){
+    const name=String(projectDraft.name||'').trim();
+    if(!name)return;
+    const project={id:crypto.randomUUID(),name,icon:projectDraft.icon||'folder',color:projectDraft.color||'blue',instructions:'',createdAt:Date.now(),updatedAt:Date.now()};
+    persistProjects([project,...projects]);
+    setActiveProjectId(project.id);setProjectDialogOpen(false);setProjectDraft({name:'',icon:'folder',color:'blue'});setPage('project');
+  }
+  function updateProject(id,patch){
+    const stamp=Date.now();
+    setProjects(prev=>{
+      const next=prev.map(project=>project.id===id?{...project,...patch,updatedAt:stamp}:project);
+      localStorage.setItem('freeai.projects',JSON.stringify(next));
+      return next;
+    });
+  }
+  function openProject(project){setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function startProjectConversation(projectId,nextMode){
+    setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
+  }
   function saveCurrentChat(nextMessages,model=selected){
     if(!model||!nextMessages.length)return;
     const firstUser=nextMessages.find(m=>m.role==='user')?.text||'New chat';
@@ -306,7 +350,8 @@ function App(){
       const existing=prev.find(c=>c.id===id);
       const chat={
         id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,
-        mode:product==='super'?'work':mode,pinned:!!existing?.pinned,updatedAt:Date.now()
+        mode:product==='super'?'work':mode,pinned:!!existing?.pinned,
+        projectId:existing?.projectId||activeProjectId||null,updatedAt:Date.now()
       };
       const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
       localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
@@ -321,14 +366,14 @@ function App(){
     setChatMenuId(null);
   }
   function newChat(){
-    setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     if(product==='free')setMode(chat.mode||'chat');
-    setSelectedTool(null);setPage('chat');setChatMenuId(null);
+    setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
   async function send(){
     const text=prompt.trim();
@@ -338,9 +383,12 @@ function App(){
     setBusy(true);setPrompt('');
     const withUser=[...messages,{role:'user',text}];setMessages(withUser);saveCurrentChat(withUser,selected);
     try{
-      const instructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
+      const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      const instructions=projectInstructions||globalInstructions;
+      const instructionsLabel=projectInstructions?'Free AI project instructions for this request:':'Free AI user preferences for this request:';
       const routedText=instructions
-        ? ['Free AI user preferences for this request:',instructions,'','User request:',text].join('\n')
+        ? [instructionsLabel,instructions,'','User request:',text].join('\n')
         : text;
       const payload={
         provider:selected.id,source:selected.source||'browser',text:routedText,effort,
@@ -379,6 +427,7 @@ function App(){
       exportedAt:new Date().toISOString(),
       account:session?.user?.email||null,
       chats:{free:readJSON('freeai.chats.free',[]),super:readJSON('freeai.chats.super',[])},
+      projects:readJSON('freeai.projects',[]),
       preferences:appPrefs
     };
     const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
@@ -496,7 +545,14 @@ function App(){
       <div className="sidebarScroll">
         {isWindowsDesktop&&product==='free'?<>
           <div className="sidebarGroupTitle">Projects</div>
-          <div className="sidebarEmpty projectEmpty">No projects</div>
+          <button className="newProjectItem" onClick={()=>{setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
+            <Plus size={15}/><span>New project</span>
+          </button>
+          {projects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:projects.map(project=>
+            <button key={project.id} className={'projectItem projectNavItem '+(activeProjectId===project.id?'active':'')} onClick={()=>openProject(project)}>
+              <ProjectMark project={project} size={18}/><span>{project.name}</span>
+            </button>
+          )}
           <div className="sidebarSectionHeader">
             <span>Recents</span>
             <div className="recentsFilterAnchor">
@@ -644,6 +700,11 @@ function App(){
         <div className="stageFooter">Free AI can make mistakes. Check important information.</div>
       </section>}
 
+      {page==='project'&&isWindowsDesktop&&activeProject&&<ProjectPage
+        project={activeProject} chats={projectChats} onBack={()=>{setActiveProjectId(null);setPage('chat')}}
+        onStart={nextMode=>startProjectConversation(activeProject.id,nextMode)}
+        onOpenChat={openChat} onSave={patch=>updateProject(activeProject.id,patch)}
+      />}
       {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')} onRefresh={()=>window.desktopApi?.scanProviders?.().catch(()=>{})}/>}
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
@@ -671,6 +732,7 @@ function App(){
       onClose={()=>setSidePanel(null)}
     />}
 
+    {projectDialogOpen&&isWindowsDesktop&&<NewProjectDialog draft={projectDraft} setDraft={setProjectDraft} onCreate={createProject} onClose={()=>setProjectDialogOpen(false)}/>}
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
@@ -686,6 +748,43 @@ function App(){
 
 function NavItem({icon:Icon,label,active,onClick}){
   return <button className={'navItem '+(active?'active':'')} onClick={onClick}><Icon size={16}/><span>{label}</span></button>
+}
+
+function NewProjectDialog({draft,setDraft,onCreate,onClose}){
+  return <div className="projectDialogScrim" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
+    <form className="projectDialog" onSubmit={e=>{e.preventDefault();onCreate()}}>
+      <div className="projectDialogHeader"><div><b>New project</b><small>Keep related Chat and Work conversations together.</small></div><button type="button" onClick={onClose} aria-label="Close"><X size={17}/></button></div>
+      <label className="projectNameField"><span>Name</span><input autoFocus value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} placeholder="Project name" maxLength={80}/></label>
+      <div className="projectChoiceBlock"><span>Icon</span><div className="projectIconGrid">{projectIconOptions.map(([key,label,Icon])=><button type="button" key={key} className={draft.icon===key?'active':''} onClick={()=>setDraft({...draft,icon:key})} aria-label={label} title={label}><Icon size={17}/></button>)}</div></div>
+      <div className="projectChoiceBlock"><span>Color</span><div className="projectColorGrid">{projectColorOptions.map(color=><button type="button" key={color} className={draft.color===color?'active':''} data-color={color} onClick={()=>setDraft({...draft,color})} aria-label={color+' color'}><span/></button>)}</div></div>
+      <div className="projectDialogActions"><button type="button" onClick={onClose}>Cancel</button><button className="primaryProjectAction" type="submit" disabled={!String(draft.name||'').trim()}>Create project</button></div>
+    </form>
+  </div>
+}
+
+function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
+  const [draft,setDraft]=useState({name:project.name,icon:project.icon||'folder',color:project.color||'blue',instructions:project.instructions||''});
+  const [saved,setSaved]=useState(false);
+  useEffect(()=>{setDraft({name:project.name,icon:project.icon||'folder',color:project.color||'blue',instructions:project.instructions||''});setSaved(false)},[project.id,project.name,project.icon,project.color,project.instructions]);
+  const save=()=>{const name=String(draft.name||'').trim();if(!name)return;onSave({name,icon:draft.icon||'folder',color:draft.color||'blue',instructions:String(draft.instructions||'')});setSaved(true);setTimeout(()=>setSaved(false),1400)};
+  const preview={...project,...draft,name:String(draft.name||'').trim()||project.name};
+  return <div className="contentPage projectPage">
+    <PageTop onBack={onBack} title={project.name}/>
+    <div className="contentInner projectInner">
+      <div className="projectHero"><ProjectMark project={project} size={42}/><div><h1>{project.name}</h1><p className="pageLead">A local Free AI project. Project instructions apply only to conversations started here.</p></div><div className="projectStartActions"><button onClick={()=>onStart('chat')}><SquarePen size={15}/>Chat</button><button onClick={()=>onStart('work')}><Briefcase size={15}/>Work</button></div></div>
+      <section className="projectSection"><div className="sectionHeading"><h2>Project conversations</h2><span className="pluginMeta">{chats.length}</span></div><div className="projectConversationList">
+        {chats.map(chat=><button key={chat.id} onClick={()=>onOpenChat(chat)}><span className="projectConversationMode">{chat.mode==='work'?'Work':'Chat'}</span><span>{chat.title}</span><ChevronRight size={14}/></button>)}
+        {!chats.length&&<div className="projectEmptyState"><Folder size={20}/><b>No conversations yet</b><span>Start a Chat or Work conversation to add it to this project.</span></div>}
+      </div></section>
+      <section className="projectSection projectSettingsCard"><div className="sectionHeading"><h2>Project settings</h2>{saved&&<span className="projectSaved"><Check size={13}/>Saved</span>}</div>
+        <label className="projectNameField"><span>Name</span><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} maxLength={80}/></label>
+        <div className="projectChoiceBlock"><span>Icon</span><div className="projectIconGrid">{projectIconOptions.map(([key,label,Icon])=><button type="button" key={key} className={draft.icon===key?'active':''} onClick={()=>setDraft({...draft,icon:key})} aria-label={label} title={label}><Icon size={17}/></button>)}</div></div>
+        <div className="projectChoiceBlock"><span>Color</span><div className="projectColorGrid">{projectColorOptions.map(color=><button type="button" key={color} className={draft.color===color?'active':''} data-color={color} onClick={()=>setDraft({...draft,color})} aria-label={color+' color'}><span/></button>)}</div></div>
+        <label className="projectInstructionsField"><span>Project instructions</span><small>These instructions override your global custom instructions while you are in this project.</small><textarea value={draft.instructions} onChange={e=>setDraft({...draft,instructions:e.target.value})} placeholder="Add instructions for this project"/></label>
+        <div className="projectSettingsActions"><div className="projectSettingsPreview"><ProjectMark project={preview} size={22}/><span>{preview.name}</span></div><button onClick={save} disabled={!String(draft.name||'').trim()}>Save</button></div>
+      </section>
+    </div>
+  </div>
 }
 
 function Composer(props){
