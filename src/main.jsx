@@ -859,7 +859,11 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
 
 function BrowserPane({onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
-  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[]});
+  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[]});
+  const [siteToolsOpen,setSiteToolsOpen]=useState(false);
+  const [selectedSiteTool,setSelectedSiteTool]=useState(null);
+  const [siteToolInput,setSiteToolInput]=useState('{}');
+  const [siteToolStatus,setSiteToolStatus]=useState('');
   const surfaceRef=useRef(null);
 
   useEffect(()=>{
@@ -892,8 +896,39 @@ function BrowserPane({onClose}){
   function navigate(){window.desktopApi?.browserNavigate(url).catch(()=>{})}
   function chooseTab(id){window.desktopApi?.browserSelectTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
   function closeTab(e,id){e.stopPropagation();window.desktopApi?.browserCloseTab(id).then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
-  function newTab(){window.desktopApi?.browserNewTab('https://www.google.com/').then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})}
+  function newTab(){
+    setSiteToolsOpen(false);setSelectedSiteTool(null);setSiteToolStatus('');
+    window.desktopApi?.browserNewTab('https://www.google.com/').then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})
+  }
+  async function refreshSiteTools(){
+    setSiteToolStatus('Scanning this page…');
+    try{
+      await window.desktopApi?.browserRefreshSiteTools?.();
+      setSiteToolStatus('');
+    }catch(e){setSiteToolStatus(e?.message||'Could not scan this page.')}
+  }
+  function chooseSiteTool(tool){
+    setSelectedSiteTool(tool);
+    setSiteToolInput('{}');
+    setSiteToolStatus('');
+  }
+  async function runSiteTool(){
+    if(!selectedSiteTool)return;
+    let input={};
+    try{
+      const parsed=siteToolInput.trim()?JSON.parse(siteToolInput):{};
+      if(parsed===null||Array.isArray(parsed)||typeof parsed!=='object')throw new Error('Input must be a JSON object.');
+      input=parsed;
+    }catch(e){setSiteToolStatus(e?.message||'Invalid JSON input.');return}
+    setSiteToolStatus('Running…');
+    try{
+      const result=await window.desktopApi?.browserExecuteSiteTool?.({tabId:state.activeTabId,name:selectedSiteTool.name,input});
+      const value=result?.value;
+      setSiteToolStatus(typeof value==='string'?value:JSON.stringify(value??'Done',null,2));
+    }catch(e){setSiteToolStatus(e?.message||'Site tool failed.')}
+  }
   const activeDownloads=(state.downloads||[]).filter(d=>d.state==='progressing').length;
+  const siteTools=Array.isArray(state.siteTools)?state.siteTools:[];
 
   return <aside className="sidePane browserPane">
     <div className="paneTabs browserTabsBar">
@@ -913,8 +948,31 @@ function BrowserPane({onClose}){
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
       {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
+      <button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={siteTools.length?siteTools.length+' site tool'+(siteTools.length===1?'':'s'):'Scan for site tools'}><Blocks size={15}/>{siteTools.length>0&&<small>{siteTools.length}</small>}</button>
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
+
+    {siteToolsOpen&&<div className="siteToolsPanel">
+      <div className="siteToolsHeader">
+        <span><b>Site tools</b><small>{siteTools.length?'WebMCP tools exposed by this page':'No site tools detected on this page'}</small></span>
+        <button onClick={refreshSiteTools}><RefreshCw size={14}/>Scan</button>
+      </div>
+      {siteTools.length>0&&<div className="siteToolsBody">
+        <div className="siteToolsList">
+          {siteTools.map(tool=><button key={tool.name} className={selectedSiteTool?.name===tool.name?'active':''} onClick={()=>chooseSiteTool(tool)}>
+            <Target size={14}/><span><b>{tool.title||tool.name}</b><small>{tool.description||tool.origin}</small></span>
+          </button>)}
+        </div>
+        {selectedSiteTool&&<div className="siteToolRunner">
+          <div className="siteToolTitle"><b>{selectedSiteTool.title||selectedSiteTool.name}</b>{selectedSiteTool.annotations?.consequentialHint&&<span className="consequentialBadge">May change data</span>}</div>
+          <small>{selectedSiteTool.description||'No description provided by this site.'}</small>
+          <textarea spellCheck="false" value={siteToolInput} onChange={e=>setSiteToolInput(e.target.value)} aria-label="Site tool JSON input"/>
+          <button className={selectedSiteTool.annotations?.consequentialHint?'siteToolRun consequential':'siteToolRun'} onClick={runSiteTool}>{selectedSiteTool.annotations?.consequentialHint?'Review & run':'Run tool'}</button>
+          {siteToolStatus&&<pre className="siteToolStatus">{siteToolStatus}</pre>}
+        </div>}
+      </div>}
+      {!siteTools.length&&siteToolStatus&&<pre className="siteToolStatus empty">{siteToolStatus}</pre>}
+    </div>}
 
     <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
   </aside>
