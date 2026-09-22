@@ -94,4 +94,14 @@ has(source,"return ' · adapter unavailable';",'Model picker must label provider
 has(source,"title={model.adapterIssue||undefined}",'Provider adapter failure reason must be available in the picker.');
 has(source,"onClick={()=>model.connected!==false&&choose(model)}",'Compact model picker must not select an unavailable adapter.');
 
+// Windows 7.8 renderer-loss lifecycle coverage.
+has(main,"function stopRendererOwnedWork(reason='Renderer unavailable')",'Renderer-loss Work cleanup helper is missing.');
+has(main,"win.webContents.once('did-finish-load',()=>{rendererDocumentReady=true})",'Renderer reload guard must ignore the initial document load.');
+has(main,"win.webContents.on('did-start-navigation',(_event,details)=>",'Main renderer document navigation must be observed.');
+has(main,"if(!rendererDocumentReady||details?.isMainFrame===false||details?.isSameDocument)return;",'Renderer navigation cleanup must target real main-frame document reloads only.');
+has(main,"stopRendererOwnedWork('main renderer started a document reload/navigation')",'Reload/navigation must stop renderer-owned Work tasks.');
+has(main,"win.webContents.on('render-process-gone',(_event,details)=>",'Main renderer crash lifecycle handler is missing.');
+has(main,"stopRendererOwnedWork('main renderer process '+String(details?.reason||'stopped'))",'Renderer crash must stop renderer-owned Work tasks.');
+has(main,"if(stopWorkTask(task.id))stopped++",'Renderer-loss cleanup must use the normal Work Stop path so prompts and approvals are cancelled.');
+
 console.log('Windows 7 QA regression checks passed.');

@@ -3700,6 +3700,16 @@ function windowsInitialWindowBounds(){
   };
 }
 
+function stopRendererOwnedWork(reason='Renderer unavailable'){
+  let stopped=0;
+  for(const task of workTasks.values()){
+    if(['completed','failed','stopped'].includes(task.status))continue;
+    if(stopWorkTask(task.id))stopped++;
+  }
+  if(stopped)console.warn('Stopped '+stopped+' Work task(s): '+reason);
+  return stopped;
+}
+
 function createWindow(){
   const initialWindowBounds=windowsInitialWindowBounds();
   win=new BrowserWindow({
@@ -3728,6 +3738,16 @@ function createWindow(){
 
   win.once('ready-to-show',()=>{
     if(!win.isDestroyed())win.show();
+  });
+
+  let rendererDocumentReady=false;
+  win.webContents.once('did-finish-load',()=>{rendererDocumentReady=true});
+  win.webContents.on('did-start-navigation',(_event,details)=>{
+    if(!rendererDocumentReady||details?.isMainFrame===false||details?.isSameDocument)return;
+    stopRendererOwnedWork('main renderer started a document reload/navigation');
+  });
+  win.webContents.on('render-process-gone',(_event,details)=>{
+    stopRendererOwnedWork('main renderer process '+String(details?.reason||'stopped'));
   });
 
   win.webContents.on('did-fail-load',(_event,errorCode,errorDescription)=>{
