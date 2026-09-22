@@ -46,6 +46,39 @@ const settingsSections=[
   ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',SquareTerminal]
 ];
 
+const PUBLIC_PLUGIN_DIRECTORY_URL='https://chatgpt.com/plugins?show_chat_button=true';
+const publicPluginDirectory=[
+  {id:'gmail',name:'Gmail',category:'Featured',description:'Read and manage Gmail'},
+  {id:'github',name:'GitHub',category:'Featured',description:'Triage PRs, issues, CI, and publish flows'},
+  {id:'google-drive',name:'Google Drive',category:'Featured',description:'Work across Drive, Docs, Sheets, and Slides'},
+  {id:'google-calendar',name:'Google Calendar',category:'Featured',description:'Manage Google Calendar events'},
+  {id:'notion',name:'Notion',category:'Featured',description:'Notion workflows for specs, research, meetings, and knowledge capture'},
+  {id:'slack',name:'Slack',category:'Featured',description:'Read and manage Slack'},
+  {id:'granola',name:'Granola',category:'Productivity',description:'Add your meeting context'},
+  {id:'fireflies',name:'Fireflies',category:'Productivity',description:'Search meeting transcripts'},
+  {id:'outlook-calendar',name:'Outlook Calendar',category:'Productivity',description:'Manage Outlook schedules'},
+  {id:'otter',name:'Otter.ai',category:'Productivity',description:'Search meetings from Otter.ai'},
+  {id:'atlassian-rovo',name:'Atlassian Rovo',category:'Productivity',description:'Manage Jira and Confluence'},
+  {id:'canva',name:'Canva',category:'Creativity',description:'Create, review, edit designs'},
+  {id:'figma',name:'Figma',category:'Creativity',description:'Figma design-to-code workflows'},
+  {id:'heygen',name:'HeyGen',category:'Creativity',description:'Create AI videos'},
+  {id:'datadog-preview',name:'Datadog (Preview)',category:'New & Noteworthy',description:'Search and act on your data'},
+  {id:'bigquery',name:'BigQuery',category:'New & Noteworthy',description:'Work with BigQuery data'}
+];
+
+function directMcpCapabilitySummary(connection){
+  const tools=Array.isArray(connection?.tools)?connection.tools:[];
+  const readOnly=tools.filter(tool=>tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint!==true);
+  const destructive=tools.filter(tool=>tool.annotations?.destructiveHint===true);
+  const writeLike=tools.filter(tool=>!readOnly.includes(tool));
+  return {
+    tools:tools.length,
+    readOnly:readOnly.length,
+    writeLike:writeLike.length,
+    destructive:destructive.length
+  };
+}
+
 function readJSON(key,fallback){
   try{const v=JSON.parse(localStorage.getItem(key)||'null');return v??fallback}catch{return fallback}
 }
