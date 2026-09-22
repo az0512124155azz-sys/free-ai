@@ -174,6 +174,7 @@ function App(){
   const fileRef=useRef(null);
   const photoRef=useRef(null);
   const cameraRef=useRef(null);
+  const messageEndRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -313,6 +314,11 @@ function App(){
   useEffect(()=>{
     if(isDesktop)window.desktopApi?.browserSetSiteToolsEnabled?.(appPrefs.siteToolsEnabled!==false).catch(()=>{});
   },[appPrefs.siteToolsEnabled]);
+
+  useEffect(()=>{
+    if(!isWindowsDesktop||!messages.length)return;
+    requestAnimationFrame(()=>messageEndRef.current?.scrollIntoView({block:'end'}));
+  },[messages.length,busy,currentChatId]);
 
   useEffect(()=>{
     if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
@@ -689,9 +695,10 @@ function App(){
           open={modelMenu} setOpen={setModelMenu} effort={effort} setEffort={setEffort}
         />}
         {messages.length===0
-          ? <div className={'emptyChat '+(mode==='work'?'workEmpty':'')}>
+          ? <div className={'emptyChat '+(mode==='work'&&!isWindowsDesktop?'workEmpty':'')}>
               <h1>{heading}</h1>
               <Composer
+                windowsDesktop={isWindowsDesktop}
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
@@ -707,18 +714,23 @@ function App(){
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
               />
             </div>
-          : <div className="conversationView">
+          : <div className={'conversationView '+(isWindowsDesktop?'windowsConversation':'')}>
               <div className="messageList">
-                {messages.map((m,i)=><div key={i} className={'chatMessage '+m.role}>
-                  {m.role!=='user'&&<div className="assistantMark"><Sparkles size={16}/></div>}
+                {messages.map((m,i)=><div key={i} className={'chatMessage '+m.role} role={m.role==='error'?'alert':undefined}>
+                  {m.role!=='user'&&!isWindowsDesktop&&<div className="assistantMark"><Sparkles size={16}/></div>}
                   <div className="messageBubble">
-                    {m.role!=='user'&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
+                    {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     <div className="messageBody">{m.text}</div>
                   </div>
                 </div>)}
+                {busy&&isWindowsDesktop&&<div className="chatMessage assistant" role="status" aria-label={mode==='work'?'Working on your request':'Generating response'}>
+                  <div className="messageBubble"><RefreshCw className="spin" size={16}/></div>
+                </div>}
+                <div ref={messageEndRef}/>
               </div>
               <div className="conversationComposer">
                 <Composer
+                  windowsDesktop={isWindowsDesktop}
                   compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
@@ -828,7 +840,7 @@ function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
 
 function Composer(props){
   const {
-    compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
+    windowsDesktop,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
   }=props;
@@ -942,7 +954,7 @@ function Composer(props){
     };
   },[listening]);
 
-  return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
+  return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     <textarea
       ref={textareaRef}
