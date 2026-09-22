@@ -25,6 +25,7 @@ let browserBounds=null;
 let browserAttached=false;
 let browserDownloads=[];
 let browserDownloadHooked=false;
+const browserDownloadItems=new Map();
 const browserSiteTools=new Map();
 let siteToolsEnabled=true;
 
@@ -339,6 +340,28 @@ async function executeBrowserSiteTool(id,name,input){
   return result;
 }
 
+function syncBrowserDownloadRecord(record,item,state=undefined,terminal=false){
+  const savePath=String(item.getSavePath?.()||record.savePath||'');
+  const totalBytes=Math.max(0,Number(item.getTotalBytes?.()||0));
+  const receivedBytes=Math.max(0,Number(item.getReceivedBytes?.()||0));
+  const currentState=String(state||item.getState?.()||record.state||'progressing');
+  record.state=currentState;
+  record.terminal=!!terminal;
+  record.receivedBytes=receivedBytes;
+  record.totalBytes=totalBytes;
+  record.percentComplete=totalBytes>0?Math.max(0,Math.min(100,Number(item.getPercentComplete?.()||0))):null;
+  record.savePath=savePath;
+  if(savePath)record.filename=path.basename(savePath);
+  else record.filename=String(item.getFilename?.()||record.filename||'Download');
+  record.canCancel=!terminal&&(currentState==='progressing'||currentState==='interrupted');
+  record.canOpen=terminal&&currentState==='completed'&&!!savePath&&fs.existsSync(savePath);
+  return record;
+}
+
+function browserDownloadById(id){
+  return browserDownloads.find(entry=>entry.id===id)||null;
+}
+
 function hookBrowserDownloads(wc){
   if(browserDownloadHooked)return;
   browserDownloadHooked=true;
@@ -346,25 +369,30 @@ function hookBrowserDownloads(wc){
     const id=crypto.randomUUID();
     const record={
       id,
-      filename:item.getFilename(),
-      url:item.getURL(),
-      state:'progressing',
+      filename:String(item.getFilename?.()||'Download'),
+      suggestedFilename:String(item.getFilename?.()||'Download'),
+      url:String(item.getURL?.()||''),
+      mimeType:String(item.getMimeType?.()||''),
+      state:String(item.getState?.()||'progressing'),
+      terminal:false,
       receivedBytes:0,
-      totalBytes:item.getTotalBytes()
+      totalBytes:0,
+      percentComplete:null,
+      savePath:'',
+      canCancel:true,
+      canOpen:false
     };
+    syncBrowserDownloadRecord(record,item,record.state,false);
+    browserDownloadItems.set(id,item);
     browserDownloads=[record,...browserDownloads].slice(0,12);
     emitBrowserState();
     item.on('updated',(_e,state)=>{
-      record.state=state;
-      record.receivedBytes=item.getReceivedBytes();
-      record.totalBytes=item.getTotalBytes();
+      syncBrowserDownloadRecord(record,item,state,false);
       emitBrowserState();
     });
     item.once('done',(_e,state)=>{
-      record.state=state;
-      record.receivedBytes=item.getReceivedBytes();
-      record.totalBytes=item.getTotalBytes();
-      record.savePath=item.getSavePath();
+      syncBrowserDownloadRecord(record,item,state,true);
+      browserDownloadItems.delete(id);
       emitBrowserState();
     });
   });
@@ -1159,6 +1187,31 @@ ipcMain.handle('browser:clearData',async()=>{
   browserDownloads=[];
   for(const id of browserTabs.keys())browserSiteTools.set(id,[]);
   emitBrowserState();
+  return {ok:true};
+});
+ipcMain.handle('browser:cancelDownload',(_e,id)=>{
+  if(process.platform!=='win32')return browserSnapshot();
+  const item=browserDownloadItems.get(id);
+  const record=browserDownloadById(id);
+  if(item&&record&&!record.terminal&&record.canCancel){
+    item.cancel();
+    syncBrowserDownloadRecord(record,item,'cancelled',false);
+    emitBrowserState();
+  }
+  return browserSnapshot();
+});
+ipcMain.handle('browser:openDownload',async(_e,id)=>{
+  if(process.platform!=='win32')return {ok:false,error:'Download file actions are currently available on Windows.'};
+  const record=browserDownloadById(id);
+  if(!record?.canOpen||!record.savePath||!fs.existsSync(record.savePath))return {ok:false,error:'The downloaded file is not available.'};
+  const error=await shell.openPath(record.savePath);
+  return error?{ok:false,error}:{ok:true};
+});
+ipcMain.handle('browser:showDownload',(_e,id)=>{
+  if(process.platform!=='win32')return {ok:false,error:'Download file actions are currently available on Windows.'};
+  const record=browserDownloadById(id);
+  if(!record?.canOpen||!record.savePath||!fs.existsSync(record.savePath))return {ok:false,error:'The downloaded file is not available.'};
+  shell.showItemInFolder(record.savePath);
   return {ok:true};
 });
 ipcMain.handle('browser:startAnnotation',()=>activeBrowserTabId?startBrowserAnnotation(activeBrowserTabId):null);
