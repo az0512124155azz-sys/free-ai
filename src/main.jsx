@@ -128,6 +128,60 @@ function WindowsTitlebar({onNewChat,onSettings,onToggleSidebar,onBrowser,onHelp}
   </div>;
 }
 
+function WindowsVoiceOverlay({selected,onClose,onTurn}){
+  const [listening,setListening]=useState(false);
+  const [speaking,setSpeaking]=useState(false);
+  const [heard,setHeard]=useState('');
+  const [reply,setReply]=useState('');
+  const [error,setError]=useState('');
+
+  async function takeTurn(){
+    if(listening||speaking)return;
+    if(!selected){setError('Choose a connected model before starting Voice.');return}
+    setError('');setHeard('');setReply('');setListening(true);
+    try{
+      const recognition=await window.desktopApi.recognizeSystemDictation?.();
+      if(!recognition?.ok||!recognition.text)throw new Error(recognition?.error||'I did not hear anything.');
+      const text=recognition.text.trim();
+      setHeard(text);setListening(false);
+      const result=await onTurn(text);
+      const answer=String(result?.text||result||'').trim();
+      setReply(answer);
+      if(answer){
+        setSpeaking(true);
+        await window.desktopApi.speakText?.(answer);
+      }
+    }catch(e){setError(e?.message||'Voice could not continue.')}
+    finally{setListening(false);setSpeaking(false)}
+  }
+
+  useEffect(()=>{
+    const key=e=>{if(e.key==='Escape')onClose()};
+    window.addEventListener('keydown',key);
+    return()=>window.removeEventListener('keydown',key);
+  },[onClose]);
+
+  return <div className="voiceOverlay" role="dialog" aria-modal="true" aria-label="Voice">
+    <div className="voiceTopbar">
+      <span><BrandMark size={18}/><b>Voice</b><small>Standard</small></span>
+      <button onClick={onClose} aria-label="Exit voice"><X size={18}/></button>
+    </div>
+    <div className="voiceStage">
+      <div className={'voiceCore '+(listening?'listening ':'')+(speaking?'speaking':'')}>
+        <span/><span/><span/>
+      </div>
+      <h2>{listening?'Listening…':speaking?'Speaking…':'Ready when you are.'}</h2>
+      {heard&&<div className="voiceTranscript"><small>You</small><p>{heard}</p></div>}
+      {reply&&<div className="voiceTranscript assistant"><small>{modelLabel(selected)}</small><p>{reply}</p></div>}
+      {error&&<div className="voiceError">{error}</div>}
+    </div>
+    <div className="voiceControls">
+      <button className={'voiceMicControl '+(listening?'active':'')} onClick={takeTurn} disabled={speaking} aria-label="Speak"><Mic2 size={20}/></button>
+      <button className="voiceExitControl" onClick={onClose} aria-label="Exit voice"><X size={20}/></button>
+    </div>
+  </div>;
+}
+
 function App(){
   const [authReady,setAuthReady]=useState(false);
   const [session,setSession]=useState(null);
@@ -152,6 +206,7 @@ function App(){
   const [plusMenu,setPlusMenu]=useState(false);
   const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
+  const [voiceOpen,setVoiceOpen]=useState(false);
   const [settingsSection,setSettingsSection]=useState('General');
   const [sidePanel,setSidePanel]=useState(null);
   const [selectedFile,setSelectedFile]=useState(null);
@@ -420,6 +475,23 @@ function App(){
       const next=[...withUser,{role:'error',text:e?.message||String(e)}];setMessages(next);saveCurrentChat(next,selected);
     }finally{setBusy(false)}
   }
+  async function sendVoiceTurn(text){
+    if(!selected)throw new Error('Choose a connected model first.');
+    const instructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+    const routedText=instructions
+      ? ['Free AI user preferences for this request:',instructions,'','User request:',text].join('\n')
+      : text;
+    const payload={
+      provider:selected.id,source:selected.source||'browser',text:routedText,effort,
+      mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
+      toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
+    };
+    const result=await window.desktopApi.sendPrompt(payload);
+    const next=[...messages,{role:'user',text},{role:'assistant',text:result?.text||String(result||''),provider:selected.id}];
+    setMessages(next);saveCurrentChat(next,selected);
+    return result;
+  }
+
   async function saveSettings(){
     const next={relayUrl:settings.relayUrl.trim(),pairKey:settings.pairKey.trim()};
     localStorage.setItem('relayUrl',next.relayUrl);localStorage.setItem('pairKey',next.pairKey);setSettings(next);
@@ -709,6 +781,7 @@ function App(){
       onClose={()=>setSidePanel(null)}
     />}
 
+    {voiceOpen&&isDesktop&&desktopPlatform==='win32'&&<WindowsVoiceOverlay selected={selected} onClose={()=>setVoiceOpen(false)} onTurn={sendVoiceTurn}/>}
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
@@ -731,7 +804,7 @@ function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onVoice,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -894,6 +967,7 @@ function Composer(props){
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
+        {!busy&&!prompt.trim()&&isDesktop&&desktopPlatform==='win32'&&<button className="voiceOrb" onClick={onVoice} title="Voice" aria-label="Start Voice"><Volume2 size={18}/></button>}
         {(busy||prompt.trim())&&<button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
           {busy?<RefreshCw className="spin" size={17}/>:<ArrowUp size={18}/>}
         </button>}
