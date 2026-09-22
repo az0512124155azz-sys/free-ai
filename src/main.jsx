@@ -316,6 +316,7 @@ function App(){
     const offStatus=window.desktopApi.onStatus(s=>active&&setStatus(s));
     const offWork=window.desktopApi.onWorkTask?.(state=>{
       if(!active||!state?.id||state.id!==activeWorkTaskIdRef.current)return;
+      syncWorkTaskAgentChats(state);
       setWorkTask(state);
     });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
@@ -798,19 +799,81 @@ function App(){
         }
       }
     }
+
     const taskText=userText||'Review the attached files and determine the next useful step.';
     const finalUserText=inlineParts.length?[taskText,'',...inlineParts].filter(Boolean).join('\n\n'):taskText;
+    const teamModels=product==='super'
+      ? superTeamKeys
+          .map(key=>connected.find(model=>modelKey(model)===key))
+          .filter(Boolean)
+          .filter(model=>model.connected!==false&&modelKey(model)!==modelKey(selected))
+      : [];
+    const team=teamModels.map(model=>({
+      id:model.id,
+      source:model.source||'browser',
+      name:modelLabel(model)
+    }));
+
+    const taskId=crypto.randomUUID();
+    let projectId=activeProjectId||null;
+    let masterChatId=currentChatId||null;
+    const currentRecord=chats.find(chat=>chat.id===currentChatId)||null;
+
+    if(product==='super'&&team.length>0){
+      projectId=ensureOrchestrationProject(taskText,team.length+1);
+      if(!masterChatId||currentRecord?.isAgentThread||currentRecord?.projectId!==projectId){
+        masterChatId=crypto.randomUUID();
+        setCurrentChatId(masterChatId);
+      }
+      workTaskProjectIdRef.current=projectId;
+      workTaskMasterChatIdRef.current=masterChatId;
+      setPage('chat');
+    }else{
+      workTaskProjectIdRef.current=projectId;
+      workTaskMasterChatIdRef.current=masterChatId;
+    }
+
     const userMessage={role:'user',text:userText,attachments:attachments.map(attachmentMeta),attachmentContext:inlineParts.join('\n\n')};
     const next=[...messages,userMessage];
-    setMessages(next);saveCurrentChat(next,selected);
+    setMessages(next);
+    const savedMasterId=saveCurrentChat(next,selected,{
+      chatId:masterChatId||undefined,
+      projectId,
+      mode:'work',
+      meta:product==='super'&&team.length>0
+        ? {isMasterThread:true,orchestration:true,taskId,agentCount:team.length+1}
+        : {}
+    });
+    if(!masterChatId&&savedMasterId){
+      masterChatId=savedMasterId;
+      workTaskMasterChatIdRef.current=savedMasterId;
+    }
+
     setPrompt('');
-    const taskId=crypto.randomUUID();
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
-    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,folder:localFolderWorkspace?{name:localFolderWorkspace.name}:null,finalMessage:'',error:''});
+    setWorkTask({
+      id:taskId,
+      product,
+      projectId:projectId||'',
+      masterChatId:masterChatId||'',
+      status:'running',
+      step:0,
+      maxSteps:product==='super'?24:18,
+      detail:product==='super'?'Starting Super AI task…':'Starting Work task…',
+      approval:null,
+      progress:[],
+      agents:[],
+      workspace:product==='super'?repositoryWorkspace:null,
+      folder:localFolderWorkspace?{name:localFolderWorkspace.name}:null,
+      finalMessage:'',
+      error:''
+    });
+
     try{
-      const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
+      const projectForTask=projects.find(project=>project.id===projectId)||activeProject;
+      const projectInstructions=projectForTask?String(projectForTask.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
       let workspace=repositoryWorkspace;
       if(product==='super'&&workspace?.root){
@@ -822,16 +885,14 @@ function App(){
         localFolder=await window.desktopApi.localFolderSummary(localFolder.root);
         setLocalFolderWorkspace(localFolder);
       }
-      const team=product==='super'
-        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>model.connected!==false&&modelKey(model)!==modelKey(selected)).map(model=>({
-            id:model.id,source:model.source||'browser',name:modelLabel(model)
-          }))
-        : [];
+
       const state=await window.desktopApi.startWorkTask({
         id:taskId,
         provider:selected.id,
         source:selected.source||'browser',
         product,
+        projectId:projectId||'',
+        masterChatId:masterChatId||'',
         text:finalUserText,
         effort,
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
@@ -846,14 +907,25 @@ function App(){
           text:String(message.text||'').slice(0,5000)
         }))
       });
-      if(activeWorkTaskIdRef.current===taskId)setWorkTask(state);
+      if(activeWorkTaskIdRef.current===taskId){
+        syncWorkTaskAgentChats(state);
+        setWorkTask(state);
+      }
       for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
       setAttachments([]);setSelectedMcpIds([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
     }catch(e){
       if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
       setWorkTask(null);
       const failed=[...next,{role:'error',text:e?.message||String(e)}];
-      setMessages(failed);saveCurrentChat(failed,selected);
+      setMessages(failed);
+      saveCurrentChat(failed,selected,{
+        chatId:masterChatId||undefined,
+        projectId,
+        mode:'work',
+        meta:product==='super'&&team.length>0
+          ? {isMasterThread:true,orchestration:true,taskId,agentCount:team.length+1}
+          : {}
+      });
     }
   }
 
