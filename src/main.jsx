@@ -1097,6 +1097,7 @@ function FilePane({file,onClose}){
 }
 
 function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setApprovalMode,onClose}){
+  const previewOnly=desktopPlatform==='linux';
   const [loading,setLoading]=useState(false);
   const [lastPoint,setLastPoint]=useState(null);
   const [typeText,setTypeText]=useState('');
@@ -1132,19 +1133,20 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
     await executeAction(action);
   }
 
-  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
+  const label=previewOnly?'Preview only':approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
-      <select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
+      {!previewOnly&&<select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
         <option value="ask">Manual</option>
         <option value="auto" disabled={!permissionOptions.auto}>Automatic</option>
         <option value="full" disabled={!permissionOptions.full}>Full access</option>
-      </select>
+      </select>}
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
     </div>
-    <div className="computerType"><input value={typeText} onChange={e=>setTypeText(e.target.value)} placeholder="Optional text to type after clicking"/><small>{typeText?'Click a point to propose a click + type action.':'Click a point to propose a mouse action.'}</small></div>
+    {!previewOnly&&<div className="computerType"><input value={typeText} onChange={e=>setTypeText(e.target.value)} placeholder="Optional text to type after clicking"/><small>{typeText?'Click a point to propose a click + type action.':'Click a point to propose a mouse action.'}</small></div>}
+    {previewOnly&&<div className="computerPreviewNotice">Linux supports screen preview here. Use the built-in browser for interactive web tasks.</div>}
     {pendingAction&&<div className="approvalPrompt">
       <ShieldCheck size={18}/><div><b>Approve this computer action?</b><small>{pendingAction.text?'Click the selected point and type the prepared text.':'Click the selected point.'}</small></div>
       <button onClick={()=>setPendingAction(null)}>Cancel</button>
@@ -1152,8 +1154,8 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
     </div>}
     {controlError&&<div className="computerError">{controlError}</div>}
     <div className="computerScreens">
-      {screens.map(screen=><div className="computerScreen" key={screen.id}>
-        <img src={screen.thumbnail} alt={screen.name} onClick={e=>clickScreen(e,screen)}/><span>{screen.name}</span>
+      {screens.map(screen=><div className={'computerScreen '+(previewOnly?'previewOnly':'')} key={screen.id}>
+        <img src={screen.thumbnail} alt={screen.name} onClick={previewOnly?undefined:e=>clickScreen(e,screen)}/><span>{screen.name}</span>
       </div>)}
       {!screens.length&&!loading&&<div className="paneEmpty"><Monitor size={34}/><b>No screen preview available</b></div>}
     </div>
@@ -1190,7 +1192,7 @@ function SettingsView(props){
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
