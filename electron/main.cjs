@@ -393,7 +393,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true){
     createBrowserTab(url,true);
     return {action:'deny'};
   });
-  wc.on('did-start-navigation',(details)=>{
+  wc.on('did-start-navigation',(_event,details)=>{
     if(process.platform!=='win32'||details?.isMainFrame===false)return;
     if(typeof details?.url==='string'&&details.url)browserUrls.set(id,details.url);
     if(!details?.isSameDocument){
@@ -402,7 +402,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true){
     }
     emitBrowserState();
   });
-  wc.on('did-redirect-navigation',(details)=>{
+  wc.on('did-redirect-navigation',(_event,details)=>{
     if(process.platform!=='win32'||details?.isMainFrame===false)return;
     if(typeof details?.url==='string'&&details.url)browserUrls.set(id,details.url);
     emitBrowserState();
@@ -420,11 +420,27 @@ function createBrowserTab(input='https://www.google.com/',activate=true){
     if(process.platform==='win32')browserTitles.set(id,String(title||'New tab'));
     emitBrowserState();
   });
-  wc.on('page-favicon-updated',(_event,favicons)=>{
+  wc.on('page-favicon-updated',async(_event,favicons)=>{
     if(process.platform!=='win32')return;
     const favicon=(Array.isArray(favicons)?favicons:[]).find(value=>typeof value==='string'&&value.trim());
-    if(favicon)browserFavicons.set(id,favicon);
-    else browserFavicons.delete(id);
+    if(!favicon){
+      browserFavicons.delete(id);
+      emitBrowserState();
+      return;
+    }
+    try{
+      if(favicon.startsWith('data:')){
+        if(browserTabs.has(id))browserFavicons.set(id,favicon);
+      }else{
+        const response=await wc.session.fetch(favicon);
+        if(!response.ok)throw new Error('favicon fetch failed');
+        const type=response.headers.get('content-type')||'image/x-icon';
+        const bytes=Buffer.from(await response.arrayBuffer());
+        if(browserTabs.has(id))browserFavicons.set(id,`data:${type};base64,${bytes.toString('base64')}`);
+      }
+    }catch{
+      browserFavicons.delete(id);
+    }
     emitBrowserState();
   });
   wc.on('did-fail-load',(_event,errorCode,errorDescription,validatedURL,isMainFrame)=>{
