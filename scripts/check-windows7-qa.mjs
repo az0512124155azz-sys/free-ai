@@ -57,4 +57,14 @@ has(main,"apiConnections=apiConnections.filter(item=>item.id!==connection.id)",'
 has(main,"apiConnections=previous;",'Failed API connection removals must roll back the in-memory removal.');
 has(main,"raw?.mode==='plain'&&apiConnections.some(item=>item?.apiKey)&&safeStorage.isEncryptionAvailable()",'Legacy plaintext API credentials must migrate when secure storage is available.');
 
+has(workflow,'Windows clean install and first-launch smoke','Windows CI is not running the packaged installer smoke.');
+has(workflow,"matrix.artifact == 'windows'",'Installer smoke must remain Windows-only.');
+has(installerSmoke,"@('/S', \"/D=$installDir\")",'Installer smoke must perform a silent NSIS clean install to an isolated directory.');
+has(installerSmoke,"Join-Path $installDir 'Free AI.exe'",'Installer smoke must verify the installed Free AI executable.');
+has(installerSmoke,"Join-Path $installDir 'resources\\app.asar'",'Installer smoke must verify the packaged ASAR.');
+has(installerSmoke,"Start-Process -FilePath $appExe",'Installer smoke must launch the installed application.');
+has(installerSmoke,"$app.HasExited",'Installer smoke must detect first-launch crashes.');
+has(installerSmoke,"Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe'",'Installer smoke must find the installed NSIS uninstaller.');
+has(installerSmoke,'/S _?=$installDir','Installer smoke must silently uninstall the exact smoke-test installation.');
+
 console.log('Windows 7 QA regression checks passed.');
