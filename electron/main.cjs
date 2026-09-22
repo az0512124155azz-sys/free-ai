@@ -1344,6 +1344,22 @@ if(!gotSingleInstanceLock){
   });
 }
 
+app.on('certificate-error',(event,webContents,url,error,_certificate,callback,isMainFrame)=>{
+  if(process.platform!=='win32'||isMainFrame===false)return;
+  const tabId=browserTabIdForWebContents(webContents);
+  if(!tabId)return;
+  event.preventDefault();
+  browserSiteTools.set(tabId,[]);
+  browserErrors.set(tabId,{
+    type:'certificate',
+    description:'Certificate verification failed. Free AI did not bypass the invalid certificate.',
+    url:String(url||webContents.getURL()||''),
+    code:String(error||'certificate-error')
+  });
+  emitBrowserState();
+  callback(false);
+});
+
 app.whenReady().then(()=>{
   installAppMenu();
   registerAuthProtocol();
@@ -1366,6 +1382,7 @@ app.whenReady().then(()=>{
 
 app.on('before-quit',()=>{
   if(process.platform==='win32'){
+    clearBrowserPermissions();
     try{persistentBrowserSession().flushStorageData()}catch{}
   }
   hideBrowserView();
@@ -1459,6 +1476,7 @@ ipcMain.handle('browser:setSiteToolsEnabled',(_e,value)=>{
 });
 ipcMain.handle('browser:clearData',async()=>{
   if(process.platform==='win32'){
+    clearBrowserPermissions();
     const ses=persistentBrowserSession();
     await ses.clearStorageData();
     await ses.clearCache();
@@ -1502,6 +1520,19 @@ ipcMain.handle('browser:showDownload',(_e,id)=>{
   shell.showItemInFolder(record.savePath);
   return {ok:true};
 });
+ipcMain.handle('browser:resolvePermission',(_e,{id,allow}={})=>resolveBrowserPermission(id,!!allow));
+ipcMain.handle('browser:openExternalProtocol',async(_e,url)=>{
+  if(process.platform!=='win32')return {ok:false,error:'External protocol handling is currently available on Windows.'};
+  const activeError=activeBrowserTabId?browserErrors.get(activeBrowserTabId):null;
+  const info=browserProtocolInfo(url);
+  if(!activeError||activeError.type!=='protocol'||activeError.url!==String(url||'')||!info?.canOpenExternal){
+    return {ok:false,error:'This external link is not approved for opening.'};
+  }
+  await shell.openExternal(info.url);
+  browserErrors.delete(activeBrowserTabId);
+  emitBrowserState();
+  return {ok:true};
+});
 ipcMain.handle('browser:startAnnotation',()=>activeBrowserTabId?startBrowserAnnotation(activeBrowserTabId):null);
 ipcMain.handle('browser:cancelAnnotation',()=>activeBrowserTabId?cancelBrowserAnnotation(activeBrowserTabId):false);
 ipcMain.handle('browser:refreshSiteTools',()=>activeBrowserTabId?refreshBrowserSiteTools(activeBrowserTabId):[]);
@@ -1534,7 +1565,15 @@ ipcMain.handle('browser:navigate',async(_e,input)=>{
 ipcMain.handle('browser:setBounds',(_e,bounds)=>{setBrowserBounds(bounds);return true});
 ipcMain.handle('browser:back',()=>{browserGoBack(activeBrowserEntry()?.webContents);return browserSnapshot()});
 ipcMain.handle('browser:forward',()=>{browserGoForward(activeBrowserEntry()?.webContents);return browserSnapshot()});
-ipcMain.handle('browser:reload',()=>{activeBrowserEntry()?.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:reload',()=>{
+  const entry=activeBrowserEntry();
+  if(entry&&!entry.webContents.isDestroyed()){
+    if(activeBrowserTabId)browserErrors.delete(activeBrowserTabId);
+    entry.webContents.reload();
+    emitBrowserState();
+  }
+  return browserSnapshot();
+});
 ipcMain.handle('browser:close',()=>{hideBrowserView();return true});
 
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
