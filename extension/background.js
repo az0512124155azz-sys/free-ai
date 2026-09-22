@@ -27,6 +27,15 @@ function isWebUrl(value){
   return /^https?:\/\//i.test(String(value||''));
 }
 
+function tabMatchesProvider(tab,provider){
+  const url=String(tab?.url||'');
+  if(!tab?.id||!url||!Array.isArray(provider?.matches))return false;
+  return provider.matches.some(pattern=>{
+    const prefix=String(pattern||'').replace(/\*+$/,'');
+    return !!prefix&&url.startsWith(prefix);
+  });
+}
+
 function safeTab(tab){
   return {
     id:Number(tab?.id),
@@ -296,8 +305,9 @@ async function cancelPrompt(m){
   const provider=PROVIDERS[providerId];
   if(!provider)return false;
   const targetTabId=Number(m.tabId||entry?.tabId);
-  const tabs=Number.isFinite(targetTabId)
-    ? [await chrome.tabs.get(targetTabId).catch(()=>null)].filter(Boolean)
+  const preferred=Number.isFinite(targetTabId)?await chrome.tabs.get(targetTabId).catch(()=>null):null;
+  const tabs=tabMatchesProvider(preferred,provider)
+    ? [preferred]
     : await chrome.tabs.query({url:provider.matches});
   let stopped=false;
   for(const tab of tabs){
@@ -320,7 +330,7 @@ async function handlePrompt(m){
   let tabs=[];
   if(Number.isFinite(preferredTabId)){
     const tab=await chrome.tabs.get(preferredTabId).catch(()=>null);
-    if(tab)tabs=[tab];
+    if(tabMatchesProvider(tab,provider))tabs=[tab];
   }
   if(!tabs.length)tabs=await chrome.tabs.query({url:provider.matches});
   if(!tabs.length)throw new Error(provider.name+' is not open in this browser.');
