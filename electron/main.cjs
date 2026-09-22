@@ -743,10 +743,12 @@ function createWindow(){
     minHeight:650,
     backgroundColor:'#181818',
     show:false,
-    autoHideMenuBar:false,
+    autoHideMenuBar:process.platform==='win32',
     title:'Free AI',
     icon:path.join(__dirname,'..','build','icon.png'),
-    titleBarStyle:process.platform==='darwin'?'hiddenInset':'default',
+    ...(process.platform==='win32'
+      ? {titleBarStyle:'hidden',titleBarOverlay:{color:'#181818',symbolColor:'#b8b8ba',height:32}}
+      : {titleBarStyle:process.platform==='darwin'?'hiddenInset':'default'}),
     webPreferences:{
       preload:path.join(__dirname,'preload.cjs'),
       contextIsolation:true,
@@ -829,6 +831,8 @@ app.on('before-quit',()=>{
 
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
+ipcMain.handle('app:quit',()=>{app.quit();return true});
+ipcMain.handle('app:reload',()=>{win?.webContents.reload();return true});
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',()=>{sendExtension({type:'scanProviders'});return status()});
 ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{}));
