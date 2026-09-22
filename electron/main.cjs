@@ -1945,6 +1945,8 @@ async function executeWorkTool(task,decision){
   const action=decision.action||{};
   const type=String(action.type||'').toLowerCase();
   if(decision.tool==='browser_builtin'){
+    if(win&&!win.isDestroyed())win.webContents.send('app-command','open-browser');
+    await new Promise(resolve=>setTimeout(resolve,120));
     return performBuiltInBrowserAction({tabId:action.tabId,action});
   }
   if(decision.tool==='browser_extension'){
@@ -1973,6 +1975,8 @@ async function executeWorkTool(task,decision){
     },20000);
   }
   if(decision.tool==='computer'){
+    if(win&&!win.isDestroyed())win.webContents.send('app-command','open-computer');
+    await new Promise(resolve=>setTimeout(resolve,120));
     const provider=browserProviders.find(item=>item.id===task.provider);
     if(task.source!=='browser'||provider?.fileUpload!==true){
       throw new Error('Computer Use needs a connected browser model with real image/file upload so it can see the desktop screenshot.');
