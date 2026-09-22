@@ -924,6 +924,7 @@ function App(){
                 approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                 permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                 onVoice={()=>setVoiceOpen(true)}
+                onAppshot={captureAppshot}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -952,6 +953,7 @@ function App(){
                   approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                   permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                   onVoice={()=>setVoiceOpen(true)}
+                  onAppshot={captureAppshot}
                   onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -1022,7 +1024,7 @@ function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onVoice,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onVoice,onAppshot,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -1161,7 +1163,7 @@ function Composer(props){
         <div className="menuAnchor">
           <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
-            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
+            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onAppshot={onAppshot} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
@@ -1274,7 +1276,7 @@ function PermissionModeMenu({value,options={},choose}){
   </div>
 }
 
-function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
+function PlusMenu({fileRef,photoRef,cameraRef,onAppshot,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     {isNative?<>
@@ -1283,6 +1285,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
     </>:<MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&mode==='work'&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside Work or Super AI in Free AI's own browser" onClick={onBrowser}/>}
+    {!isNative&&isDesktop&&desktopPlatform==='win32'&&<MenuRow icon={Camera} label="Appshot" sub="Attach the foreground app window and its available text" onClick={onAppshot}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
