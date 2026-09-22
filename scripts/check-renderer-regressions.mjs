@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 
-const source=fs.readFileSync('src/main.jsx','utf8');
+const source=fs.readFileSync('src/main.jsx','utf8').replace(/\r\n/g,'\n');
 
 function fail(message){
   console.error('Renderer regression check failed: '+message);
