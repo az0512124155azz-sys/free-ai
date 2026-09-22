@@ -1008,7 +1008,6 @@ function App(){
                 approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
-                permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
@@ -1054,8 +1053,7 @@ function App(){
                   approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
-                  permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
-                  onBrowser={openBrowser}
+                    onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
                 />
@@ -1840,7 +1838,7 @@ function FilePane({file,onClose}){
   </aside>
 }
 
-function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setApprovalMode,onClose}){
+function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose}){
   const previewOnly=desktopPlatform==='linux';
   const [loading,setLoading]=useState(false);
   const [lastPoint,setLastPoint]=useState(null);
@@ -1898,19 +1896,19 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
       viewportHeight:Number(screen.height)||450,
       text:typeText||''
     };
-    if(approvalMode==='ask'||(approvalMode==='auto'&&!!action.text)){setPendingAction(action);return}
+    if(['ask','read','low'].includes(approvalMode)){setPendingAction(action);return}
     await executeAction(action);
   }
 
-  const label=previewOnly?'Preview only':approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
+  const label=previewOnly?'Preview only':approvalMode==='low'?'Allow low-risk':approvalMode==='read'?'Allow reads':'Always ask';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
       {!previewOnly&&<select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Manual</option>
-        <option value="auto" disabled={!permissionOptions.auto}>Automatic</option>
-        <option value="full" disabled={!permissionOptions.full}>Full access</option>
+        <option value="ask">Always ask</option>
+        <option value="read">Allow reads</option>
+        <option value="low">Allow low-risk</option>
       </select>}
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
     </div>
@@ -1965,7 +1963,7 @@ function SettingsView(props){
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -1987,9 +1985,8 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
-      <SettingRow title="Auto-review" desc="Makes Automatic mode available. Eligible low-risk pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
-      <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
+      <SettingRow title="Work approvals" desc="Choose how much low-risk browser and computer activity Work can continue without repeated prompts. Website access and sensitive actions still require explicit approval." control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
+      <SettingRow title="Sensitive actions" desc="Typing, clicks that may change data, keyboard shortcuts, drag operations and closing tabs always pause for approval in the current Work loop." control={<span className="valuePill">Always confirm</span>}/>
     </div>
     <h3>General</h3>
     <div className="settingBlock">
