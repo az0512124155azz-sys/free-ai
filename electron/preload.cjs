@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
   getAppInfo:()=>ipcRenderer.invoke('shell:getAppInfo'),
   checkForUpdates:()=>ipcRenderer.invoke('shell:checkForUpdates'),
   openExternal:(url)=>ipcRenderer.invoke('shell:openExternal',url),
+  saveTextFile:(payload)=>ipcRenderer.invoke('shell:saveTextFile',payload||{}),
   rendererZoomFactor:()=>webFrame.getZoomFactor(),
   getStatus:()=>ipcRenderer.invoke('bridge:getStatus'),
   scanProviders:(options)=>ipcRenderer.invoke('bridge:scanProviders',options||{}),
