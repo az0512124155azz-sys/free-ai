@@ -886,7 +886,7 @@ ipcMain.handle('voice:speak',async(_e,text)=>{
   const script=`
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Speech
-$text = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('\${encoded}'))
+$text = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${encoded}'))
 $speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer
 $speaker.Speak($text)
 $speaker.Dispose()
