@@ -2250,7 +2250,7 @@ function workApprovalFor(task,decision){
       scopeTitle='Allow website access?';
       scopeDetail='Free AI will share the current page state from '+origin+' with the selected AI model for this task.';
     }
-  }else if(tool==='mcp'){
+  }else if(tool==='mcp'&&type==='call'){
     const resolved=workMcpTool(task,action);
     if(resolved&&!task.approvedScopes.has('mcp:'+resolved.connection.id)){
       scope='mcp:'+resolved.connection.id;
@@ -2259,10 +2259,13 @@ function workApprovalFor(task,decision){
     }
   }
 
-  const resolvedMcp=tool==='mcp'?workMcpTool(task,action):null;
-  const mcpReadOnly=!!resolvedMcp&&resolvedMcp.tool.annotations?.readOnlyHint===true&&resolvedMcp.tool.annotations?.destructiveHint!==true;
+  const resolvedMcp=tool==='mcp'&&type!=='list'?workMcpTool(task,action):null;
+  const mcpMetadata=tool==='mcp'&&(type==='list'||type==='describe');
+  const mcpReadOnly=mcpMetadata||(
+    type==='call'&&!!resolvedMcp&&resolvedMcp.tool.annotations?.readOnlyHint===true&&resolvedMcp.tool.annotations?.destructiveHint!==true
+  );
   const readOnly=tool==='mcp'?mcpReadOnly:workActionIsReadOnly(tool,type);
-  const sensitive=tool==='mcp'?!mcpReadOnly:workActionIsSensitive(tool,type);
+  const sensitive=tool==='mcp'?(type==='call'&&!mcpReadOnly):workActionIsSensitive(tool,type);
   const mode=task.approvalMode;
   const needsActionApproval=mode==='ask'||(mode==='read'?!readOnly:sensitive);
 
@@ -2281,7 +2284,9 @@ function workApprovalFor(task,decision){
     ? 'Repository file: '+String(action.path).slice(0,500)+'.'
     : '';
   const mcpTarget=tool==='mcp'&&resolvedMcp
-    ? 'App: '+resolvedMcp.connection.name+'. Tool: '+resolvedMcp.tool.name+'. '+(mcpReadOnly?'Declared read-only.':'Not declared read-only; confirmation is required.')
+    ? 'App: '+resolvedMcp.connection.name+'. Tool: '+resolvedMcp.tool.name+'. '+(
+        type==='call'?(mcpReadOnly?'Declared read-only.':'Not declared read-only; confirmation is required.'):'Metadata only.'
+      )
     : '';
   let repositoryWrite='';
   if(tool==='repository'&&type==='write'){
