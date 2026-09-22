@@ -293,6 +293,8 @@ function App(){
   const cameraRef=useRef(null);
   const messageEndRef=useRef(null);
   const activeRequestRef=useRef(null);
+  const activeParallelRequestIdsRef=useRef([]);
+  const parallelCancelledRef=useRef(false);
   const streamedTextRef=useRef('');
   const cancelledRequestRef=useRef(null);
   const activeWorkTaskIdRef=useRef(null);
@@ -755,6 +757,91 @@ function App(){
     }
   }
 
+  async function runParallelGeneration(text){
+    const userText=String(text||'').trim();
+    if(!isWindowsDesktop||!isDesktop||busy||!selected||!userText)return runGeneration(text,messages,selected);
+    const groupKey=modelGroupKey(selected);
+    const siblings=connected.filter(model=>model.connected!==false&&model.source==='browser'&&modelGroupKey(model)===groupKey);
+    const ordered=[selected,...siblings.filter(model=>model.id!==selected.id)];
+    const targets=ordered.slice(0,Math.max(1,Math.min(Number(parallelCount)||1,ordered.length)));
+    if(targets.length<=1)return runGeneration(text,messages,selected);
+
+    const activeAttachments=attachments;
+    const allCanUpload=targets.every(model=>model.fileUpload===true);
+    const inlineTextParts=[];
+    if(!allCanUpload){
+      for(const item of activeAttachments){
+        if(item.kind==='text'&&item.content)inlineTextParts.push('[File: '+item.name+']\n'+item.content);
+        else{
+          setAttachmentError('Parallel model mode requires every selected browser tab to expose file upload for binary attachments. Use text files, reduce the instance count, or open file upload in every matching tab.');
+          return;
+        }
+      }
+    }
+
+    setAttachmentError('');
+    setBusy(true);setPrompt('');setResponseMenuIndex(null);
+    parallelCancelledRef.current=false;
+    const userAttachmentMeta=activeAttachments.map(attachmentMeta);
+    const attachmentContext=inlineTextParts.join('\n\n');
+    const withUser=[...messages,{role:'user',text:userText,attachments:userAttachmentMeta,attachmentContext}];
+    setMessages(withUser);saveCurrentChat(withUser,selected);
+
+    try{
+      const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
+      const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      const instructions=projectInstructions||globalInstructions;
+      const instructionsLabel=projectInstructions?'Free AI project instructions for this request:':'Free AI user preferences for this request:';
+      const userRequestText=attachmentContext?[userText,'',attachmentContext].join('\n'):userText;
+      const routedText=instructions
+        ? [instructionsLabel,instructions,'','User request:',userRequestText].join('\n')
+        : userRequestText;
+      const historyMessages=withUser.filter(message=>message.role==='user'||message.role==='assistant');
+      const lastUserIndex=historyMessages.map(message=>message.role).lastIndexOf('user');
+      const history=historyMessages.map((message,index)=>{
+        const priorAttachmentContext=message.role==='user'?String(message.attachmentContext||''):'';
+        const priorText=priorAttachmentContext?[String(message.text||''),'',priorAttachmentContext].join('\n'):String(message.text||'');
+        return {role:message.role,content:index===lastUserIndex?routedText:priorText};
+      });
+      const outboundAttachments=allCanUpload
+        ? await Promise.all(activeAttachments.map(async item=>({
+            name:item.name,type:item.type,size:item.size,dataUrl:await readFileDataUrl(item.file)
+          })))
+        : [];
+      const requestIds=targets.map(()=>crypto.randomUUID());
+      activeParallelRequestIdsRef.current=requestIds;
+      const settled=await Promise.allSettled(targets.map((model,index)=>{
+        const effortLevels=Array.isArray(model.effortLevels)?model.effortLevels.filter(Boolean):[];
+        const routedEffort=model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default';
+        return window.desktopApi.sendPrompt({
+          requestId:requestIds[index],
+          provider:model.id,
+          source:model.source||'browser',
+          text:routedText,
+          history,
+          effort:routedEffort,
+          attachments:outboundAttachments,
+          mode,product,approvalMode:'ask',
+          toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
+        });
+      }));
+      if(parallelCancelledRef.current)return;
+      const responses=settled.map((result,index)=>{
+        const model=targets[index];
+        const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
+        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),...meta};
+        return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
+      });
+      const next=[...withUser,...responses];
+      setMessages(next);saveCurrentChat(next,selected);
+      for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
+      setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
+    }finally{
+      activeParallelRequestIdsRef.current=[];
+      setBusy(false);
+    }
+  }
+
   async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null){
     const userText=String(text||'').trim();
     const hasAttachmentIntent=isWindowsDesktop&&(
@@ -844,11 +931,20 @@ function App(){
   }
   async function send(){
     if(isWindowsDesktop&&mode==='work')return runWorkGeneration(prompt);
+    if(isWindowsDesktop&&selected?.source==='browser'&&parallelCount>1)return runParallelGeneration(prompt);
     return runGeneration(prompt,messages,selected);
   }
   async function stopGeneration(){
     if(isWindowsDesktop&&mode==='work'&&workTask&&['running','waiting_approval'].includes(workTask.status)){
       try{await window.desktopApi.stopWorkTask(workTask.id)}catch{}
+      return;
+    }
+    const parallelIds=[...activeParallelRequestIdsRef.current];
+    if(parallelIds.length&&isWindowsDesktop&&isDesktop){
+      parallelCancelledRef.current=true;
+      activeParallelRequestIdsRef.current=[];
+      await Promise.allSettled(parallelIds.map(id=>window.desktopApi.cancelPrompt(id)));
+      setBusy(false);
       return;
     }
     const requestId=activeRequestRef.current;
@@ -1268,6 +1364,7 @@ function App(){
                   {m.role!=='user'&&!isWindowsDesktop&&<div className="assistantMark"><Sparkles size={16}/></div>}
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
+                    {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody">{m.streaming&&!m.text?<RefreshCw className="spin" size={16}/>:m.text}</div>
                     {isWindowsDesktop&&m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
                       {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
