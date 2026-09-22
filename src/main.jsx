@@ -27,12 +27,13 @@ const supabase=supabaseUrl&&supabaseKey
 const isDesktop=!!window.desktopApi;
 const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
+const isQuickWindow=isDesktop&&new URLSearchParams(window.location.search).get('quick')==='1';
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 
 const settingsSections=[
-  ['personal','General',Settings],['personal','Import',Upload],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
+  ['personal','General',Settings],['personal','Import',Upload],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],['personal','Pets',Bot],
   ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
   ['integrations','Computer use',Monitor],['integrations','Appshots',Camera],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
@@ -285,8 +286,8 @@ function App(){
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
     autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,
-    spellCheckEnabled:true,hapticsEnabled:true,
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,language:'English',showBottomPanel:true})
+    spellCheckEnabled:true,hapticsEnabled:true,quickChatEnabled:true,
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,quickChatEnabled:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
@@ -424,6 +425,17 @@ function App(){
   useEffect(()=>{
     if(isDesktop)window.desktopApi?.browserSetSiteToolsEnabled?.(appPrefs.siteToolsEnabled!==false).catch(()=>{});
   },[appPrefs.siteToolsEnabled]);
+
+  useEffect(()=>{
+    if(isDesktop&&desktopPlatform==='win32')window.desktopApi?.setQuickChatEnabled?.(appPrefs.quickChatEnabled!==false).catch(()=>{});
+  },[appPrefs.quickChatEnabled]);
+
+  useEffect(()=>{
+    if(!isQuickWindow)return;
+    if(product!=='free')setProduct('free');
+    if(mode!=='chat')setMode('chat');
+    if(!selected&&connected[0])setSelected(connected[0]);
+  },[connected]);
 
   useEffect(()=>{
     if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
@@ -788,6 +800,11 @@ function App(){
 
   if(!authReady)return <div className="splash"><BrandMark size={34}/><span>Free AI</span></div>;
   if(!session&&supabase)return <Auth/>;
+  if(isQuickWindow)return <QuickChatWindow
+    selected={selected} connected={connected} setSelected={setSelected}
+    prompt={prompt} setPrompt={setPrompt} send={send} busy={busy} messages={messages}
+    onNew={()=>{setCurrentProjectId(null);newChat()}} onClose={()=>window.desktopApi?.hideQuickChat?.()}
+  />;
 
   const sidebarName=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Free AI';
   const heading=product==='super'
@@ -1731,6 +1748,7 @@ function SettingsView(props){
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='Pets'&&isDesktop&&desktopPlatform==='win32'&&<PetsSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Personalization'&&<PersonalizationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
