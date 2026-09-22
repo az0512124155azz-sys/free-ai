@@ -1797,6 +1797,12 @@ function publicWorkTask(task){
       allowLabel:task.approval.allowLabel||'Allow once'
     }:null,
     progress:Array.isArray(task.progress)?task.progress.slice(-8):[],
+    agents:Array.isArray(task.agents)?task.agents.map(agent=>({
+      id:agent.id,name:agent.name,role:agent.role,status:agent.status,detail:agent.detail||''
+    })):[],
+    workspace:task.workspace?{
+      name:task.workspace.name,branch:task.workspace.branch,head:task.workspace.head,dirty:task.workspace.dirty
+    }:null,
     finalMessage:task.finalMessage||'',
     error:task.error||''
   };
@@ -1957,6 +1963,10 @@ function stopWorkTask(taskId){
   if(!task||['completed','failed','stopped'].includes(task.status))return false;
   task.stopped=true;
   if(task.currentPromptId)cancelPrompt(task.currentPromptId);
+  if(task.currentPromptIds instanceof Set){
+    for(const promptId of [...task.currentPromptIds])cancelPrompt(promptId);
+    task.currentPromptIds.clear();
+  }
   const pendingApproval=pendingWorkApprovals.get(task.id);
   if(pendingApproval){
     pendingWorkApprovals.delete(task.id);
@@ -2011,6 +2021,55 @@ function workCanSeeImages(task){
   if(task.source!=='browser')return false;
   const provider=browserProviders.find(item=>item.id===task.provider);
   return provider?.fileUpload===true;
+}
+
+function connectedTaskModel(provider,source){
+  const id=String(provider||'');
+  const kind=String(source||'browser');
+  if(kind==='api'){
+    const cfg=apiConnections.find(item=>item.id===id);
+    return cfg?publicApiConnection(cfg):null;
+  }
+  const providerModel=browserProviders.find(item=>item.id===id);
+  return providerModel?{...providerModel,source:'browser'}:null;
+}
+
+function taskModelName(model){
+  return String(model?.modelName||model?.name||model?.model||model?.id||'Agent');
+}
+
+function updateTaskAgent(task,id,patch){
+  if(!Array.isArray(task.agents))return;
+  const agent=task.agents.find(item=>item.id===id);
+  if(agent)Object.assign(agent,patch);
+  emitWorkTask(task);
+}
+
+async function callTaskModel(task,model,text,{attachments=[],tag='agent'}={}){
+  if(task.stopped)throw new Error('Task stopped.');
+  const requestId=task.id+':'+tag+':'+crypto.randomUUID();
+  if(!(task.currentPromptIds instanceof Set))task.currentPromptIds=new Set();
+  task.currentPromptIds.add(requestId);
+  if(tag==='controller')task.currentPromptId=requestId;
+  const payload={
+    requestId,
+    provider:model.id,
+    source:model.source||'browser',
+    text:String(text||''),
+    effort:model.id===task.provider&&model.source===task.source?(task.effort||'default'):'default',
+    attachments:Array.isArray(attachments)?attachments:[],
+    mode:'work',
+    product:task.product||'free',
+    approvalMode:task.approvalMode,
+    toolRequest:null
+  };
+  try{
+    const result=await routePrompt(payload,false);
+    return String(result?.text??result??'');
+  }finally{
+    task.currentPromptIds.delete(requestId);
+    if(task.currentPromptId===requestId)task.currentPromptId=null;
+  }
 }
 
 function workObservationAttachments(result){
@@ -2101,28 +2160,12 @@ function workModelPrompt(task,observation){
 
 async function callWorkModel(task,observation,attachments=[]){
   if(task.stopped)throw new Error('Task stopped.');
-  const requestId=task.id+':step:'+task.step+':'+crypto.randomUUID();
-  task.currentPromptId=requestId;
   task.detail='Thinking about the next step…';
   emitWorkTask(task);
-  const payload={
-    requestId,
-    provider:task.provider,
-    source:task.source,
-    text:workModelPrompt(task,observation),
-    effort:task.effort||'default',
-    attachments:Array.isArray(attachments)?attachments:[],
-    mode:'work',
-    product:task.product||'free',
-    approvalMode:task.approvalMode,
-    toolRequest:null
-  };
-  try{
-    const result=await routePrompt(payload,false);
-    return parseWorkDecision(result?.text||result);
-  }finally{
-    if(task.currentPromptId===requestId)task.currentPromptId=null;
-  }
+  const controller=connectedTaskModel(task.provider,task.source);
+  if(!controller)throw new Error('The controller model disconnected during the task.');
+  const raw=await callTaskModel(task,controller,workModelPrompt(task,observation),{attachments,tag:'controller'});
+  return parseWorkDecision(raw);
 }
 
 async function executeWorkTool(task,decision){
@@ -2353,6 +2396,7 @@ async function startWorkTask(input={}){
     approval:null,
     stopped:false,
     currentPromptId:null,
+    currentPromptIds:new Set(),
     builtInSnapshotTabId:null,
     computerSnapshotReady:false,
     finalMessage:'',
