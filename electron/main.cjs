@@ -1751,10 +1751,20 @@ function workApprovalFor(task,decision){
 
   const label=workActionLabel(decision);
   const typedText=type==='type'&&action.text?String(action.text).slice(0,160):'';
+  const keys=type==='keypress'?(Array.isArray(action.keys)?action.keys:[action.key]).filter(Boolean).join(' + '):'';
+  const url=action.url?String(action.url).slice(0,500):'';
+  const target=action.elementId
+    ? 'Element: '+String(action.elementId)+'.'
+    : Number.isFinite(Number(action.x))&&Number.isFinite(Number(action.y))
+      ? 'Target coordinates: '+Math.round(Number(action.x))+', '+Math.round(Number(action.y))+'.'
+      : '';
   const detail=[
     scopeDetail,
-    needsActionApproval?'Proposed action: '+label+'.':'',
-    typedText?'Text to enter: "'+typedText+(String(action.text).length>160?'…':'')+'"':''
+    needsActionApproval?'Proposed action: '+label+'. Tool: '+tool+'. Type: '+type+'.':'',
+    url?'URL: '+url+'.':'',
+    target,
+    typedText?'Text to enter: "'+typedText+(String(action.text).length>160?'…':'')+'"':'',
+    keys?'Keys: '+keys+'.':''
   ].filter(Boolean).join(' ');
 
   return {
@@ -1931,7 +1941,7 @@ function workModelPrompt(task,observation){
     '',
     'For browser_extension page actions, first request snapshot(tabId), then use an elementId from that latest snapshot.',
     'For browser_builtin, use the latest page.elements rect and page.viewport CSS coordinates for clicks and typing. Treat the screenshot as visual context, not as the coordinate system.',
-    'For computer actions, first request screenshot and use the returned displayId plus the exact screenshot width/height as viewport dimensions. Do not guess coordinates without a screenshot.',
+    'For computer actions, first request screenshot and use the returned displayId plus the exact screenshot width/height as viewport dimensions. Do not guess coordinates without a screenshot. A computer type action must include x and y for the target input; Free AI will click that point immediately before typing.',
     'Keep the task specific and stop when the requested outcome is complete.'
   ].join('\n');
 }
@@ -2006,17 +2016,34 @@ async function executeWorkTool(task,decision){
     if(type!=='screenshot'&&type!=='wait'&&!task.computerSnapshotReady){
       throw new Error('Computer Use must take a fresh desktop screenshot before mouse or keyboard actions.');
     }
+    if(type==='type'&&(!Number.isFinite(Number(action.x))||!Number.isFinite(Number(action.y)))){
+      throw new Error('Computer Use typing requires target x/y coordinates from the latest screenshot.');
+    }
     if(win&&!win.isDestroyed())win.webContents.send('app-command','open-computer');
     await new Promise(resolve=>setTimeout(resolve,120));
     const provider=browserProviders.find(item=>item.id===task.provider);
     if(task.source!=='browser'||provider?.fileUpload!==true){
       throw new Error('Computer Use needs a connected browser model with real image/file upload so it can see the desktop screenshot.');
     }
-    const result=await performWindowsComputerAction({
-      displayId:action.displayId,
-      viewport:action.viewport||{},
-      action
-    });
+    let result;
+    if(type==='type'){
+      await performWindowsComputerAction({
+        displayId:action.displayId,
+        viewport:action.viewport||{},
+        action:{type:'click',button:'left',x:action.x,y:action.y}
+      });
+      result=await performWindowsComputerAction({
+        displayId:action.displayId,
+        viewport:action.viewport||{},
+        action:{type:'type',text:action.text}
+      });
+    }else{
+      result=await performWindowsComputerAction({
+        displayId:action.displayId,
+        viewport:action.viewport||{},
+        action
+      });
+    }
     if(Array.isArray(result?.screens)&&result.screens.length)task.computerSnapshotReady=true;
     return result;
   }
