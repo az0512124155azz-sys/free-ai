@@ -380,6 +380,8 @@ button:disabled{opacity:.42;cursor:default}
   border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px;font-size:11px;box-shadow:var(--shadow-md)
 }
 .attachedTool small{color:var(--muted)}.attachedTool button{background:transparent;display:grid;place-items:center}
+.searchModeChip{border-color:color-mix(in srgb,var(--accent) 48%,var(--border));background:color-mix(in srgb,var(--accent) 10%,var(--popover));color:var(--text)}
+.searchModeChip>svg{color:var(--accent)}
 .attachmentTray{display:flex;flex-wrap:wrap;gap:var(--r-sm);margin-bottom:var(--r-sm)}
 .attachmentChip{display:flex;align-items:center;gap:6px;max-width:100%;background:var(--popover);border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px}
 .attachmentChip>button{background:transparent;display:grid;place-items:center}
@@ -415,6 +417,8 @@ button:disabled{opacity:.42;cursor:default}
   width:100%;display:flex;align-items:center;gap:10px;background:transparent;border-radius:var(--r-xl);padding:8px 9px;text-align:left;color:var(--text-secondary)
 }
 .pickerRow:hover,.menuRow:hover{background:var(--hover);color:var(--text)}
+.menuRow.active{background:var(--selected);color:var(--text)}
+.menuRow.active>svg:first-child{color:var(--accent)}
 .pickerRow[aria-selected="true"]{background:var(--selected);color:var(--text)}
 .pickerText,.menuRow span{min-width:0;display:flex;flex-direction:column;flex:1}
 .pickerText b,.menuRow b{font-size:12.5px;font-weight:570;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -445,6 +449,14 @@ button:disabled{opacity:.42;cursor:default}
 .responseActionMenu{left:0;top:100%;width:max-content}
 .messageAuthor{font-size:11px;color:var(--text-tertiary);margin-bottom:5px;font-weight:600}
 .messageBody{white-space:pre-wrap;overflow-wrap:anywhere}
+.messageActivity{display:inline-flex;align-items:center;gap:7px;color:var(--text-tertiary);font-size:12px}
+.messageSources{margin-top:13px;display:flex;flex-direction:column;gap:7px}
+.messageSourcesLabel{display:flex;align-items:center;gap:6px;color:var(--text-tertiary);font-size:10.5px;font-weight:600}.messageSourcesLabel small{font-size:9px;color:var(--muted)}
+.messageSourceList{display:flex;flex-wrap:wrap;gap:6px}
+.messageSourceList>button{min-width:0;max-width:235px;height:42px;display:grid;grid-template-columns:22px minmax(0,1fr) 14px;align-items:center;gap:7px;padding:0 9px;border:1px solid var(--border-soft);border-radius:11px;background:var(--surface-secondary);color:var(--text-secondary);text-align:left}
+.messageSourceList>button:hover{background:var(--surface-tertiary);color:var(--text)}
+.sourceIndex{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:var(--popover);font-size:9px;color:var(--text-tertiary)}
+.sourceText{min-width:0;display:flex;flex-direction:column}.sourceText b,.sourceText small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sourceText b{font-size:10px;font-weight:600}.sourceText small{font-size:8.5px;color:var(--muted);margin-top:1px}
 .assistantMark{width:26px;height:26px;border:1px solid var(--border-soft);border-radius:var(--r-lg);display:grid;place-items:center;color:var(--text-tertiary);flex:none}
 .conversationComposer{position:absolute;left:0;right:0;bottom:25px;display:flex;justify-content:center;padding:28px 18px 0;background:linear-gradient(transparent,var(--canvas) 34%)}
 
