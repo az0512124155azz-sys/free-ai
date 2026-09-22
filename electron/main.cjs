@@ -464,6 +464,26 @@ Start-Sleep -Milliseconds 30
   await runPowerShell(script);
 }
 
+async function recognizeWindowsDictation(){
+  const script=`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+try {
+  Add-Type -AssemblyName System.Speech
+  $recognizer = New-Object System.Speech.Recognition.SpeechRecognitionEngine
+  $grammar = New-Object System.Speech.Recognition.DictationGrammar
+  $recognizer.LoadGrammar($grammar)
+  $recognizer.SetInputToDefaultAudioDevice()
+  $result = $recognizer.Recognize([TimeSpan]::FromSeconds(12))
+  if ($result -and $result.Text) { Write-Output $result.Text }
+  $recognizer.Dispose()
+} catch {
+  Write-Error $_.Exception.Message
+  exit 1
+}
+`;
+  return await runPowerShell(script);
+}
+
 function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
 
 function encodeSecret(value){
@@ -844,6 +864,15 @@ ipcMain.handle('dictation:start',async()=>{
   if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');
   await startWindowsVoiceTyping();
   return {ok:true,mode:'windows-voice-typing'};
+});
+ipcMain.handle('dictation:recognize',async()=>{
+  if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');
+  try{
+    const text=await recognizeWindowsDictation();
+    return {ok:true,text:text||'',mode:'windows-speech-recognition'};
+  }catch(error){
+    return {ok:false,text:'',fallback:true,error:error?.message||String(error)};
+  }
 });
 
 
