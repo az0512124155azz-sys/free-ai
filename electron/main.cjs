@@ -878,6 +878,22 @@ ipcMain.handle('dictation:recognize',async()=>{
     return {ok:false,text:'',fallback:true,error:error?.message||String(error)};
   }
 });
+ipcMain.handle('voice:speak',async(_e,text)=>{
+  if(process.platform!=='win32')throw new Error('Desktop speech output is currently available on Windows.');
+  const value=String(text||'').trim();
+  if(!value)return {ok:true};
+  const encoded=Buffer.from(value,'utf8').toString('base64');
+  const script=`
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Speech
+$text = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('\${encoded}'))
+$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$speaker.Speak($text)
+$speaker.Dispose()
+`;
+  await runPowerShell(script);
+  return {ok:true};
+});
 
 
 
