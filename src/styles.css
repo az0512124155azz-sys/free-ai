@@ -281,7 +281,9 @@ button:disabled{opacity:.42;cursor:default}
 .modelButton small{color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis}
 .accessButton{color:var(--text-secondary);padding-left:7px;border:1px solid transparent}
 .accessButton:hover{background:var(--hover);color:var(--text)}
-.accessButton.enabled{background:color-mix(in srgb,var(--work) 13%,transparent);color:var(--work);border-color:color-mix(in srgb,var(--work) 27%,transparent)}
+.accessButton.mode-ask{background:var(--surface-primary);border-color:var(--border-soft);color:var(--text-secondary)}
+.accessButton.mode-auto{background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 27%,transparent)}
+.accessButton.mode-full{background:color-mix(in srgb,var(--work) 13%,transparent);color:var(--work);border-color:color-mix(in srgb,var(--work) 27%,transparent)}
 .permissionAnchor .floatingMenu{left:0;right:auto;transform-origin:bottom left}
 .permissionPicker{bottom:40px;width:330px}
 .permissionRow{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) 18px;gap:9px;align-items:center;background:transparent;border-radius:11px;padding:9px;text-align:left;color:var(--text-secondary)}
@@ -385,8 +387,20 @@ button:disabled{opacity:.42;cursor:default}
 .browserTab span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .paneTabs>button,.browserToolbar>button{width:30px;height:30px;background:transparent;border-radius:var(--r-lg);display:grid;place-items:center;color:var(--text-tertiary)}
 .paneTabs>button:hover,.browserToolbar>button:hover{background:var(--hover);color:var(--text)}
-.browserToolbar{height:48px;display:flex;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid var(--border-soft)}
-.browserToolbar form{flex:1}.browserToolbar input{width:100%;background:transparent;border:0;text-align:center;color:var(--text-tertiary);font-size:11px}
+.browserTabsBar{height:44px;display:flex;align-items:center;border-bottom:1px solid var(--border-soft);padding:0 6px 0 7px;background:var(--surface-primary)}
+.browserTabsScroller{min-width:0;flex:1;display:flex;align-items:center;gap:4px;overflow:auto;scrollbar-width:none}
+.browserTabsScroller::-webkit-scrollbar{display:none}
+.browserTopTab{min-width:96px;max-width:180px;height:32px;padding:0 7px 0 9px;border-radius:9px;background:transparent;color:var(--text-tertiary);display:flex;align-items:center;gap:6px;border:1px solid transparent}
+.browserTopTab.active{background:var(--surface-secondary);color:var(--text);border-color:var(--border-soft)}
+.browserTopTab:hover{background:var(--hover);color:var(--text)}
+.browserTopTab>span:not(.browserTabClose){min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:10.5px;text-align:left}
+.browserTabClose{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;flex:none}
+.browserTabClose:hover{background:rgba(255,255,255,.10)}
+.browserNewTab,.browserPaneClose{width:30px;height:30px;display:grid;place-items:center;border-radius:9px;background:transparent;color:var(--text-tertiary);flex:none}
+.browserNewTab:hover,.browserPaneClose:hover{background:var(--hover);color:var(--text)}
+.browserToolbar{height:44px;display:flex;align-items:center;gap:2px;padding:0 8px;border-bottom:1px solid var(--border-soft);background:var(--canvas)}
+.browserToolbar form{flex:1;min-width:0;background:var(--surface-primary);border:1px solid var(--border-soft);border-radius:999px;height:30px;display:flex;align-items:center;padding:0 12px}
+.browserToolbar input{width:100%;background:transparent;border:0;text-align:center;color:var(--text-secondary);font-size:11px;outline:0}
 .nativeBrowserSurface{flex:1;min-height:0;background:var(--canvas);position:relative}
 .fileMeta{padding:10px 14px;border-bottom:1px solid var(--border-soft);display:flex;flex-direction:column}
 .fileMeta span{font-size:12px}.fileMeta small{font-size:10px;color:var(--muted);margin-top:3px}
@@ -439,6 +453,9 @@ button:disabled{opacity:.42;cursor:default}
 .formLabel{display:block;padding:11px 13px;font-size:10px;color:var(--text-tertiary)}.formLabel>input,.keyLine input,.apiForm input{width:100%;margin-top:6px;background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-lg);padding:8px;color:var(--text);font-size:11px}
 .keyLine{display:flex;gap:7px}.keyLine button{margin-top:6px;background:var(--surface-secondary);border-radius:var(--r-lg);padding:0 10px;font-size:10px}
 .primaryAction{background:var(--text);color:var(--canvas);border-radius:var(--r-lg);padding:8px 12px;font-size:11px}
+.primaryAction{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.browserSettingsActions{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+.settingsFeedback{margin-top:10px;font-size:11px;color:var(--text-tertiary)}
 .profileField{display:flex;flex-direction:column;gap:6px;padding:13px;border-bottom:1px solid var(--border-soft);font-size:10.5px;color:var(--text-tertiary)}
 .profileField input{height:36px;background:var(--canvas);border:1px solid var(--border);border-radius:8px;padding:0 10px;color:var(--text);font-size:12px}
 .profileActions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 13px}.profileActions>span{font-size:10.5px;color:var(--muted);margin-right:auto}
@@ -539,6 +556,9 @@ button:disabled{opacity:.42;cursor:default}
   .sidePane{position:fixed;inset:0;z-index:180;padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
   .browserPane .nativeBrowserSurface{display:grid;place-items:center}
   .paneTabs{height:52px}
+  .browserTabsBar{height:46px}
+  .browserTopTab{min-width:92px;max-width:150px}
+  .browserToolbar{height:46px}
 
   .settingsScreen{display:block;overflow:auto;padding-top:var(--safe-top);padding-bottom:var(--safe-bottom)}
   .settingsScreen.mobileSettingsList .settingsNav{display:block;min-height:calc(100vh - var(--safe-top) - var(--safe-bottom));border-right:0;padding:9px 10px 24px}

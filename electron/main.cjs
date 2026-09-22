@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,session}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -14,8 +14,10 @@ let apiConnections=[];
 const pending=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
-let browserView=null;
-let browserState={url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+let browserTabs=[];
+let activeBrowserTabId=null;
+let browserBounds=null;
+let browserTabSeq=0;
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -66,21 +68,35 @@ function installAppMenu(){
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
-function browserSnapshot(){
-  if(!browserView)return {...browserState};
-  const wc=browserView.webContents;
+function activeBrowserTab(){
+  return browserTabs.find(tab=>tab.id===activeBrowserTabId)||null;
+}
+
+function browserTabSnapshot(tab){
+  if(!tab?.view)return {id:tab?.id||'',url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+  const wc=tab.view.webContents;
   return {
-    url:wc.getURL()||browserState.url,
-    title:wc.getTitle()||browserState.title||'New tab',
+    id:tab.id,
+    url:wc.getURL()||tab.url||'',
+    title:wc.getTitle()||tab.title||'New tab',
     loading:wc.isLoading(),
     canGoBack:wc.canGoBack(),
     canGoForward:wc.canGoForward()
   };
 }
 
+function browserSnapshot(){
+  const active=activeBrowserTab();
+  const current=active?browserTabSnapshot(active):{id:'',url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+  return {
+    ...current,
+    activeTabId:activeBrowserTabId,
+    tabs:browserTabs.map(browserTabSnapshot)
+  };
+}
+
 function emitBrowserState(){
-  browserState=browserSnapshot();
-  if(win&&!win.isDestroyed())win.webContents.send('browser-state',browserState);
+  if(win&&!win.isDestroyed())win.webContents.send('browser-state',browserSnapshot());
 }
 
 function normalizeBrowserUrl(input){
@@ -92,9 +108,9 @@ function normalizeBrowserUrl(input){
   return 'https://www.google.com/search?q='+encodeURIComponent(raw);
 }
 
-function ensureBrowserView(){
-  if(browserView)return browserView;
-  browserView=new WebContentsView({
+function createBrowserTab(url='https://www.google.com/'){
+  const id='tab-'+(++browserTabSeq);
+  const view=new WebContentsView({
     webPreferences:{
       sandbox:true,
       contextIsolation:true,
@@ -102,30 +118,97 @@ function ensureBrowserView(){
       partition:'persist:freeai-browser'
     }
   });
-  win.contentView.addChildView(browserView);
-  const wc=browserView.webContents;
-  wc.setWindowOpenHandler(({url})=>{wc.loadURL(url).catch(()=>{});return {action:'deny'}});
+  const tab={id,view,url,title:'New tab'};
+  browserTabs.push(tab);
+  const wc=view.webContents;
+  wc.setWindowOpenHandler(({url:newUrl})=>{
+    const child=createBrowserTab(newUrl);
+    switchBrowserTab(child.id);
+    child.view.webContents.loadURL(normalizeBrowserUrl(newUrl)).catch(()=>{});
+    return {action:'deny'};
+  });
   for(const eventName of ['did-start-loading','did-stop-loading','did-navigate','did-navigate-in-page','page-title-updated']){
-    wc.on(eventName,()=>emitBrowserState());
+    wc.on(eventName,()=>{
+      const snap=browserTabSnapshot(tab);
+      tab.url=snap.url;tab.title=snap.title;
+      emitBrowserState();
+    });
   }
-  return browserView;
+  wc.on('render-process-gone',()=>emitBrowserState());
+  return tab;
+}
+
+function switchBrowserTab(id){
+  const next=browserTabs.find(tab=>tab.id===id);
+  if(!next||!win||win.isDestroyed())return null;
+  const current=activeBrowserTab();
+  if(current&&current.id!==next.id){
+    try{win.contentView.removeChildView(current.view)}catch{}
+  }
+  activeBrowserTabId=next.id;
+  try{win.contentView.addChildView(next.view)}catch{}
+  if(browserBounds)setBrowserBounds(browserBounds);
+  emitBrowserState();
+  return next;
+}
+
+function ensureBrowserTab(){
+  let tab=activeBrowserTab();
+  if(tab)return tab;
+  tab=createBrowserTab();
+  switchBrowserTab(tab.id);
+  return tab;
 }
 
 function setBrowserBounds(bounds){
-  if(!browserView||!bounds)return;
-  const x=Math.max(0,Math.round(Number(bounds.x)||0));
-  const y=Math.max(0,Math.round(Number(bounds.y)||0));
-  const width=Math.max(1,Math.round(Number(bounds.width)||1));
-  const height=Math.max(1,Math.round(Number(bounds.height)||1));
-  browserView.setBounds({x,y,width,height});
+  browserBounds=bounds||browserBounds;
+  const tab=activeBrowserTab();
+  if(!tab?.view||!browserBounds)return;
+  const x=Math.max(0,Math.round(Number(browserBounds.x)||0));
+  const y=Math.max(0,Math.round(Number(browserBounds.y)||0));
+  const width=Math.max(1,Math.round(Number(browserBounds.width)||1));
+  const height=Math.max(1,Math.round(Number(browserBounds.height)||1));
+  tab.view.setBounds({x,y,width,height});
+}
+
+function closeBrowserTab(id){
+  const index=browserTabs.findIndex(tab=>tab.id===id);
+  if(index<0)return browserSnapshot();
+  const [tab]=browserTabs.splice(index,1);
+  const wasActive=tab.id===activeBrowserTabId;
+  if(wasActive){
+    try{win?.contentView.removeChildView(tab.view)}catch{}
+  }
+  try{tab.view.webContents.close()}catch{}
+  if(wasActive){
+    const fallback=browserTabs[Math.max(0,index-1)]||browserTabs[0]||null;
+    activeBrowserTabId=fallback?.id||null;
+    if(fallback&&win&&!win.isDestroyed()){
+      try{win.contentView.addChildView(fallback.view)}catch{}
+      if(browserBounds)setBrowserBounds(browserBounds);
+    }
+  }
+  emitBrowserState();
+  return browserSnapshot();
+}
+
+function hideBrowserView(){
+  const tab=activeBrowserTab();
+  if(tab){
+    try{win?.contentView.removeChildView(tab.view)}catch{}
+  }
+  emitBrowserState();
 }
 
 function closeBrowserView(){
-  if(!browserView)return;
-  try{win?.contentView.removeChildView(browserView)}catch{}
-  try{browserView.webContents.close()}catch{}
-  browserView=null;
-  browserState={url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false};
+  for(const tab of browserTabs){
+    try{win?.contentView.removeChildView(tab.view)}catch{}
+    try{tab.view.webContents.close()}catch{}
+  }
+  browserTabs=[];
+  activeBrowserTabId=null;
+  browserBounds=null;
+  emitBrowserState();
 }
 
 function runPowerShell(script){
@@ -569,25 +652,44 @@ ipcMain.handle('dictation:start',async()=>{
 
 ipcMain.handle('browser:open',async(_e,payload={})=>{
   if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
-  const view=ensureBrowserView();
+  const tab=ensureBrowserTab();
   if(payload.bounds)setBrowserBounds(payload.bounds);
-  const url=normalizeBrowserUrl(payload.url);
-  await view.webContents.loadURL(url);
+  const url=normalizeBrowserUrl(payload.url||tab.url);
+  if(!tab.view.webContents.getURL())await tab.view.webContents.loadURL(url);
   emitBrowserState();
   return browserSnapshot();
 });
+ipcMain.handle('browser:newTab',async(_e,input='https://www.google.com/')=>{
+  const tab=createBrowserTab(normalizeBrowserUrl(input));
+  switchBrowserTab(tab.id);
+  await tab.view.webContents.loadURL(normalizeBrowserUrl(input));
+  emitBrowserState();
+  return browserSnapshot();
+});
+ipcMain.handle('browser:switchTab',(_e,id)=>{switchBrowserTab(id);return browserSnapshot()});
+ipcMain.handle('browser:closeTab',(_e,id)=>closeBrowserTab(id));
 ipcMain.handle('browser:navigate',async(_e,input)=>{
-  const view=ensureBrowserView();
+  const tab=ensureBrowserTab();
   const url=normalizeBrowserUrl(input);
-  await view.webContents.loadURL(url);
+  await tab.view.webContents.loadURL(url);
   emitBrowserState();
   return browserSnapshot();
 });
 ipcMain.handle('browser:setBounds',(_e,bounds)=>{setBrowserBounds(bounds);return true});
-ipcMain.handle('browser:back',()=>{if(browserView?.webContents.canGoBack())browserView.webContents.goBack();return browserSnapshot()});
-ipcMain.handle('browser:forward',()=>{if(browserView?.webContents.canGoForward())browserView.webContents.goForward();return browserSnapshot()});
-ipcMain.handle('browser:reload',()=>{browserView?.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:back',()=>{const tab=activeBrowserTab();if(tab?.view.webContents.canGoBack())tab.view.webContents.goBack();return browserSnapshot()});
+ipcMain.handle('browser:forward',()=>{const tab=activeBrowserTab();if(tab?.view.webContents.canGoForward())tab.view.webContents.goForward();return browserSnapshot()});
+ipcMain.handle('browser:reload',()=>{activeBrowserTab()?.view.webContents.reload();return browserSnapshot()});
+ipcMain.handle('browser:hide',()=>{hideBrowserView();return true});
 ipcMain.handle('browser:close',()=>{closeBrowserView();return true});
+ipcMain.handle('browser:clearData',async()=>{
+  closeBrowserView();
+  const browserSession=session.fromPartition('persist:freeai-browser');
+  await Promise.allSettled([
+    browserSession.clearStorageData(),
+    browserSession.clearCache()
+  ]);
+  return {ok:true};
+});
 
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
   if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows. Screen preview still works on this platform.');

@@ -106,14 +106,18 @@ Pull requests run the full build matrix before changes are merged to `main`.
 
 ## Android Google sign-in
 
-Free AI uses native Google Credential Manager on Android and exchanges the returned Google ID token directly with Supabase. This avoids sending Android users through the Supabase-hosted OAuth browser page.
+Free AI uses native Google Credential Manager on Android and exchanges the Google ID token directly with Supabase. Android does not use the Supabase-hosted OAuth browser page.
 
-Google Cloud must contain both:
+Google Cloud must contain two OAuth clients in the same project:
 
-- a **Web application** OAuth client (used as the ID-token audience), and
-- an **Android** OAuth client for package `com.freeai.mobile` with the SHA-1 of the APK signing certificate.
+- **Web application** client: `991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com`
+- **Android** client with:
+  - package: `com.freeai.mobile`
+  - SHA-1: `1F:F0:59:1B:C8:69:C4:89:01:01:2F:79:E1:2D:0B:2E:7D:FC:C9:4B`
 
-The web client ID can be supplied at build time as `VITE_GOOGLE_WEB_CLIENT_ID`.
+The repository contains a public debug-only keystore so GitHub Actions APKs keep the same SHA-1 across builds. Do not use that debug key for a production Play Store release. Production and Play App Signing certificates need their own Android OAuth client IDs.
 
-Desktop/web continue to use the Supabase PKCE OAuth flow. To replace the raw `<project-ref>.supabase.co` name on those consent surfaces, configure Google Auth Platform **Branding/Verification**; a Supabase custom/vanity domain additionally requires a paid Supabase plan.
+The web client ID can be overridden at build time with `VITE_GOOGLE_WEB_CLIENT_ID`.
+
+Desktop/web continue to use the Supabase PKCE OAuth flow. Google Auth Platform Branding/Verification can show the Free AI name/logo, while replacing the raw `<project-ref>.supabase.co` domain itself requires a Supabase custom or vanity domain (a paid-plan feature).
 

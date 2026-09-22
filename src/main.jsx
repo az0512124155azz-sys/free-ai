@@ -98,13 +98,21 @@ function App(){
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
-    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
+    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',browserAccess:'ask',voiceLanguage:'auto',
     ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
   const fileRef=useRef(null);
+
+  useEffect(()=>{
+    if(isNative&&product==='super'){
+      setProduct('free');
+      localStorage.setItem('freeai.product','free');
+      setMode('chat');
+    }
+  },[product]);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -336,10 +344,10 @@ function App(){
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
         <div className="productSwitcher">
-          <button className="brandButton" title="Switch product" aria-haspopup="menu" aria-expanded={productMenu} onClick={()=>setProductMenu(v=>!v)}>
-            <BrandMark size={20}/><b>{product==='super'?'Super AI':'Free AI'}</b><ChevronDown size={14}/>
+          <button className="brandButton" title={isNative?'Free AI':'Switch product'} aria-haspopup={isNative?undefined:'menu'} aria-expanded={isNative?undefined:productMenu} onClick={()=>!isNative&&setProductMenu(v=>!v)}>
+            <BrandMark size={20}/><b>{product==='super'?'Super AI':'Free AI'}</b>{!isNative&&<ChevronDown size={14}/>}
           </button>
-          {productMenu&&<div className="productMenu" role="menu">
+          {!isNative&&productMenu&&<div className="productMenu" role="menu">
             <button className={product==='free'?'active':''} onClick={()=>{setProduct('free');setProductMenu(false);setMode('chat')}}>
               <BrandMark size={20}/><span><b>Free AI</b><small>Chat and work with all connected models</small></span>{product==='free'&&<Check size={16}/>}
             </button>
@@ -358,7 +366,7 @@ function App(){
       <div className="mobileQuickStart">
         <button className="mobileNewChat" onClick={newChat}><SquarePen size={17}/><span>New chat</span></button>
         <div className="mobileExperienceRail" aria-label="Experiences">
-          <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>
+          {!isNative&&<button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><BrandMark size={18} className="superMark"/><span>Super AI</span></button>}
           <button className={page==='plugins'?'active':''} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Plugins</span></button>
           <button className={page==='explore'?'active':''} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}><Blocks size={18}/><span>Explore</span></button>
         </div>
@@ -513,7 +521,12 @@ function Composer(props){
     setDictationError('');
     try{
       if(isNative){
-        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:700}));
+        try{
+          const last=await SpeechRecognition.getLastPartialResult?.();
+          const text=(last?.text||last?.matches?.[0]||'').trim();
+          if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
+        }catch{}
+        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:900}));
         for(const handle of nativeSpeechHandles.current.splice(0))await handle?.remove?.().catch(()=>{});
       }else if(webRecognition.current){
         webRecognition.current.stop();
@@ -551,17 +564,29 @@ function Composer(props){
         if(permission?.speechRecognition!=='granted')throw new Error('Microphone permission is required for dictation.');
 
         const partial=await SpeechRecognition.addListener('partialResults',event=>{
-          const text=event?.matches?.[0]?.trim();
+          const text=(event?.matches?.[0]||event?.text||'').trim();
           if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
         });
-        const stateHandle=await SpeechRecognition.addListener('listeningState',event=>setListening(event?.status==='started'));
+        const stateHandle=await SpeechRecognition.addListener('listeningState',event=>{
+          const state=String(event?.state||event?.status||'').toLowerCase();
+          if(['started','listening','active'].includes(state))setListening(true);
+          if(['stopped','ended','idle','inactive'].includes(state))setListening(false);
+        });
+        const readyHandle=await SpeechRecognition.addListener('readyForNextSession',()=>setListening(false));
         const errorHandle=await SpeechRecognition.addListener('error',event=>{
           setListening(false);
           if(event?.message)setDictationError(event.message);
         });
-        nativeSpeechHandles.current=[partial,stateHandle,errorHandle];
+        nativeSpeechHandles.current=[partial,stateHandle,readyHandle,errorHandle];
+        let useOnDeviceRecognition=false;
+        try{
+          const local=await SpeechRecognition.isOnDeviceRecognitionAvailable?.({language});
+          useOnDeviceRecognition=!!local?.available;
+        }catch{}
         setListening(true);
-        await SpeechRecognition.start({language,maxResults:3,partialResults:true,popup:false,addPunctuation:true});
+        await SpeechRecognition.start({
+          language,maxResults:3,partialResults:true,popup:false,addPunctuation:true,useOnDeviceRecognition
+        });
       }catch(e){
         setListening(false);
         setDictationError(e?.message||'Dictation could not start.');
@@ -613,8 +638,8 @@ function Composer(props){
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
-          <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
-            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
+          <button className={'accessButton mode-'+approvalMode} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
+            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual'}<ChevronDown size={12}/>
           </button>
           {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
@@ -678,9 +703,9 @@ function EffortMenu({effort,levels,choose}){
 
 function PermissionModeMenu({value,choose}){
   const rows=[
-    ['ask','Ask for approval','Review actions before they go beyond the current workspace.'],
-    ['auto','Approve for me','Automatically approve eligible low-risk actions; typed actions still ask.'],
-    ['full','Full access','Run supported computer actions without asking each time.']
+    ['ask','Manual','Ask before every supported action that can affect your computer or another service.'],
+    ['auto','Automatic','Allow low-risk actions automatically, but still pause for sensitive or consequential actions.'],
+    ['full','Full access','Run supported computer actions without repeated approval prompts. Sensitive actions may still require confirmation.']
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
@@ -694,7 +719,7 @@ function PlusMenu({fileRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     <MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>
-    <MenuRow icon={Chrome} label={isNative?'Free AI Browser':'Attach browser'} sub={isNative?'Open a managed browser inside Free AI':'Browse beside your chat'} onClick={onBrowser}/>
+    {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in the isolated Free AI browser" onClick={onBrowser}/>} 
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
@@ -789,13 +814,18 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
 
 function BrowserPane({onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
-  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false});
+  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,activeTabId:null,tabs:[]});
   const surfaceRef=useRef(null);
+
   useEffect(()=>{
     if(!isDesktop)return;
-    const off=window.desktopApi.onBrowserState?.(s=>{setState(s);if(s.url)setUrl(s.url)});
-    return()=>{off?.();window.desktopApi.browserClose?.().catch(()=>{})};
+    const off=window.desktopApi.onBrowserState?.(next=>{
+      setState(next);
+      if(next.url)setUrl(next.url);
+    });
+    return()=>{off?.();window.desktopApi.browserHide?.().catch(()=>{})};
   },[]);
+
   useEffect(()=>{
     if(!isDesktop||!surfaceRef.current)return;
     const el=surfaceRef.current;
@@ -803,22 +833,66 @@ function BrowserPane({onClose}){
       const r=el.getBoundingClientRect();
       window.desktopApi.browserSetBounds({x:r.x,y:r.y,width:r.width,height:r.height}).catch(()=>{});
     };
-    const ro=new ResizeObserver(sync);ro.observe(el);window.addEventListener('resize',sync);sync();
+    const ro=new ResizeObserver(sync);
+    ro.observe(el);
+    window.addEventListener('resize',sync);
+    sync();
     const r=el.getBoundingClientRect();
-    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).catch(()=>{});
+    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).then(next=>{
+      if(next){setState(next);if(next.url)setUrl(next.url)}
+    }).catch(()=>{});
     return()=>{ro.disconnect();window.removeEventListener('resize',sync)};
   },[]);
-  function navigate(){if(isDesktop)window.desktopApi.browserNavigate(url).catch(()=>{})}
+
+  async function navigate(){
+    if(!isDesktop)return;
+    const next=await window.desktopApi.browserNavigate(url).catch(()=>null);
+    if(next){setState(next);if(next.url)setUrl(next.url)}
+  }
+
+  async function newTab(){
+    if(!isDesktop)return;
+    const next=await window.desktopApi.browserNewTab('https://www.google.com/').catch(()=>null);
+    if(next){setState(next);setUrl(next.url||'https://www.google.com/')}
+  }
+
+  async function switchTab(id){
+    const next=await window.desktopApi.browserSwitchTab(id).catch(()=>null);
+    if(next){setState(next);setUrl(next.url||'')}
+  }
+
+  async function closeTab(e,id){
+    e.stopPropagation();
+    let next=await window.desktopApi.browserCloseTab(id).catch(()=>null);
+    if(next?.tabs?.length===0)next=await window.desktopApi.browserNewTab('https://www.google.com/').catch(()=>next);
+    if(next){setState(next);setUrl(next.url||'https://www.google.com/')}
+  }
+
   return <aside className="sidePane browserPane">
-    <div className="paneTabs"><div className="browserTab"><Globe2 size={14}/><span>{state.title||'New tab'}</span><X size={13}/></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="browserTabsBar">
+      <div className="browserTabsScroller">
+        {(state.tabs||[]).map(tab=><button
+          key={tab.id}
+          className={'browserTopTab '+(tab.id===state.activeTabId?'active':'')}
+          onClick={()=>switchTab(tab.id)}
+          title={tab.title||tab.url||'New tab'}
+        >
+          <Globe2 size={13}/>
+          <span>{tab.title||'New tab'}</span>
+          <span className="browserTabClose" role="button" tabIndex={0} onClick={e=>closeTab(e,tab.id)}><X size={12}/></span>
+        </button>)}
+        <button className="browserNewTab" onClick={newTab} aria-label="New browser tab"><Plus size={15}/></button>
+      </div>
+      <button className="browserPaneClose" onClick={onClose} aria-label="Close browser"><X size={16}/></button>
+    </div>
     <div className="browserToolbar">
       <button disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
       <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
-      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)}><ExternalLink size={15}/></button>
+      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in default browser"><ExternalLink size={15}/></button>
     </div>
-    <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
+    <div className="nativeBrowserSurface" ref={surfaceRef}/>
   </aside>
 }
 
@@ -871,14 +945,14 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
     await executeAction(action);
   }
 
-  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval';
+  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
       <select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Ask for approval</option>
-        <option value="auto">Approve for me</option>
+        <option value="ask">Manual</option>
+        <option value="auto">Automatic</option>
         <option value="full">Full access</option>
       </select>
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
@@ -904,7 +978,7 @@ function SettingsView(props){
   const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
-  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Configuration','Git','Environments']);
+  const hiddenOnMobile=new Set(['General','Keyboard shortcuts','Computer use','Browser','Configuration','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>(!isNative||!hiddenOnMobile.has(label))&&(!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase())));
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
@@ -927,7 +1001,7 @@ function SettingsView(props){
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Approve for me':'Ask for approval'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title="Plugins" text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text={isNative?'Open the managed Free AI browser.':'Open the real browser panel beside your chat.'} status="Available" action={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -942,7 +1016,7 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI handle supported computer actions." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Ask for approval</option><option value="auto">Approve for me</option><option value="full">Full access</option></select>}/>} 
+      {!isNative&&<SettingRow title="Approval mode" desc="Choose how Work and Super AI review supported actions." control={<select value={prefs.approvalMode||'ask'} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Manual</option><option value="auto">Automatic</option><option value="full">Full access</option></select>}/>} 
     </div>
     {!isNative&&<><h3>General</h3>
     <div className="settingBlock">
@@ -1006,6 +1080,36 @@ function ConfigurationSettings({prefs,setPrefs}){
 }
 function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<span className="valuePill">{b}</span>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
+
+function BrowserSettings({prefs,setPrefs,onBrowser}){
+  const [clearing,setClearing]=useState(false);
+  const [state,setState]=useState('');
+  async function clearData(){
+    if(!isDesktop||!window.desktopApi?.browserClearData)return;
+    setClearing(true);setState('');
+    try{await window.desktopApi.browserClearData();setState('Browser cookies, storage and cache cleared.')}
+    catch(e){setState(e?.message||'Could not clear browser data.')}
+    finally{setClearing(false)}
+  }
+  return <div className="settingsPane">
+    <h3>Built-in browser</h3>
+    <div className="settingBlock">
+      <SettingRow title="Website access" desc="Choose how agent website-access requests are reviewed. Consequential actions can still require confirmation." control={
+        <select value={prefs.browserAccess||'ask'} onChange={e=>setPrefs({...prefs,browserAccess:e.target.value})}>
+          <option value="ask">Always ask</option>
+          <option value="auto">Auto approve</option>
+          <option value="allow">Always allow</option>
+        </select>
+      }/>
+      <SettingRow title="Browser profile" desc="The built-in browser uses its own cookies and signed-in sessions, separate from Chrome." control={<span className="valuePill">Isolated</span>}/>
+    </div>
+    <div className="browserSettingsActions">
+      <button className="primaryAction" onClick={onBrowser}><Globe2 size={15}/>Open browser</button>
+      <button className="settingsInlineButton" disabled={clearing} onClick={clearData}>{clearing?'Clearing…':'Clear browser data'}</button>
+    </div>
+    {state&&<div className="settingsFeedback">{state}</div>}
+  </div>
+}
 
 function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
   return <div className="settingsPane">
