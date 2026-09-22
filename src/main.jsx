@@ -239,6 +239,7 @@ function App(){
       if(command==='new-chat')newChat();
       if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
+      if(command==='open-computer'){setSettingsOpen(false);setSidePanel('computer')}
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
@@ -456,7 +457,8 @@ function App(){
       return next;
     });
   }
-  function openProject(project){setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openProject(project){stopActiveWorkTask();setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openPluginsPage(){stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false)}
   function startProjectConversation(projectId,nextMode){
     stopActiveWorkTask();
     setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
@@ -521,6 +523,10 @@ function App(){
     const userText=String(text||'').trim();
     if((!userText&&!attachments.length)||workBusy)return;
     if(!selected){setModelMenu(true);return}
+    if(selectedTool){
+      setAttachmentError('Plugin/MCP orchestration is not part of the Windows 4 Work loop yet. Remove the selected plugin or use Chat; Plugins/MCP are handled in Windows 5.');
+      return;
+    }
     const canUploadFiles=selected.source==='browser'&&selected.fileUpload===true;
     const inlineParts=[];
     const outbound=[];
@@ -540,7 +546,8 @@ function App(){
         }
       }
     }
-    const finalUserText=inlineParts.length?[userText,'',...inlineParts].filter(Boolean).join('\n\n'):userText;
+    const taskText=userText||'Review the attached files and determine the next useful step.';
+    const finalUserText=inlineParts.length?[taskText,'',...inlineParts].filter(Boolean).join('\n\n'):taskText;
     const userMessage={role:'user',text:userText,attachments:attachments.map(attachmentMeta),attachmentContext:inlineParts.join('\n\n')};
     const next=[...messages,userMessage];
     setMessages(next);saveCurrentChat(next,selected);
@@ -892,7 +899,7 @@ function App(){
 
       <nav className="primaryNav desktopPrimaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
-        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
+        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={openPluginsPage}/>
         {!isWindowsDesktop&&<NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>}
       </nav>
       <div className="sidebarScroll">
@@ -1023,7 +1030,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
-                onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
+                onPlugins={openPluginsPage}
               />
             </div>
           : <div className={'conversationView '+(isWindowsDesktop?'windowsConversation':'')}>
@@ -1068,7 +1075,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                     onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
-                  onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
+                  onPlugins={openPluginsPage}
                 />
               </div>
             </div>
@@ -1115,7 +1122,7 @@ function App(){
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
       onExportData={exportLocalData} onClearHistory={clearLocalHistory}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
-      onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
+      onPlugins={()=>{setSettingsOpen(false);openPluginsPage()}}
       onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
     />}
   </div>
