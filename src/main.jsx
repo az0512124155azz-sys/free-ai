@@ -1323,14 +1323,14 @@ function Composer(props){
     <div className="composerBottom">
       <div className="composerLeft">
         <div className="menuAnchor">
-          <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
+          <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} disabled={busy} onClick={()=>!busy&&setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
             fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
-          <button className={'accessButton '+(approvalMode==='low'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
+          <button className={'accessButton '+(approvalMode==='low'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} disabled={busy} onClick={()=>!busy&&setApprovalMenu(v=>!v)}>
             <ShieldCheck size={15}/>{approvalMode==='low'?'Allow low-risk':approvalMode==='read'?'Allow reads':'Always ask'}<ChevronDown size={12}/>
           </button>
           {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
@@ -1339,7 +1339,7 @@ function Composer(props){
 
       <div className="composerRight">
         {!isNative&&<div className="menuAnchor">
-          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} onClick={()=>setModelMenu(v=>!v)}>
+          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
