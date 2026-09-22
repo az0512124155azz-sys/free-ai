@@ -258,6 +258,12 @@ function App(){
   const [screens,setScreens]=useState([]);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [archivedChats,setArchivedChats]=useState(()=>readJSON('freeai.archived.free',[]));
+  const [projects,setProjects]=useState(()=>readJSON('freeai.projects',[]));
+  const [currentProjectId,setCurrentProjectId]=useState(null);
+  const [projectDialog,setProjectDialog]=useState(false);
+  const [projectDraft,setProjectDraft]=useState('');
+  const [imageAssets,setImageAssets]=useState([]);
+  const [recentsSort,setRecentsSort]=useState(()=>localStorage.getItem('freeai.recents.sort')||'recent');
   const [chatMenuId,setChatMenuId]=useState(null);
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
@@ -278,6 +284,12 @@ function App(){
     supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)}).catch(()=>{setSession(null);setAuthReady(true)});
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true)});
     return()=>subscription.unsubscribe();
+  },[]);
+
+  useEffect(()=>{
+    let live=true;
+    listImageAssets().then(items=>live&&setImageAssets(items)).catch(()=>{});
+    return()=>{live=false};
   },[]);
 
   useEffect(()=>{
@@ -406,11 +418,19 @@ function App(){
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
-    if(!q)return chats;
-    const active=chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q));
+    let active=chats.filter(chat=>!currentProjectId||chat.projectId===currentProjectId);
+    if(q)active=active.filter(chat=>String(chat.title||'').toLowerCase().includes(q));
+    active=[...active].sort((a,b)=>{
+      if(recentsSort==='name')return String(a.title||'').localeCompare(String(b.title||''));
+      return (b.updatedAt||0)-(a.updatedAt||0);
+    });
+    if(!q)return active;
     const archived=archivedChats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)).map(chat=>({...chat,archived:true}));
     return [...active,...archived];
-  },[chats,archivedChats,sidebarSearch]);
+  },[chats,archivedChats,sidebarSearch,currentProjectId,recentsSort]);
+  const pinnedChats=useMemo(()=>visibleChats.filter(chat=>chat.pinned&&!chat.archived),[visibleChats]);
+  const unpinnedChats=useMemo(()=>visibleChats.filter(chat=>!chat.pinned||chat.archived),[visibleChats]);
+  const currentProject=projects.find(project=>project.id===currentProjectId)||null;
 
   function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
   function saveCurrentChat(nextMessages,model=selected){
