@@ -10,10 +10,10 @@ import {InAppBrowser} from '@capgo/capacitor-inappbrowser';
 import {SocialLogin} from '@capgo/capacitor-social-login';
 import {
   AppWindow,Archive,ArrowLeft,ArrowRight,ArrowUp,Bell,Blocks,Bot,Box,Brain,Briefcase,Camera,
-  CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Database,Download,ExternalLink,
+  CalendarDays,Check,ChevronDown,ChevronRight,Chrome,Clock3,Code2,Copy,Database,Download,ExternalLink,
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MoreHorizontal,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Pin,Plug,
-  Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,
+  Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,Square,
   SquarePen,Table2,Target,SquareTerminal,UserRound,Volume2,X
 } from 'lucide-react';
 import './styles.css';
@@ -161,6 +161,8 @@ function App(){
   const [recentsFilter,setRecentsFilter]=useState('all');
   const [recentsFilterOpen,setRecentsFilterOpen]=useState(false);
   const [chatMenuId,setChatMenuId]=useState(null);
+  const [responseMenuIndex,setResponseMenuIndex]=useState(null);
+  const [copiedMessageIndex,setCopiedMessageIndex]=useState(null);
   const [projects,setProjects]=useState(()=>readJSON('freeai.projects',[]));
   const [activeProjectId,setActiveProjectId]=useState(null);
   const [projectDialogOpen,setProjectDialogOpen]=useState(false);
@@ -192,6 +194,9 @@ function App(){
   const photoRef=useRef(null);
   const cameraRef=useRef(null);
   const messageEndRef=useRef(null);
+  const activeRequestRef=useRef(null);
+  const streamedTextRef=useRef('');
+  const cancelledRequestRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -288,6 +293,7 @@ function App(){
       if(e.key!=='Escape')return;
       if(projectDialogOpen){setProjectDialogOpen(false);return}
       if(profileMenu){setProfileMenu(false);return}
+      if(responseMenuIndex!==null){setResponseMenuIndex(null);return}
       if(chatMenuId){setChatMenuId(null);return}
       if(recentsFilterOpen){setRecentsFilterOpen(false);return}
       if(modelMenu){setModelMenu(false);return}
@@ -307,11 +313,12 @@ function App(){
       if(!target.closest('.mobileModeAnchor'))setMobileModeMenu(false);
       if(!target.closest('.recentsFilterAnchor'))setRecentsFilterOpen(false);
       if(!target.closest('.recentRow'))setChatMenuId(null);
+      if(!target.closest('.messageActions'))setResponseMenuIndex(null);
     };
     window.addEventListener('keydown',onKey);
     document.addEventListener('pointerdown',onPointer);
     return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
-  },[projectDialogOpen,profileMenu,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+  },[projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
 
   useEffect(()=>{
     localStorage.setItem('freeai.product',product);
@@ -336,6 +343,16 @@ function App(){
     if(!isWindowsDesktop||!messages.length)return;
     requestAnimationFrame(()=>messageEndRef.current?.scrollIntoView({block:'end'}));
   },[messages.length,busy,currentChatId]);
+
+  useEffect(()=>{
+    if(!isWindowsDesktop||!window.desktopApi?.onPromptStream)return;
+    return window.desktopApi.onPromptStream(event=>{
+      if(!event?.id||event.id!==activeRequestRef.current)return;
+      const text=String(event.text||'');
+      streamedTextRef.current=text;
+      setMessages(prev=>prev.map(message=>message.requestId===event.id?{...message,text,streaming:true}:message));
+    });
+  },[]);
 
   useEffect(()=>{
     if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
@@ -434,32 +451,86 @@ function App(){
     if(product==='free')setMode(chat.mode||'chat');
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
-  async function send(){
-    const text=prompt.trim();
-    if(!text||busy)return;
-    if(!selected){setModelMenu(true);return}
+  async function runGeneration(text,baseMessages=messages,model=selected){
+    const userText=String(text||'').trim();
+    if(!userText||busy)return;
+    if(!model){setModelMenu(true);return}
     if(isNative&&appPrefs.hapticsEnabled!==false)Haptics.impact({style:ImpactStyle.Light}).catch(()=>{});
-    setBusy(true);setPrompt('');
-    const withUser=[...messages,{role:'user',text}];setMessages(withUser);saveCurrentChat(withUser,selected);
+    setBusy(true);setPrompt('');setResponseMenuIndex(null);
+    const withUser=[...baseMessages,{role:'user',text:userText}];
+    const requestId=isWindowsDesktop&&isDesktop?crypto.randomUUID():null;
+    streamedTextRef.current='';
+    cancelledRequestRef.current=null;
+    activeRequestRef.current=requestId;
+    const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true}]:withUser;
+    setMessages(initial);saveCurrentChat(withUser,model);
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
       const instructions=projectInstructions||globalInstructions;
       const instructionsLabel=projectInstructions?'Free AI project instructions for this request:':'Free AI user preferences for this request:';
       const routedText=instructions
-        ? [instructionsLabel,instructions,'','User request:',text].join('\n')
-        : text;
+        ? [instructionsLabel,instructions,'','User request:',userText].join('\n')
+        : userText;
+      const historyMessages=withUser.filter(message=>message.role==='user'||message.role==='assistant');
+      const lastUserIndex=historyMessages.map(message=>message.role).lastIndexOf('user');
+      const history=historyMessages.map((message,index)=>({
+        role:message.role,
+        content:index===lastUserIndex?routedText:String(message.text||'')
+      }));
       const payload={
-        provider:selected.id,source:selected.source||'browser',text:routedText,effort,
+        requestId,provider:model.id,source:model.source||'browser',text:routedText,history,effort,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
-      const next=[...withUser,{role:'assistant',text:result?.text||String(result||''),provider:selected.id}];
-      setMessages(next);saveCurrentChat(next,selected);
+      const finalText=String(result?.text??result??streamedTextRef.current??'');
+      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id}];
+      setMessages(next);saveCurrentChat(next,model);
     }catch(e){
-      const next=[...withUser,{role:'error',text:e?.message||String(e)}];setMessages(next);saveCurrentChat(next,selected);
-    }finally{setBusy(false)}
+      if(requestId&&cancelledRequestRef.current===requestId)return;
+      const next=[...withUser,{role:'error',text:e?.message||String(e)}];
+      setMessages(next);saveCurrentChat(next,model);
+    }finally{
+      if(activeRequestRef.current===requestId)activeRequestRef.current=null;
+      setBusy(false);
+    }
+  }
+  async function send(){return runGeneration(prompt,messages,selected)}
+  async function stopGeneration(){
+    const requestId=activeRequestRef.current;
+    if(!requestId||!isWindowsDesktop||!isDesktop)return;
+    cancelledRequestRef.current=requestId;
+    try{await window.desktopApi.cancelPrompt(requestId)}catch{}
+    setMessages(prev=>{
+      const next=prev.flatMap(message=>{
+        if(message.requestId!==requestId)return [message];
+        if(String(message.text||'').trim())return [{...message,streaming:false,stopped:true,requestId:undefined}];
+        return [];
+      });
+      queueMicrotask(()=>saveCurrentChat(next,selected));
+      return next;
+    });
+    activeRequestRef.current=null;
+    setBusy(false);
+  }
+  function findUserIndexBefore(index){
+    for(let i=index-1;i>=0;i--)if(messages[i]?.role==='user')return i;
+    return -1;
+  }
+  function regenerateFrom(index){
+    if(busy)return;
+    const userIndex=findUserIndexBefore(index);
+    if(userIndex<0)return;
+    runGeneration(messages[userIndex].text,messages.slice(0,userIndex),selected);
+  }
+  function retryFrom(index){regenerateFrom(index)}
+  async function copyMessage(text,index){
+    try{
+      await navigator.clipboard.writeText(String(text||''));
+      setCopiedMessageIndex(index);
+      setTimeout(()=>setCopiedMessageIndex(current=>current===index?null:current),1200);
+    }catch{}
   }
   async function saveSettings(){
     const next={relayUrl:settings.relayUrl.trim(),pairKey:settings.pairKey.trim()};
@@ -716,6 +787,7 @@ function App(){
               <h1>{heading}</h1>
               <Composer
                 windowsDesktop={isWindowsDesktop}
+                stopGeneration={stopGeneration}
                 mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
@@ -733,21 +805,29 @@ function App(){
             </div>
           : <div className={'conversationView '+(isWindowsDesktop?'windowsConversation':'')}>
               <div className="messageList">
-                {messages.map((m,i)=><div key={i} className={'chatMessage '+m.role} role={m.role==='error'?'alert':undefined}>
+                {messages.map((m,i)=><div key={i} className={'chatMessage '+m.role} role={m.role==='error'?'alert':m.streaming?'status':undefined} aria-live={m.streaming?'polite':undefined}>
                   {m.role!=='user'&&!isWindowsDesktop&&<div className="assistantMark"><Sparkles size={16}/></div>}
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
-                    <div className="messageBody">{m.text}</div>
+                    <div className="messageBody">{m.streaming&&!m.text?<RefreshCw className="spin" size={16}/>:m.text}</div>
+                    {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<div className="messageActions headerLeft">
+                      <button className="headerIcon" aria-label={copiedMessageIndex===i?'Copied':'Copy response'} title={copiedMessageIndex===i?'Copied':'Copy'} onClick={()=>copyMessage(m.text,i)}>{copiedMessageIndex===i?<Check size={15}/>:<Copy size={15}/>}</button>
+                      <div className="menuAnchor">
+                        <button className="headerIcon" aria-label="Response options" aria-haspopup="menu" aria-expanded={responseMenuIndex===i} onClick={()=>setResponseMenuIndex(current=>current===i?null:i)}><MoreHorizontal size={15}/></button>
+                        {responseMenuIndex===i&&<div className="floatingMenu responseActionMenu" role="menu">
+                          <button className="menuRow" role="menuitem" onClick={()=>{setResponseMenuIndex(null);regenerateFrom(i)}}><RotateCcw size={15}/><span><b>Regenerate response</b></span></button>
+                        </div>}
+                      </div>
+                    </div>}
+                    {isWindowsDesktop&&m.role==='error'&&<div className="messageActions headerLeft"><button className="headerIcon" aria-label="Retry response" title="Retry" onClick={()=>retryFrom(i)}><RotateCcw size={15}/></button></div>}
                   </div>
                 </div>)}
-                {busy&&isWindowsDesktop&&<div className="chatMessage assistant" role="status" aria-label={mode==='work'?'Working on your request':'Generating response'}>
-                  <div className="messageBubble"><RefreshCw className="spin" size={16}/></div>
-                </div>}
                 <div ref={messageEndRef}/>
               </div>
               <div className="conversationComposer">
                 <Composer
                   windowsDesktop={isWindowsDesktop}
+                  stopGeneration={stopGeneration}
                   compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
@@ -857,7 +937,7 @@ function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
 
 function Composer(props){
   const {
-    windowsDesktop,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
+    windowsDesktop,stopGeneration,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
   }=props;
@@ -1010,8 +1090,12 @@ function Composer(props){
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={listening?'Stop dictation':'Dictate'} aria-label={listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
-        {(busy||prompt.trim())&&<button className={'voiceOrb '+(prompt.trim()&&selected?'sendReady':'')} onClick={prompt.trim()?send:undefined} disabled={busy||(!selected&&!!prompt.trim())}>
-          {busy?<RefreshCw className="spin" size={17}/>:<ArrowUp size={18}/>}
+        {(busy||prompt.trim())&&<button className={'voiceOrb '+(!busy&&prompt.trim()&&selected?'sendReady':'')}
+          onClick={busy?stopGeneration:prompt.trim()?send:undefined}
+          disabled={!busy&&(!selected&&!!prompt.trim())}
+          aria-label={busy?'Stop generating':'Send message'}
+          title={busy?'Stop generating':'Send'}>
+          {busy?<Square size={15}/>:<ArrowUp size={18}/>}
         </button>}
       </div>
     </div>

@@ -73,6 +73,27 @@ async function scanProviders(){
   return connected;
 }
 
+chrome.runtime.onMessage.addListener(m=>{
+  if(m?.type==='freeai:stream'&&m.id){
+    safeSend({type:'stream',id:m.id,text:String(m.text||'')});
+  }
+});
+
+async function cancelPrompt(m){
+  const provider=PROVIDERS[m.provider];
+  if(!provider)return false;
+  const tabs=await chrome.tabs.query({url:provider.matches});
+  let stopped=false;
+  for(const tab of tabs){
+    if(!tab.id)continue;
+    try{
+      const result=await sendToTab(tab.id,{type:'freeai:cancel',id:m.id,provider:m.provider});
+      stopped=stopped||!!result?.ok;
+    }catch{}
+  }
+  return stopped;
+}
+
 async function handlePrompt(m){
   const provider=PROVIDERS[m.provider];
   if(!provider)throw new Error('Unsupported provider: '+m.provider);
@@ -86,6 +107,7 @@ async function handlePrompt(m){
     try{
       const result=await sendToTab(tab.id,{
         type:'freeai:prompt',
+        id:m.id,
         provider:m.provider,
         text:m.text,
         toolRequest:m.toolRequest||null,
@@ -126,6 +148,10 @@ function connect(){
 
     if(m.type==='scanProviders'){
       await scanProviders();
+      return;
+    }
+    if(m.type==='cancel'){
+      await cancelPrompt(m);
       return;
     }
 
