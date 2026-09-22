@@ -566,6 +566,7 @@ function App(){
     activeRequestRef.current=requestId;
     const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true}]:withUser;
     setMessages(initial);saveCurrentChat(withUser,model);
+    let delegatedWork=false;
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
@@ -597,6 +598,26 @@ function App(){
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
+      if(isWindowsDesktop&&isDesktop&&mode==='work'){
+        const started=await window.desktopApi.startWorkTask({
+          taskId:requestId,
+          provider:model.id,
+          source:model.source||'browser',
+          text:routedText,
+          product,
+          approvalMode:appPrefs.approvalMode||'ask',
+          modelFileUpload:canUploadFiles,
+          attachments:outboundAttachments,
+          maxSteps:12
+        });
+        delegatedWork=true;
+        setWorkTask(started);
+        if(!retryContext){
+          for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
+          setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
+        }
+        return;
+      }
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
       const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
       const next=[...withUser,{role:'assistant',text:finalText,provider:model.id}];
@@ -610,8 +631,10 @@ function App(){
       const next=[...withUser,{role:'error',text:e?.message||String(e)}];
       setMessages(next);saveCurrentChat(next,model);
     }finally{
-      if(activeRequestRef.current===requestId)activeRequestRef.current=null;
-      setBusy(false);
+      if(!delegatedWork){
+        if(activeRequestRef.current===requestId)activeRequestRef.current=null;
+        setBusy(false);
+      }
     }
   }
   async function send(){return runGeneration(prompt,messages,selected)}
@@ -619,6 +642,10 @@ function App(){
     const requestId=activeRequestRef.current;
     if(!requestId||!isWindowsDesktop||!isDesktop)return;
     cancelledRequestRef.current=requestId;
+    if(workTask?.id===requestId&&(workTask.state==='running'||workTask.state==='waiting_approval')){
+      try{await window.desktopApi.stopWorkTask(requestId)}catch{}
+      return;
+    }
     try{await window.desktopApi.cancelPrompt(requestId)}catch{}
     setMessages(prev=>{
       const next=prev.flatMap(message=>{
@@ -632,6 +659,17 @@ function App(){
     activeRequestRef.current=null;
     setBusy(false);
   }
+  async function resolveWorkTaskApproval(allow){
+    if(!workTask?.id||!workTask?.approval?.id||!isDesktop)return;
+    try{
+      await window.desktopApi.resolveWorkApproval({
+        taskId:workTask.id,
+        approvalId:workTask.approval.id,
+        allow:!!allow
+      });
+    }catch{}
+  }
+
   function findUserIndexBefore(index){
     for(let i=index-1;i>=0;i--)if(messages[i]?.role==='user')return i;
     return -1;
