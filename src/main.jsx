@@ -66,6 +66,11 @@ function applyInitialWindowsVisualPrefs(){
 }
 applyInitialWindowsVisualPrefs();
 
+function normalizeApprovalMode(value){
+  if(value==='low'||value==='auto'||value==='full')return 'low';
+  if(value==='read')return 'read';
+  return 'ask';
+}
 function randomKey(){
   const b=new Uint8Array(32);crypto.getRandomValues(b);
   return [...b].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -193,14 +198,19 @@ function App(){
   const [attachmentError,setAttachmentError]=useState('');
   const [dragActive,setDragActive]=useState(false);
   const [screens,setScreens]=useState([]);
+  const [workTask,setWorkTask]=useState(null);
+  const handledWorkTerminalRef=useRef(null);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
-  const [appPrefs,setAppPrefs]=useState(()=>({
-    appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
-    autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,
-    spellCheckEnabled:true,hapticsEnabled:true,
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,language:'English',showBottomPanel:true})
-  }));
+  const [appPrefs,setAppPrefs]=useState(()=>{
+    const saved=readJSON('freeai.prefs',{});
+    return {
+      appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,voiceLanguage:'auto',
+      customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,spellCheckEnabled:true,hapticsEnabled:true,showBottomPanel:true,
+      ...saved,
+      approvalMode:normalizeApprovalMode(saved.approvalMode)
+    };
+  });
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
@@ -211,6 +221,8 @@ function App(){
   const activeRequestRef=useRef(null);
   const streamedTextRef=useRef('');
   const cancelledRequestRef=useRef(null);
+  const activeWorkTaskIdRef=useRef(null);
+  const workTaskModelRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -224,15 +236,20 @@ function App(){
     let active=true;
     window.desktopApi.getStatus().then(s=>active&&setStatus(s)).catch(()=>{});
     const offStatus=window.desktopApi.onStatus(s=>active&&setStatus(s));
+    const offWork=window.desktopApi.onWorkTask?.(state=>{
+      if(!active||!state?.id||state.id!==activeWorkTaskIdRef.current)return;
+      setWorkTask(state);
+    });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
-      if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
+      if(command==='about'){stopActiveWorkTask();setSettingsSection('General');setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
+      if(command==='open-computer'){setSettingsOpen(false);setSidePanel('computer')}
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
-    return()=>{active=false;offStatus?.();offCommand?.()};
+    return()=>{active=false;offStatus?.();offWork?.();offCommand?.()};
   },[]);
 
   useEffect(()=>{
@@ -385,12 +402,22 @@ function App(){
   },[]);
 
   useEffect(()=>{
-    if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
-      persistPrefs({...appPrefs,approvalMode:'ask'});
-    }else if(appPrefs.approvalMode==='full'&&!appPrefs.fullAccessEnabled){
-      persistPrefs({...appPrefs,approvalMode:'ask'});
-    }
-  },[appPrefs.autoReviewEnabled,appPrefs.fullAccessEnabled]);
+    if(!workTask||!['completed','failed','stopped'].includes(workTask.status))return;
+    const terminalKey=workTask.id+':'+workTask.status;
+    if(handledWorkTerminalRef.current===terminalKey)return;
+    handledWorkTerminalRef.current=terminalKey;
+    if(activeWorkTaskIdRef.current===workTask.id)activeWorkTaskIdRef.current=null;
+    if(workTask.status==='stopped')return;
+    const taskModel=workTaskModelRef.current||selected;
+    setMessages(prev=>{
+      const entry=workTask.status==='completed'
+        ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:taskModel?.id}
+        : {role:'error',text:String(workTask.error||'Work task failed.')};
+      const next=[...prev,entry];
+      queueMicrotask(()=>saveCurrentChat(next,taskModel));
+      return next;
+    });
+  },[workTask?.id,workTask?.status]);
 
   const activeProject=useMemo(()=>projects.find(project=>project.id===activeProjectId)||null,[projects,activeProjectId]);
   const projectChats=useMemo(()=>activeProjectId
@@ -412,9 +439,21 @@ function App(){
     return list;
   },[chats,sidebarSearch,product,recentsFilter]);
 
-  function persistPrefs(next){setAppPrefs(next);localStorage.setItem('freeai.prefs',JSON.stringify(next))}
+  function persistPrefs(next){
+    const normalized={...next,approvalMode:normalizeApprovalMode(next.approvalMode)};
+    setAppPrefs(normalized);localStorage.setItem('freeai.prefs',JSON.stringify(normalized));
+  }
+  function stopActiveWorkTask(){
+    const taskId=activeWorkTaskIdRef.current;
+    if(isWindowsDesktop&&taskId){
+      activeWorkTaskIdRef.current=null;
+      window.desktopApi?.stopWorkTask?.(taskId).catch(()=>{});
+      setWorkTask(null);
+    }
+  }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
   function createProject(){
+    stopActiveWorkTask();
     const name=String(projectDraft.name||'').trim();
     if(!name)return;
     const project={id:crypto.randomUUID(),name,icon:projectDraft.icon||'folder',color:projectDraft.color||'blue',instructions:'',createdAt:Date.now(),updatedAt:Date.now()};
@@ -429,8 +468,10 @@ function App(){
       return next;
     });
   }
-  function openProject(project){setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openProject(project){stopActiveWorkTask();setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openPluginsPage(){stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false)}
   function startProjectConversation(projectId,nextMode){
+    stopActiveWorkTask();
     setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -460,6 +501,7 @@ function App(){
     setChatMenuId(null);
   }
   function selectProduct(nextProduct){
+    stopActiveWorkTask();
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -467,22 +509,94 @@ function App(){
   }
   function selectExperience(nextMode){
     if(product!=='free'||nextMode===mode)return;
+    stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
+    stopActiveWorkTask();
     setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
+    stopActiveWorkTask();
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     if(product==='free')setMode(chat.mode||'chat');
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
+  const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
+
+  async function runWorkGeneration(text){
+    const userText=String(text||'').trim();
+    if((!userText&&!attachments.length)||workBusy)return;
+    if(!selected){setModelMenu(true);return}
+    if(selectedTool){
+      setAttachmentError('Plugin/MCP orchestration is not part of the Windows 4 Work loop yet. Remove the selected plugin or use Chat; Plugins/MCP are handled in Windows 5.');
+      return;
+    }
+    const canUploadFiles=selected.source==='browser'&&selected.fileUpload===true;
+    const inlineParts=[];
+    const outbound=[];
+    setAttachmentError('');
+    if(canUploadFiles){
+      for(const item of attachments){
+        outbound.push({name:item.name,type:item.type,size:item.size,dataUrl:await readFileDataUrl(item.file)});
+      }
+    }else{
+      for(const item of attachments){
+        if(item.kind==='text'&&item.content)inlineParts.push('[File: '+item.name+']\n'+item.content);
+        else{
+          setAttachmentError(selected.source==='api'
+            ? 'This API model cannot receive desktop screenshots or binary Work attachments. Choose a browser model with real file upload for Computer Use.'
+            : 'The selected browser model does not expose real file upload. Choose a model with file upload for binary Work attachments or Computer Use.');
+          return;
+        }
+      }
+    }
+    const taskText=userText||'Review the attached files and determine the next useful step.';
+    const finalUserText=inlineParts.length?[taskText,'',...inlineParts].filter(Boolean).join('\n\n'):taskText;
+    const userMessage={role:'user',text:userText,attachments:attachments.map(attachmentMeta),attachmentContext:inlineParts.join('\n\n')};
+    const next=[...messages,userMessage];
+    setMessages(next);saveCurrentChat(next,selected);
+    setPrompt('');
+    const taskId=crypto.randomUUID();
+    handledWorkTerminalRef.current=null;
+    activeWorkTaskIdRef.current=taskId;
+    workTaskModelRef.current=selected;
+    setWorkTask({id:taskId,status:'running',step:0,maxSteps:18,detail:'Starting Work task…',approval:null,progress:[],finalMessage:'',error:''});
+    try{
+      const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
+      const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      const state=await window.desktopApi.startWorkTask({
+        id:taskId,
+        provider:selected.id,
+        source:selected.source||'browser',
+        product,
+        text:finalUserText,
+        effort,
+        approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
+        attachments:outbound,
+        instructions:projectInstructions||globalInstructions,
+        history:messages.slice(-12).filter(message=>message?.role==='user'||message?.role==='assistant').map(message=>({
+          role:message.role,
+          text:String(message.text||'').slice(0,5000)
+        }))
+      });
+      if(activeWorkTaskIdRef.current===taskId)setWorkTask(state);
+      for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
+      setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
+    }catch(e){
+      if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
+      setWorkTask(null);
+      const failed=[...next,{role:'error',text:e?.message||String(e)}];
+      setMessages(failed);saveCurrentChat(failed,selected);
+    }
+  }
+
   async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null){
     const userText=String(text||'').trim();
     const hasAttachmentIntent=isWindowsDesktop&&(
@@ -570,8 +684,15 @@ function App(){
       setBusy(false);
     }
   }
-  async function send(){return runGeneration(prompt,messages,selected)}
+  async function send(){
+    if(isWindowsDesktop&&mode==='work')return runWorkGeneration(prompt);
+    return runGeneration(prompt,messages,selected);
+  }
   async function stopGeneration(){
+    if(isWindowsDesktop&&mode==='work'&&workTask&&['running','waiting_approval'].includes(workTask.status)){
+      try{await window.desktopApi.stopWorkTask(workTask.id)}catch{}
+      return;
+    }
     const requestId=activeRequestRef.current;
     if(!requestId||!isWindowsDesktop||!isDesktop)return;
     cancelledRequestRef.current=requestId;
@@ -801,13 +922,13 @@ function App(){
 
       <nav className="primaryNav desktopPrimaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
-        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={()=>{setPage('plugins');setMobileNavOpen(false)}}/>
+        <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={openPluginsPage}/>
         {!isWindowsDesktop&&<NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>}
       </nav>
       <div className="sidebarScroll">
         {isWindowsDesktop&&product==='free'?<>
           <div className="sidebarGroupTitle">Projects</div>
-          <button className="newProjectItem" onClick={()=>{setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
+          <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
             <Plus size={15}/><span>New project</span>
           </button>
           {projects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:projects.map(project=>
@@ -858,7 +979,7 @@ function App(){
           )}
         </>:<>
           <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-          <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}>
+          <button className="projectItem" onClick={()=>{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}>
             {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
             {product==='super'?'Repository workspace':'Free AI Workspace'}
           </button>
@@ -876,7 +997,7 @@ function App(){
         </button>
         {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
-        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{setProfileMenu(false);setSettingsOpen(true)}}/>}
+        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setSettingsOpen(true)}}/>}
       </div>
     </aside>}
     {mobileNavOpen&&<button className="mobileNavScrim" aria-label="Close navigation" onClick={()=>setMobileNavOpen(false)}/>}
@@ -919,7 +1040,7 @@ function App(){
                 windowsDesktop={isWindowsDesktop}
                 stopGeneration={stopGeneration}
                 attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
-                mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
+                mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
@@ -927,11 +1048,12 @@ function App(){
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                 spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
-                approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
-                permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
+                approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
+                 workTask={isWindowsDesktop&&mode==='work'?workTask:null}
+                 onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
-                onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
+                onPlugins={openPluginsPage}
               />
             </div>
           : <div className={'conversationView '+(isWindowsDesktop?'windowsConversation':'')}>
@@ -963,7 +1085,7 @@ function App(){
                   windowsDesktop={isWindowsDesktop}
                   stopGeneration={stopGeneration}
                   attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
-                  compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={busy}
+                  compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
@@ -971,11 +1093,12 @@ function App(){
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                   product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                   spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
-                  approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
-                  permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
-                  onBrowser={openBrowser}
+                  approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
+                 workTask={isWindowsDesktop&&mode==='work'?workTask:null}
+                 onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+                    onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
-                  onPlugins={()=>{setPlusMenu(false);setPage('plugins')}}
+                  onPlugins={openPluginsPage}
                 />
               </div>
             </div>
@@ -1010,7 +1133,6 @@ function App(){
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='computer'&&<ComputerPane
       screens={screens} setScreens={setScreens} approvalMode={appPrefs.approvalMode||'ask'}
-      permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
       setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
       onClose={()=>setSidePanel(null)}
     />}
@@ -1023,7 +1145,7 @@ function App(){
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
       onExportData={exportLocalData} onClearHistory={clearLocalHistory}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
-      onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
+      onPlugins={()=>{setSettingsOpen(false);openPluginsPage()}}
       onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
     />}
   </div>
@@ -1074,7 +1196,7 @@ function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onBrowser,onComputer,onPlugins
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -1190,6 +1312,7 @@ function Composer(props){
   },[listening]);
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
+    {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval}/>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
@@ -1208,23 +1331,23 @@ function Composer(props){
     <div className="composerBottom">
       <div className="composerLeft">
         <div className="menuAnchor">
-          <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
+          <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} disabled={busy} onClick={()=>!busy&&setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
             fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
-          <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
-            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual'}<ChevronDown size={12}/>
+          <button className={'accessButton '+(approvalMode==='low'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} disabled={busy} onClick={()=>!busy&&setApprovalMenu(v=>!v)}>
+            <ShieldCheck size={15}/>{approvalMode==='low'?'Allow low-risk':approvalMode==='read'?'Allow reads':'Always ask'}<ChevronDown size={12}/>
           </button>
-          {approvalMenu&&<PermissionModeMenu value={approvalMode} options={permissionOptions} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
+          {approvalMenu&&<PermissionModeMenu value={approvalMode} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
       </div>
 
       <div className="composerRight">
         {!isNative&&<div className="menuAnchor">
-          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} onClick={()=>setModelMenu(v=>!v)}>
+          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
@@ -1313,17 +1436,38 @@ function EffortMenu({effort,levels,choose}){
   </div>
 }
 
-function PermissionModeMenu({value,options={},choose}){
+function PermissionModeMenu({value,choose}){
   const rows=[
-    ['ask','Manual','Ask before each supported action that needs approval.',true],
-    ['auto','Automatic','Automatically continue eligible low-risk actions and pause for sensitive actions.',!!options.auto],
-    ['full','Full access','Run supported computer actions without repeated approval prompts.',!!options.full]
+    ['ask','Always ask','Ask before state-changing tool actions. Website and desktop reads still require explicit task access approval.'],
+    ['read','Allow reads','Allow approved page/screen reads; ask before actions that change state.'],
+    ['low','Allow low-risk','Also allow low-risk navigation, scrolling and pointer movement. Sensitive actions still ask.']
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
-    {rows.map(([id,label,desc,enabled])=><button key={id} disabled={!enabled} className={'permissionRow '+(value===id?'active ':'')+(!enabled?'disabled':'')} onClick={()=>enabled&&choose(id)}>
-      <ShieldCheck size={17}/><span><b>{label}</b><small>{enabled?desc:'Enable this mode in Settings → General first.'}</small></span>{value===id&&<Check size={15}/>}
+    {rows.map(([id,label,desc])=><button key={id} className={'permissionRow '+(value===id?'active ':'')} onClick={()=>choose(id)}>
+      <ShieldCheck size={17}/><span><b>{label}</b><small>{desc}</small></span>{value===id&&<Check size={15}/>}
     </button>)}
+  </div>
+}
+
+function WorkTaskStatus({task,onApproval}){
+  const labels={running:'Running',waiting_approval:'Waiting for approval',completed:'Completed',failed:'Failed',stopped:'Stopped'};
+  const active=task.status==='running'||task.status==='waiting_approval';
+  return <div className={'workTaskStatus '+task.status} role="status" aria-live="polite">
+    <div className="workTaskHead">
+      <span className="workTaskStateIcon">{task.status==='completed'?<Check size={15}/>:task.status==='failed'?<X size={15}/>:task.status==='stopped'?<Square size={13}/>:<RefreshCw className={active?'spin':''} size={14}/>}</span>
+      <span><b>{labels[task.status]||task.status}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
+    </div>
+    {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-4).map(item=><span key={item.id}>{item.text}</span>)}</div>}
+    {task.status==='waiting_approval'&&task.approval&&<div className="workApprovalCard">
+      <ShieldCheck size={18}/>
+      <div><b>{task.approval.title}</b><span>{task.approval.summary}</span>{task.approval.detail&&<small>{task.approval.detail}</small>}</div>
+      <div className="workApprovalActions">
+        <button onClick={()=>onApproval?.(task.id,false)}>Deny</button>
+        <button className="approveAction" onClick={()=>onApproval?.(task.id,true)}>{task.approval.allowLabel||'Allow once'}</button>
+      </div>
+    </div>}
+    {task.status==='failed'&&task.error&&<div className="computerError">{task.error}</div>}
   </div>
 }
 
@@ -1736,7 +1880,7 @@ function FilePane({file,onClose}){
   </aside>
 }
 
-function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setApprovalMode,onClose}){
+function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose}){
   const previewOnly=desktopPlatform==='linux';
   const [loading,setLoading]=useState(false);
   const [lastPoint,setLastPoint]=useState(null);
@@ -1794,19 +1938,19 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
       viewportHeight:Number(screen.height)||450,
       text:typeText||''
     };
-    if(approvalMode==='ask'||(approvalMode==='auto'&&!!action.text)){setPendingAction(action);return}
+    if(['ask','read','low'].includes(approvalMode)){setPendingAction(action);return}
     await executeAction(action);
   }
 
-  const label=previewOnly?'Preview only':approvalMode==='full'?'Full access':approvalMode==='auto'?'Automatic':'Manual';
+  const label=previewOnly?'Preview only':approvalMode==='low'?'Allow low-risk':approvalMode==='read'?'Allow reads':'Always ask';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
       {!previewOnly&&<select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Manual</option>
-        <option value="auto" disabled={!permissionOptions.auto}>Automatic</option>
-        <option value="full" disabled={!permissionOptions.full}>Full access</option>
+        <option value="ask">Always ask</option>
+        <option value="read">Allow reads</option>
+        <option value="low">Allow low-risk</option>
       </select>}
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
     </div>
@@ -1861,7 +2005,7 @@ function SettingsView(props){
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -1883,9 +2027,8 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
-      <SettingRow title="Auto-review" desc="Makes Automatic mode available. Eligible low-risk pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
-      <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
+      <SettingRow title="Work approvals" desc="Choose how much low-risk browser and computer activity Work can continue without repeated prompts. Website access and sensitive actions still require explicit approval." control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
+      <SettingRow title="Sensitive actions" desc="Typing, clicks that may change data, keyboard shortcuts, drag operations and closing tabs always pause for approval in the current Work loop." control={<span className="valuePill">Always confirm</span>}/>
     </div>
     <h3>General</h3>
     <div className="settingBlock">

@@ -339,6 +339,15 @@ button:disabled{opacity:.42;cursor:default}
   background:transparent;color:var(--text-secondary);border-radius:var(--r-lg);padding:6px 8px;display:flex;gap:6px;align-items:center;font-size:11.5px
 }
 .workActions button:hover{background:var(--hover);color:var(--text)}
+.workTaskStatus{margin:0 2px 8px;border:1px solid var(--border-soft);border-radius:14px;background:var(--surface-primary);padding:9px 10px}
+.workTaskHead{display:flex;align-items:center;gap:8px}.workTaskHead>span:last-child{display:flex;min-width:0;flex-direction:column}
+.workTaskHead b{font-size:11.5px}.workTaskHead small{font-size:10px;color:var(--muted);margin-top:1px}
+.workTaskStateIcon{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--surface-secondary);color:var(--work);flex:none}
+.workTaskStatus.completed .workTaskStateIcon{color:#72d69a}.workTaskStatus.failed .workTaskStateIcon{color:#ffaaa9}.workTaskStatus.stopped .workTaskStateIcon{color:var(--muted)}
+.workTaskProgress{display:flex;flex-direction:column;gap:2px;margin:7px 0 0 32px}.workTaskProgress span{font-size:9.5px;color:var(--text-tertiary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.workApprovalCard{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;margin-top:9px;padding:9px;border-radius:11px;border:1px solid color-mix(in srgb,var(--work) 28%,var(--border));background:color-mix(in srgb,var(--work) 7%,var(--surface-secondary))}
+.workApprovalCard>div:nth-child(2){display:flex;min-width:0;flex-direction:column}.workApprovalCard b{font-size:11px}.workApprovalCard span{font-size:10.5px;color:var(--text-secondary);margin-top:2px}.workApprovalCard small{font-size:9.5px;color:var(--muted);line-height:1.4;margin-top:3px}
+.workApprovalActions{grid-column:2;display:flex;justify-content:flex-end;gap:6px;margin-top:4px}.workApprovalActions button{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:8px;padding:6px 9px;font-size:10px}.workApprovalActions .approveAction{background:var(--text);color:var(--canvas)}
 .attachedTool{
   position:absolute;bottom:calc(100% + 7px);left:12px;display:flex;align-items:center;gap:6px;background:var(--popover);
   border:1px solid var(--border);border-radius:var(--r-xl);padding:7px 9px;font-size:11px;box-shadow:var(--shadow-md)
