@@ -173,6 +173,19 @@ function WindowsTitlebar({onNewChat,onSettings,onToggleSidebar,onBrowser,onHelp}
   </div>;
 }
 
+function GoalDialog({initial,onClose,onSave}){
+  const [outcome,setOutcome]=useState(initial?.outcome||'');
+  const [criteria,setCriteria]=useState(initial?.criteria||'');
+  return <div className="modalScrim" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}>
+    <div className="projectDialog goalDialog" role="dialog" aria-modal="true" aria-label="Goal">
+      <div className="dialogHead"><b>Goal</b><button onClick={onClose}><X size={16}/></button></div>
+      <label>Outcome<input autoFocus value={outcome} onChange={e=>setOutcome(e.target.value)} placeholder="What should Super AI achieve?"/></label>
+      <label>Success criteria<textarea value={criteria} onChange={e=>setCriteria(e.target.value)} placeholder="How will we know the goal is complete?"/></label>
+      <div className="dialogActions"><button onClick={onClose}>Cancel</button><button className="primaryAction" disabled={!outcome.trim()} onClick={()=>onSave({outcome:outcome.trim(),criteria:criteria.trim()})}>Set goal</button></div>
+    </div>
+  </div>
+}
+
 function WindowsVoiceOverlay({selected,onClose,onTurn}){
   const [listening,setListening]=useState(false);
   const [speaking,setSpeaking]=useState(false);
@@ -252,6 +265,8 @@ function App(){
   const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [voiceOpen,setVoiceOpen]=useState(false);
+  const [goalDialog,setGoalDialog]=useState(false);
+  const [goal,setGoal]=useState(null);
   const [settingsSection,setSettingsSection]=useState('General');
   const [sidePanel,setSidePanel]=useState(null);
   const [selectedFile,setSelectedFile]=useState(null);
@@ -457,7 +472,7 @@ function App(){
       const existing=prev.find(c=>c.id===id);
       const chat={
         ...(existing||{}),id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),
-        projectId:currentProjectId||existing?.projectId||null,messages:nextMessages,updatedAt:Date.now()
+        projectId:currentProjectId||existing?.projectId||null,goal:goal||existing?.goal||null,messages:nextMessages,updatedAt:Date.now()
       };
       const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,100);
       localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
@@ -526,7 +541,7 @@ function App(){
   }
 
   function newChat(){
-    setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setGoal(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function togglePinChat(chat){
@@ -556,7 +571,7 @@ function App(){
   }
   function openChat(chat){
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
-    setCurrentProjectId(chat.projectId||null);
+    setCurrentProjectId(chat.projectId||null);setGoal(chat.goal||null);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     setSelectedTool(null);setPage('chat');
   }
@@ -569,9 +584,11 @@ function App(){
     const withUser=[...messages,{role:'user',text}];setMessages(withUser);saveCurrentChat(withUser,selected);
     try{
       const instructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
-      const routedText=instructions
-        ? ['Free AI user preferences for this request:',instructions,'','User request:',text].join('\n')
-        : text;
+      const routedText=[
+        instructions?['Free AI user preferences for this request:',instructions].join('\n'):'',
+        product==='super'&&goal?['Active goal:',goal.outcome,'Success criteria:',goal.criteria||'Complete the requested outcome.'].join('\n'):'',
+        'User request:',text
+      ].filter(Boolean).join('\n\n');
       const payload={
         provider:selected.id,source:selected.source||'browser',text:routedText,effort,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
@@ -948,7 +965,7 @@ function App(){
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
                   plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
-                  product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
+                  product={product} goal={goal} onGoal={()=>setGoalDialog(true)} onClearGoal={()=>setGoal(null)} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                   spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
                   approvalMode={appPrefs.approvalMode||'ask'} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                   permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
@@ -993,6 +1010,7 @@ function App(){
       onClose={()=>setSidePanel(null)}
     />}
 
+    {goalDialog&&<GoalDialog initial={goal} onClose={()=>setGoalDialog(false)} onSave={value=>{setGoal(value);setGoalDialog(false)}}/>}
     {projectDialog&&<div className="modalScrim" onMouseDown={e=>{if(e.target===e.currentTarget)setProjectDialog(false)}}>
       <div className="projectDialog" role="dialog" aria-modal="true" aria-label="New project">
         <div className="dialogHead"><b>New project</b><button onClick={()=>setProjectDialog(false)}><X size={16}/></button></div>
@@ -1024,7 +1042,7 @@ function Composer(props){
   const {
     compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onVoice,onAppshot,onBrowser,onComputer,onPlugins
+    product,goal,onClearGoal,onGoal,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,permissionOptions,onVoice,onAppshot,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -1149,6 +1167,7 @@ function Composer(props){
   },[listening]);
 
   return <div className={'gptComposer '+(mode==='work'?'workComposer':'')+' '+(compact?'compact':'')}>
+    {product==='super'&&goal&&<div className="goalChip"><Target size={13}/><span>{goal.outcome}</span><button onClick={onClearGoal}><X size={12}/></button></div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     <textarea
       ref={textareaRef}
@@ -1163,7 +1182,7 @@ function Composer(props){
         <div className="menuAnchor">
           <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} onClick={()=>setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
-            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onAppshot={onAppshot} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
+            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onGoal={onGoal} onAppshot={onAppshot} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
           />}
         </div>
@@ -1276,7 +1295,7 @@ function PermissionModeMenu({value,options={},choose}){
   </div>
 }
 
-function PlusMenu({fileRef,photoRef,cameraRef,onAppshot,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
+function PlusMenu({fileRef,photoRef,cameraRef,onGoal,onAppshot,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     {isNative?<>
@@ -1286,6 +1305,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onAppshot,onBrowser,onComputer,onP
     </>:<MenuRow icon={Paperclip} label="Files and folders" onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&mode==='work'&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside Work or Super AI in Free AI's own browser" onClick={onBrowser}/>}
     {!isNative&&isDesktop&&desktopPlatform==='win32'&&<MenuRow icon={Camera} label="Appshot" sub="Attach the foreground app window and its available text" onClick={onAppshot}/>}
+    {!isNative&&onGoal&&<MenuRow icon={Target} label="Goal" sub="Define an outcome and success criteria for Super AI" onClick={onGoal}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
     <div className="floatingTitle section">Plugins</div>
     {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
