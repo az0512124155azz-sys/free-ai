@@ -12,6 +12,8 @@ let relayReconnectTimer=null;
 let browserProviders=[];
 let extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
 let apiConnections=[];
+let mcpConnections=[];
+const mcpSessions=new Map();
 const pending=new Map();
 const extensionBrowserPending=new Map();
 const activePrompts=new Map();
@@ -1406,6 +1408,272 @@ Start-Sleep -Milliseconds 30
 }
 
 function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
+
+function mcpStorePath(){return path.join(app.getPath('userData'),'mcp-connections.json')}
+const MCP_PROTOCOL_VERSION='2025-11-25';
+
+function validateMcpUrl(value){
+  let parsed;
+  try{parsed=new URL(String(value||'').trim())}catch{throw new Error('MCP URL is invalid.')}
+  if(parsed.username||parsed.password)throw new Error('Put credentials in the token field, not in the MCP URL.');
+  if(parsed.protocol==='https:')return parsed.toString();
+  const loopback=new Set(['localhost','127.0.0.1','[::1]','::1']);
+  if(parsed.protocol==='http:'&&loopback.has(parsed.hostname))return parsed.toString();
+  throw new Error('Remote MCP servers must use HTTPS. HTTP is allowed only for localhost.');
+}
+
+function loadMcpConnections(){
+  try{
+    const raw=JSON.parse(fs.readFileSync(mcpStorePath(),'utf8'));
+    const decoded=decodeSecret(raw);
+    mcpConnections=Array.isArray(decoded)?decoded.filter(item=>item&&item.id&&item.url):[];
+  }catch{mcpConnections=[]}
+}
+
+function saveMcpConnections(){
+  try{
+    fs.mkdirSync(path.dirname(mcpStorePath()),{recursive:true});
+    fs.writeFileSync(mcpStorePath(),JSON.stringify(encodeSecret(mcpConnections)),'utf8');
+  }catch(error){console.error('Failed to save MCP connections',error)}
+}
+
+function publicMcpTool(tool){
+  if(!tool||typeof tool!=='object')return null;
+  const annotations=tool.annotations&&typeof tool.annotations==='object'?tool.annotations:{};
+  return {
+    name:String(tool.name||''),
+    title:String(tool.title||''),
+    description:String(tool.description||'').slice(0,1200),
+    inputSchema:tool.inputSchema&&typeof tool.inputSchema==='object'?tool.inputSchema:{type:'object'},
+    annotations:{
+      readOnlyHint:annotations.readOnlyHint===true,
+      destructiveHint:annotations.destructiveHint===true,
+      idempotentHint:annotations.idempotentHint===true,
+      openWorldHint:annotations.openWorldHint===true
+    }
+  };
+}
+
+function publicMcpConnection(connection){
+  const session=mcpSessions.get(connection.id);
+  return {
+    id:connection.id,
+    name:connection.name,
+    url:connection.url,
+    protocolVersion:MCP_PROTOCOL_VERSION,
+    hasToken:!!connection.token,
+    connected:!!session?.connected,
+    serverInfo:session?.serverInfo||null,
+    capabilities:session?.capabilities||null,
+    tools:Array.isArray(session?.tools)?session.tools.map(publicMcpTool).filter(Boolean):[],
+    error:String(session?.error||''),
+    lastConnectedAt:Number(session?.lastConnectedAt)||0
+  };
+}
+
+function mcpRequestHeaders(connection,{sessionId='',method='',name=''}={}){
+  const headers={
+    'content-type':'application/json',
+    'accept':'application/json, text/event-stream'
+  };
+  if(connection.token)headers.authorization='Bearer '+connection.token;
+  if(sessionId)headers['mcp-session-id']=sessionId;
+  if(sessionId)headers['mcp-protocol-version']=MCP_PROTOCOL_VERSION;
+  return headers;
+}
+
+function parseMcpSse(text,requestId){
+  const events=String(text||'').split(/\r?\n\r?\n/);
+  for(const event of events){
+    const payload=event.split(/\r?\n/).filter(line=>line.startsWith('data:')).map(line=>line.slice(5).trim()).join('\n');
+    if(!payload||payload==='[DONE]')continue;
+    try{
+      const parsed=JSON.parse(payload);
+      if(requestId===undefined||String(parsed?.id)===String(requestId))return parsed;
+    }catch{}
+  }
+  throw new Error('MCP server returned an unreadable event-stream response.');
+}
+
+async function mcpPost(connection,body,{sessionId='',expectResponse=true,timeoutMs=20000}={}){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),Math.max(1000,Math.min(60000,Number(timeoutMs)||20000)));
+  let response;
+  try{
+    response=await fetch(connection.url,{
+      method:'POST',
+      headers:mcpRequestHeaders(connection,{sessionId,method:body?.method,name:body?.params?.name}),
+      body:JSON.stringify(body),
+      redirect:'error',
+      signal:controller.signal
+    });
+  }catch(error){
+    if(error?.name==='AbortError')throw new Error('MCP request timed out.');
+    throw new Error('Could not reach MCP server: '+String(error?.message||error));
+  }finally{
+    clearTimeout(timer);
+  }
+  if(!response.ok){
+    const detail=String(await response.text().catch(()=>'' )).trim().slice(0,800);
+    if(response.status===401||response.status===403)throw new Error('MCP authorization failed. Check the token and server permissions.');
+    throw new Error('MCP server returned HTTP '+response.status+(detail?': '+detail:''));
+  }
+  const returnedSessionId=response.headers.get('mcp-session-id')||'';
+  if(!expectResponse||response.status===202||response.status===204){
+    return {message:null,sessionId:returnedSessionId};
+  }
+  const text=await response.text();
+  if(!text.trim())return {message:null,sessionId:returnedSessionId};
+  const contentType=String(response.headers.get('content-type')||'').toLowerCase();
+  let message;
+  try{
+    message=contentType.includes('text/event-stream')?parseMcpSse(text,body?.id):JSON.parse(text);
+  }catch(error){
+    if(error?.message?.includes('event-stream'))throw error;
+    throw new Error('MCP server returned invalid JSON.');
+  }
+  if(message?.error){
+    const detail=message.error?.message||JSON.stringify(message.error);
+    throw new Error('MCP error: '+String(detail).slice(0,1000));
+  }
+  return {message,sessionId:returnedSessionId};
+}
+
+async function openMcpSession(connection,{force=false}={}){
+  const existing=mcpSessions.get(connection.id);
+  if(existing?.connected&&!force)return existing;
+  if(force)mcpSessions.delete(connection.id);
+  const initialize={
+    jsonrpc:'2.0',
+    id:crypto.randomUUID(),
+    method:'initialize',
+    params:{
+      protocolVersion:MCP_PROTOCOL_VERSION,
+      capabilities:{},
+      clientInfo:{name:'Free AI',version:String(app.getVersion?.()||'0.0.0')}
+    }
+  };
+  try{
+    const first=await mcpPost(connection,initialize,{timeoutMs:20000});
+    const result=first.message?.result;
+    if(!result||typeof result!=='object')throw new Error('MCP server did not return an initialize result.');
+    const negotiated=String(result.protocolVersion||'');
+    if(negotiated!==MCP_PROTOCOL_VERSION){
+      throw new Error('This checkpoint supports MCP '+MCP_PROTOCOL_VERSION+'; server negotiated '+(negotiated||'an unknown version')+'.');
+    }
+    const session={
+      connected:true,
+      sessionId:first.sessionId||'',
+      protocolVersion:negotiated,
+      serverInfo:result.serverInfo||null,
+      capabilities:result.capabilities||{},
+      tools:[],
+      error:'',
+      lastConnectedAt:Date.now()
+    };
+    mcpSessions.set(connection.id,session);
+    await mcpPost(connection,{
+      jsonrpc:'2.0',
+      method:'notifications/initialized',
+      params:{}
+    },{sessionId:session.sessionId,expectResponse:false,timeoutMs:10000});
+    return session;
+  }catch(error){
+    mcpSessions.set(connection.id,{
+      connected:false,sessionId:'',protocolVersion:MCP_PROTOCOL_VERSION,serverInfo:null,capabilities:null,tools:[],
+      error:String(error?.message||error),lastConnectedAt:0
+    });
+    throw error;
+  }
+}
+
+async function listMcpTools(connection,{forceSession=false}={}){
+  const session=await openMcpSession(connection,{force:forceSession});
+  const tools=[];
+  let cursor;
+  for(let page=0;page<12;page++){
+    const id=crypto.randomUUID();
+    const params=cursor?{cursor}:{};
+    let response;
+    try{
+      response=await mcpPost(connection,{jsonrpc:'2.0',id,method:'tools/list',params},{sessionId:session.sessionId,timeoutMs:20000});
+    }catch(error){
+      if(page===0&&session.sessionId&&/404|session|not found|invalid/i.test(String(error?.message||''))){
+        mcpSessions.delete(connection.id);
+        return listMcpTools(connection,{forceSession:true});
+      }
+      throw error;
+    }
+    const result=response.message?.result||{};
+    for(const tool of Array.isArray(result.tools)?result.tools:[]){
+      const normalized=publicMcpTool(tool);
+      if(normalized?.name)tools.push(normalized);
+    }
+    cursor=result.nextCursor;
+    if(!cursor)break;
+  }
+  session.tools=tools;
+  session.connected=true;
+  session.error='';
+  session.lastConnectedAt=Date.now();
+  mcpSessions.set(connection.id,session);
+  return publicMcpConnection(connection);
+}
+
+async function refreshMcpConnection(id){
+  const connection=mcpConnections.find(item=>item.id===String(id||''));
+  if(!connection)throw new Error('MCP connection was not found.');
+  return listMcpTools(connection,{forceSession:true});
+}
+
+function getMcpToolDefinition(connectionId,name){
+  const connection=mcpConnections.find(item=>item.id===String(connectionId||''));
+  const session=connection?mcpSessions.get(connection.id):null;
+  const tool=session?.tools?.find(item=>item.name===String(name||''));
+  return tool||null;
+}
+
+function mcpToolIsReadOnly(connectionId,name){
+  const tool=getMcpToolDefinition(connectionId,name);
+  return !!tool&&tool.annotations?.readOnlyHint===true&&tool.annotations?.destructiveHint!==true;
+}
+
+async function callMcpTool(connectionId,name,args={}){
+  const connection=mcpConnections.find(item=>item.id===String(connectionId||''));
+  if(!connection)throw new Error('MCP connection was not found.');
+  if(!name)throw new Error('MCP tool name is required.');
+  let session=mcpSessions.get(connection.id);
+  if(!session?.connected||!Array.isArray(session.tools))await listMcpTools(connection);
+  session=mcpSessions.get(connection.id);
+  const tool=session?.tools?.find(item=>item.name===String(name));
+  if(!tool)throw new Error('MCP tool is not available on this connection. Refresh the app and try again.');
+  const id=crypto.randomUUID();
+  let response;
+  try{
+    response=await mcpPost(connection,{
+      jsonrpc:'2.0',
+      id,
+      method:'tools/call',
+      params:{name:String(name),arguments:args&&typeof args==='object'&&!Array.isArray(args)?args:{}}
+    },{sessionId:session.sessionId,timeoutMs:45000});
+  }catch(error){
+    if(session.sessionId&&/404|session|not found|invalid/i.test(String(error?.message||''))){
+      await listMcpTools(connection,{forceSession:true});
+      return callMcpTool(connectionId,name,args);
+    }
+    throw error;
+  }
+  const result=response.message?.result;
+  if(!result||typeof result!=='object')throw new Error('MCP tool returned no result.');
+  return {
+    connectionId:connection.id,
+    connectionName:connection.name,
+    tool:String(name),
+    isError:result.isError===true,
+    content:Array.isArray(result.content)?result.content:[],
+    structuredContent:result.structuredContent??null
+  };
+}
 
 function encodeSecret(value){
   const text=JSON.stringify(value);
