@@ -242,7 +242,7 @@ function App(){
     });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
-      if(command==='about'){setSettingsSection('General');setSettingsOpen(true)}
+      if(command==='about'){stopActiveWorkTask();setSettingsSection('General');setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
       if(command==='open-computer'){setSettingsOpen(false);setSidePanel('computer')}
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
@@ -453,6 +453,7 @@ function App(){
   }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
   function createProject(){
+    stopActiveWorkTask();
     const name=String(projectDraft.name||'').trim();
     if(!name)return;
     const project={id:crypto.randomUUID(),name,icon:projectDraft.icon||'folder',color:projectDraft.color||'blue',instructions:'',createdAt:Date.now(),updatedAt:Date.now()};
@@ -927,7 +928,7 @@ function App(){
       <div className="sidebarScroll">
         {isWindowsDesktop&&product==='free'?<>
           <div className="sidebarGroupTitle">Projects</div>
-          <button className="newProjectItem" onClick={()=>{setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
+          <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
             <Plus size={15}/><span>New project</span>
           </button>
           {projects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:projects.map(project=>
@@ -978,7 +979,7 @@ function App(){
           )}
         </>:<>
           <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-          <button className="projectItem" onClick={()=>{setMode('work');setPage('chat');setMobileNavOpen(false)}}>
+          <button className="projectItem" onClick={()=>{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}>
             {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
             {product==='super'?'Repository workspace':'Free AI Workspace'}
           </button>
@@ -996,7 +997,7 @@ function App(){
         </button>
         {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
-        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{setProfileMenu(false);setSettingsOpen(true)}}/>}
+        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setSettingsOpen(true)}}/>}
       </div>
     </aside>}
     {mobileNavOpen&&<button className="mobileNavScrim" aria-label="Close navigation" onClick={()=>setMobileNavOpen(false)}/>}
