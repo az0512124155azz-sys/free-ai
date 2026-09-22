@@ -165,6 +165,92 @@ async function refreshBrowserSiteTools(id){
   return browserSiteTools.get(id)||[];
 }
 
+async function startBrowserAnnotation(id){
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())throw new Error('That browser tab is no longer available.');
+  return view.webContents.executeJavaScript(`
+    (()=>{
+      if(window.__freeAiAnnotation?.cleanup)window.__freeAiAnnotation.cleanup();
+      return new Promise(resolve=>{
+        const overlay=document.createElement('div');
+        Object.assign(overlay.style,{
+          position:'fixed',pointerEvents:'none',zIndex:'2147483647',
+          border:'2px solid #3a83f7',background:'rgba(58,131,247,.10)',
+          borderRadius:'4px',boxSizing:'border-box'
+        });
+        document.documentElement.appendChild(overlay);
+        let current=null;
+        const selectorFor=el=>{
+          if(!el||el===document.documentElement)return 'html';
+          if(el.id)return '#'+CSS.escape(el.id);
+          const parts=[];
+          let node=el;
+          while(node&&node.nodeType===1&&node!==document.body){
+            let part=node.localName;
+            if(node.classList?.length){
+              const cls=[...node.classList].find(x=>/^[A-Za-z_-][A-Za-z0-9_-]*$/.test(x));
+              if(cls)part+='.'+CSS.escape(cls);
+            }
+            const siblings=node.parentElement?[...node.parentElement.children].filter(x=>x.localName===node.localName):[];
+            if(siblings.length>1)part+=':nth-of-type('+(siblings.indexOf(node)+1)+')';
+            parts.unshift(part);
+            node=node.parentElement;
+            if(parts.length>=5)break;
+          }
+          return parts.join(' > ');
+        };
+        const update=event=>{
+          const el=event.target;
+          if(!el||el===overlay)return;
+          current=el;
+          const r=el.getBoundingClientRect();
+          Object.assign(overlay.style,{left:r.left+'px',top:r.top+'px',width:r.width+'px',height:r.height+'px'});
+        };
+        const cleanup=()=>{
+          document.removeEventListener('mousemove',update,true);
+          document.removeEventListener('click',pick,true);
+          document.removeEventListener('keydown',key,true);
+          overlay.remove();
+          delete window.__freeAiAnnotation;
+        };
+        const pick=event=>{
+          if(!current)return;
+          event.preventDefault();event.stopPropagation();event.stopImmediatePropagation();
+          const el=current;
+          const r=el.getBoundingClientRect();
+          const result={
+            selector:selectorFor(el),
+            tag:el.localName||'',
+            text:String(el.innerText||el.textContent||'').trim().replace(/\\s+/g,' ').slice(0,1000),
+            ariaLabel:el.getAttribute?.('aria-label')||'',
+            title:el.getAttribute?.('title')||'',
+            rect:{x:r.x,y:r.y,width:r.width,height:r.height},
+            url:location.href
+          };
+          cleanup();
+          resolve(result);
+        };
+        const key=event=>{
+          if(event.key==='Escape'){cleanup();resolve(null)}
+        };
+        document.addEventListener('mousemove',update,true);
+        document.addEventListener('click',pick,true);
+        document.addEventListener('keydown',key,true);
+        window.__freeAiAnnotation={cleanup:()=>{cleanup();resolve(null)}};
+      })
+    })()
+  `,true);
+}
+
+async function cancelBrowserAnnotation(id){
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())return false;
+  try{
+    await view.webContents.executeJavaScript(`window.__freeAiAnnotation?.cleanup?.(); true`,true);
+    return true;
+  }catch{return false}
+}
+
 async function executeBrowserSiteTool(id,name,input){
   if(!siteToolsEnabled)throw new Error('Site tools are disabled in Browser settings.');
   const view=browserTabs.get(id);
@@ -801,6 +887,8 @@ ipcMain.handle('browser:clearData',async()=>{
   emitBrowserState();
   return {ok:true};
 });
+ipcMain.handle('browser:startAnnotation',()=>activeBrowserTabId?startBrowserAnnotation(activeBrowserTabId):null);
+ipcMain.handle('browser:cancelAnnotation',()=>activeBrowserTabId?cancelBrowserAnnotation(activeBrowserTabId):false);
 ipcMain.handle('browser:refreshSiteTools',()=>activeBrowserTabId?refreshBrowserSiteTools(activeBrowserTabId):[]);
 ipcMain.handle('browser:executeSiteTool',async(_e,{tabId,name,input}={})=>{
   const id=tabId||activeBrowserTabId;
