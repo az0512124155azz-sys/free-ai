@@ -913,11 +913,11 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class FreeAIMouse {
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool SetPhysicalCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
 }
 '@
-[FreeAIMouse]::SetCursorPos(${x},${y}) | Out-Null
+if(-not [FreeAIMouse]::SetPhysicalCursorPos(${x},${y})) { throw "SetPhysicalCursorPos failed." }
 Start-Sleep -Milliseconds 80
 [FreeAIMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
 [FreeAIMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
