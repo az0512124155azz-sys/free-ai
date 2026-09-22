@@ -375,6 +375,11 @@ function App(){
   },[connected,selected?.id,selected?.source,selected?.modelName]);
 
   useEffect(()=>{
+    if(!isWindowsDesktop||!isDesktop||!modelMenu)return;
+    window.desktopApi?.scanProviders?.({probeModels:true}).catch(()=>{});
+  },[modelMenu]);
+
+  useEffect(()=>{
     setSuperTeamKeys(current=>{
       const primary=modelKey(selected);
       const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,16);
@@ -714,7 +719,27 @@ function App(){
     if(!sameLiveProject)stopActiveWorkTask();
     setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false);
   }
-  function openPluginsPage(){stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false)}
+  async function selectProviderModelOption(modelName){
+    if(!isWindowsDesktop||!isDesktop||selected?.source!=='browser')return;
+    setAttachmentError('');
+    try{
+      await window.desktopApi.setProviderModel(selected.id,modelName);
+      await window.desktopApi.scanProviders({probeModels:true});
+    }catch(error){setAttachmentError(error?.message||String(error))}
+  }
+  async function selectProviderEffortOption(nextEffort){
+    if(!isWindowsDesktop||!isDesktop||selected?.source!=='browser'){setEffort(nextEffort);return}
+    setAttachmentError('');
+    try{
+      await window.desktopApi.setProviderEffort(selected.id,nextEffort);
+      setEffort(nextEffort);
+      await window.desktopApi.scanProviders({probeModels:true});
+    }catch(error){setAttachmentError(error?.message||String(error))}
+  }
+  function openPluginsPage(){
+    stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false);
+    if(isWindowsDesktop&&isDesktop)window.desktopApi?.scanProviders?.({probeTools:true}).catch(()=>{});
+  }
   function startProjectConversation(projectId,nextMode){
     stopActiveWorkTask();
     setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setLocalFolderWorkspace(null);
@@ -1804,7 +1829,7 @@ function Composer(props){
   const nativeSpeechHandles=useRef([]);
   const webRecognition=useRef(null);
   const dictationBase=useRef('');
-  const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'}[effort]||'Reasoning';
+  const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High','pro-standard':'Pro Standard','pro-extended':'Pro Extended','deep-think':'Deep Think',heavy:'Heavy'}[effort]||'Reasoning';
   const selectedMcpConnections=mcpConnections.filter(connection=>selectedMcpIds.includes(connection.id));
 
   async function stopVoice(){
@@ -1971,11 +1996,11 @@ function Composer(props){
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
-          {modelMenu&&<ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/>}
+          {modelMenu&&<ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onSelectProviderModel={selectProviderModelOption} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/>}
         </div>}
         {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
-          {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
+          {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{selectProviderEffortOption(v);setEffortMenu(false)}}/>}
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'} aria-label={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
         {(busy||prompt.trim()||(windowsDesktop&&attachments.length>0))&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||windowsDesktop&&attachments.length>0)&&selected?'sendReady':'')}
@@ -2030,7 +2055,7 @@ function MobileConversationPicker({connected,selected,choose,open,setOpen,effort
   </div>
 }
 
-function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount}){
+function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,onSelectProviderModel}){
   const selectedGroupKey=modelGroupKey(selected);
   const matchingInstances=selectedGroupKey
     ? connected.filter(model=>model.connected!==false&&modelGroupKey(model)===selectedGroupKey)
@@ -2060,6 +2085,12 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount})
           {active&&<Check size={16}/>}
         </button>;
       })}
+    {selected?.source==='browser'&&Array.isArray(selected.modelOptions)&&selected.modelOptions.length>1&&<div className="providerModelPicker">
+      <span><b>Provider model</b><small>Switch the actual model inside Tab {selected.tabId||'?'}, not only the Free AI routing target.</small></span>
+      <select value={selected.modelName||selected.modelOptions[0]} onChange={e=>onSelectProviderModel?.(e.target.value)} aria-label="Provider model">
+        {selected.modelOptions.map(option=><option value={option} key={option}>{option}</option>)}
+      </select>
+    </div>}
     {selected?.source==='browser'&&maxParallel>1&&<div className="parallelPicker">
       <span><b>Parallel instances</b><small>Send this prompt to multiple open tabs of the same model.</small></span>
       <select value={parallel} onChange={e=>setParallelCount?.(Number(e.target.value))} aria-label="Parallel model instances">
@@ -2099,7 +2130,7 @@ function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onClose}){
 
 function EffortMenu({effort,levels,choose}){
   const values=Array.isArray(levels)?levels.filter(Boolean):[];
-  const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'};
+  const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High','pro-standard':'Pro Standard','pro-extended':'Pro Extended','deep-think':'Deep Think',heavy:'Heavy'};
   const index=Math.max(0,values.indexOf(effort));
   return <div className="floatingMenu effortPicker sliderPicker">
     <div className="effortHead"><Brain size={18}/><div><b>{labels[effort]}</b><small>Reasoning effort</small></div></div>
