@@ -3413,6 +3413,9 @@ async function startWorkTask(input={}){
   const workspace=product==='super'&&input.workspace?.root
     ? await repositorySummary(input.workspace.root)
     : null;
+  const localFolder=input.localFolder?.root
+    ? await localFolderSummary(input.localFolder.root)
+    : null;
   const team=product==='super'?normalizeSuperTeam(input.team,primary):[];
   const agents=[
     {id:'controller:'+source+':'+provider,name:taskModelName(primary),role:'Controller',status:'idle',detail:'Ready'},
@@ -3441,6 +3444,7 @@ async function startWorkTask(input={}){
     team,
     specialistNotes:[],
     repositoryReadState:new Map(),
+    localFileReadState:new Map(),
     trace:[],
     approvedScopes:new Set(),
     approval:null,
@@ -3452,6 +3456,7 @@ async function startWorkTask(input={}){
     finalMessage:'',
     error:'',
     workspace,
+    localFolder,
     instructions:String(input.instructions||'').slice(0,8000),
     history:Array.isArray(input.history)?input.history.slice(-12).map(item=>({
       role:item?.role==='assistant'?'assistant':'user',
@@ -3625,6 +3630,8 @@ ipcMain.handle('work:stop',(_e,id)=>stopWorkTask(id));
 ipcMain.handle('work:resolveApproval',(_e,{taskId,allow}={})=>resolveWorkApproval(taskId,!!allow));
 ipcMain.handle('repository:choose',()=>chooseRepository());
 ipcMain.handle('repository:summary',(_e,root)=>repositorySummary(root));
+ipcMain.handle('files:chooseFolder',()=>chooseLocalFolder());
+ipcMain.handle('files:folderSummary',(_e,root)=>localFolderSummary(root));
 ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{
   relayConfig={relayUrl:String(cfg?.relayUrl||'').trim(),pairKey:String(cfg?.pairKey||'').trim()};
   connectRelay();
