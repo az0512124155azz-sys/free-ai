@@ -438,7 +438,7 @@ function App(){
           <span className="profileName">{sidebarName}</span>
           <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-        {!isNative&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
+        {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
         {profileMenu&&<ProfileMenu session={session} onSettings={()=>{setProfileMenu(false);setSettingsOpen(true)}}/>}
       </div>
