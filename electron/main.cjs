@@ -2440,6 +2440,8 @@ function publicWorkTask(task){
   return {
     id:task.id,
     product:task.product,
+    projectId:task.projectId||'',
+    masterChatId:task.masterChatId||'',
     status:task.status,
     step:task.step,
     maxSteps:task.maxSteps,
@@ -2453,7 +2455,22 @@ function publicWorkTask(task){
     }:null,
     progress:Array.isArray(task.progress)?task.progress.slice(-8):[],
     agents:Array.isArray(task.agents)?task.agents.map(agent=>({
-      id:agent.id,name:agent.name,role:agent.role,status:agent.status,detail:agent.detail||''
+      id:agent.id,
+      providerId:agent.providerId||'',
+      source:agent.source||'browser',
+      modelName:agent.modelName||agent.name||'Agent',
+      name:agent.name,
+      role:agent.role,
+      status:agent.status,
+      detail:agent.detail||'',
+      controller:!!agent.controller,
+      thread:Array.isArray(agent.thread)?agent.thread.slice(-24).map(message=>({
+        id:message.id,
+        role:message.role==='assistant'?'assistant':'user',
+        text:String(message.text||'').slice(0,12000),
+        at:message.at||0,
+        phase:message.phase||''
+      })):[]
     })):[],
     workspace:task.workspace?{
       name:task.workspace.name,branch:task.workspace.branch,head:task.workspace.head,dirty:task.workspace.dirty
@@ -2801,9 +2818,33 @@ function updateTaskAgent(task,id,patch){
   emitWorkTask(task);
 }
 
-async function callTaskModel(task,model,text,{attachments=[],tag='agent'}={}){
+function taskAgentForModel(task,model){
+  if(!task||!model||!Array.isArray(task.agents))return null;
+  const source=String(model.source||'browser');
+  const providerId=String(model.id||'');
+  return task.agents.find(agent=>agent.source===source&&agent.providerId===providerId)||null;
+}
+
+function appendTaskAgentMessage(task,model,role,text,phase=''){
+  const agent=taskAgentForModel(task,model);
+  const value=String(text||'').trim();
+  if(!agent||!value)return;
+  if(!Array.isArray(agent.thread))agent.thread=[];
+  agent.thread.push({
+    id:crypto.randomUUID(),
+    role:role==='assistant'?'assistant':'user',
+    text:value.slice(0,12000),
+    at:Date.now(),
+    phase:String(phase||'').slice(0,80)
+  });
+  if(agent.thread.length>24)agent.thread.splice(0,agent.thread.length-24);
+  emitWorkTask(task);
+}
+
+async function callTaskModel(task,model,text,{attachments=[],tag='agent',threadPrompt='',recordResult=true}={}){
   if(task.stopped)throw new Error('Task stopped.');
   const requestId=task.id+':'+tag+':'+crypto.randomUUID();
+  if(threadPrompt)appendTaskAgentMessage(task,model,'user',threadPrompt,tag);
   if(!(task.currentPromptIds instanceof Set))task.currentPromptIds=new Set();
   task.currentPromptIds.add(requestId);
   if(tag==='controller')task.currentPromptId=requestId;
@@ -2821,7 +2862,9 @@ async function callTaskModel(task,model,text,{attachments=[],tag='agent'}={}){
   };
   try{
     const result=await routePrompt(payload,false);
-    return String(result?.text??result??'');
+    const value=String(result?.text??result??'');
+    if(recordResult)appendTaskAgentMessage(task,model,'assistant',value,tag);
+    return value;
   }finally{
     task.currentPromptIds.delete(requestId);
     if(task.currentPromptId===requestId)task.currentPromptId=null;
@@ -2951,7 +2994,10 @@ async function prepareSuperAgents(task){
     const agentId='specialist:'+model.source+':'+model.id;
     updateTaskAgent(task,agentId,{status:'running',detail:'Analyzing the task…'});
     try{
-      const text=await callTaskModel(task,model,superSpecialistPrompt(task,workspaceDigest),{tag:'specialist'});
+      const text=await callTaskModel(task,model,superSpecialistPrompt(task,workspaceDigest),{
+        tag:'specialist',
+        threadPrompt:'Delegated by Master: '+task.userText
+      });
       updateTaskAgent(task,agentId,{status:'completed',detail:'Brief ready'});
       return {model,text:String(text||'').slice(0,9000)};
     }catch(error){
@@ -3001,7 +3047,10 @@ async function finalizeSuperTask(task,draft){
       const agentId='specialist:'+model.source+':'+model.id;
       updateTaskAgent(task,agentId,{role:'Reviewer',status:'running',detail:'Reviewing final result…'});
       try{
-        const text=await callTaskModel(task,model,superReviewPrompt(task,draft,workspaceDigest),{tag:'review'});
+        const text=await callTaskModel(task,model,superReviewPrompt(task,draft,workspaceDigest),{
+          tag:'review',
+          threadPrompt:'Master requested an independent review of the result for: '+task.userText
+        });
         updateTaskAgent(task,agentId,{status:'completed',detail:'Review complete'});
         return {name:taskModelName(model),text:String(text||'').slice(0,7000)};
       }catch(error){
@@ -3041,7 +3090,10 @@ async function finalizeSuperTask(task,draft){
     workspaceDigest
   ].join('\n');
   try{
-    const finalText=await callTaskModel(task,controller,synthesis,{tag:'synthesis'});
+    const finalText=await callTaskModel(task,controller,synthesis,{
+      tag:'synthesis',
+      threadPrompt:'Synthesize the final answer from the completed work and agent reviews.'
+    });
     updateTaskAgent(task,controllerId,{status:'completed',detail:'Final synthesis complete'});
     return String(finalText||draft||'');
   }catch(error){
@@ -3122,8 +3174,20 @@ async function callWorkModel(task,observation,attachments=[]){
   emitWorkTask(task);
   const controller=connectedTaskModel(task.provider,task.source);
   if(!controller)throw new Error('The controller model disconnected during the task.');
-  const raw=await callTaskModel(task,controller,workModelPrompt(task,observation),{attachments,tag:'controller'});
-  return parseWorkDecision(raw);
+  const raw=await callTaskModel(task,controller,workModelPrompt(task,observation),{
+    attachments,
+    tag:'controller',
+    threadPrompt:task.step===0?'Master task: '+task.userText:'Continue the Master task from the latest confirmed result.',
+    recordResult:false
+  });
+  const decision=parseWorkDecision(raw);
+  const readable=decision.kind==='tool'
+    ? 'Next action: '+workActionLabel(decision)
+    : decision.kind==='complete'
+      ? String(decision.message||'Task complete.')
+      : String(decision.message||'Waiting for user input.');
+  appendTaskAgentMessage(task,controller,'assistant',readable,'controller');
+  return decision;
 }
 
 function validateWorkToolDecision(task,decision){
@@ -3489,13 +3553,29 @@ async function startWorkTask(input={}){
     : null;
   const team=product==='super'?normalizeSuperTeam(input.team,primary):[];
   const agents=[
-    {id:'controller:'+source+':'+provider,name:taskModelName(primary),role:'Controller',status:'idle',detail:'Ready'},
+    {
+      id:'controller:'+source+':'+provider,
+      providerId:primary.id,
+      source:primary.source||source,
+      modelName:taskModelName(primary),
+      name:taskModelName(primary),
+      role:'Master',
+      controller:true,
+      status:'idle',
+      detail:'Ready',
+      thread:[]
+    },
     ...team.map(model=>({
       id:'specialist:'+model.source+':'+model.id,
+      providerId:model.id,
+      source:model.source||'browser',
+      modelName:taskModelName(model),
       name:taskModelName(model),
-      role:'Specialist',
+      role:'Agent',
+      controller:false,
       status:'idle',
-      detail:'Ready'
+      detail:'Ready',
+      thread:[]
     }))
   ];
   const task={
@@ -3503,6 +3583,8 @@ async function startWorkTask(input={}){
     provider,
     source,
     product,
+    projectId:String(input.projectId||''),
+    masterChatId:String(input.masterChatId||''),
     userText:String(input.text||'').trim(),
     effort:String(input.effort||'default'),
     approvalMode:normalizeWorkApprovalMode(input.approvalMode),

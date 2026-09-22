@@ -299,6 +299,8 @@ function App(){
   const cancelledRequestRef=useRef(null);
   const activeWorkTaskIdRef=useRef(null);
   const workTaskModelRef=useRef(null);
+  const workTaskProjectIdRef=useRef(null);
+  const workTaskMasterChatIdRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -314,6 +316,7 @@ function App(){
     const offStatus=window.desktopApi.onStatus(s=>active&&setStatus(s));
     const offWork=window.desktopApi.onWorkTask?.(state=>{
       if(!active||!state?.id||state.id!==activeWorkTaskIdRef.current)return;
+      syncWorkTaskAgentChats(state);
       setWorkTask(state);
     });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
@@ -374,7 +377,7 @@ function App(){
   useEffect(()=>{
     setSuperTeamKeys(current=>{
       const primary=modelKey(selected);
-      const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,3);
+      const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,16);
       localStorage.setItem('freeai.super.team',JSON.stringify(next));
       return next;
     });
@@ -499,16 +502,32 @@ function App(){
     if(handledWorkTerminalRef.current===terminalKey)return;
     handledWorkTerminalRef.current=terminalKey;
     if(activeWorkTaskIdRef.current===workTask.id)activeWorkTaskIdRef.current=null;
+    syncWorkTaskAgentChats(workTask);
     if(workTask.status==='stopped')return;
     const taskModel=workTaskModelRef.current||selected;
-    setMessages(prev=>{
-      const entry=workTask.status==='completed'
-        ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:taskModel?.id}
-        : {role:'error',text:String(workTask.error||'Work task failed.')};
-      const next=[...prev,entry];
-      queueMicrotask(()=>saveCurrentChat(next,taskModel));
-      return next;
+    if(!taskModel)return;
+    const masterChatId=workTask.masterChatId||workTaskMasterChatIdRef.current||currentChatId;
+    const projectId=workTask.projectId||workTaskProjectIdRef.current||activeProjectId||null;
+    const masterRecord=chats.find(chat=>chat.id===masterChatId)||null;
+    const baseMessages=Array.isArray(masterRecord?.messages)
+      ? masterRecord.messages
+      : (currentChatId===masterChatId?messages:[]);
+    const entry=workTask.status==='completed'
+      ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:taskModel.id,masterResult:true}
+      : {role:'error',text:String(workTask.error||'Work task failed.'),masterResult:true};
+    const next=[...baseMessages,entry];
+    saveCurrentChat(next,taskModel,{
+      chatId:masterChatId||undefined,
+      projectId,
+      mode:'work',
+      meta:workTask.product==='super'?{
+        isMasterThread:true,
+        orchestration:true,
+        taskId:workTask.id,
+        agentCount:Array.isArray(workTask.agents)?workTask.agents.length:0
+      }:{}
     });
+    if(!masterChatId||currentChatId===masterChatId)setMessages(next);
   },[workTask?.id,workTask?.status]);
 
   useEffect(()=>{
@@ -518,9 +537,16 @@ function App(){
   },[product,workTask?.workspace?.name,workTask?.workspace?.branch,workTask?.workspace?.head,workTask?.workspace?.dirty]);
 
   const activeProject=useMemo(()=>projects.find(project=>project.id===activeProjectId)||null,[projects,activeProjectId]);
+  const currentChatRecord=useMemo(()=>chats.find(chat=>chat.id===currentChatId)||null,[chats,currentChatId]);
   const projectChats=useMemo(()=>activeProjectId
     ? chats.filter(chat=>chat.projectId===activeProjectId).sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0))
     : [],[chats,activeProjectId]);
+  const visibleProjects=useMemo(()=>projects.filter(project=>(project.product||'free')===product),[projects,product]);
+
+  useEffect(()=>{
+    if(product!=='super'||!currentChatRecord?.isAgentThread||currentChatRecord.detachedFromTask)return;
+    setMessages(Array.isArray(currentChatRecord.messages)?currentChatRecord.messages:[]);
+  },[product,currentChatRecord?.id,currentChatRecord?.updatedAt,currentChatRecord?.detachedFromTask]);
 
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
@@ -582,11 +608,96 @@ function App(){
     setLocalFolderWorkspace(null);
   }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
+  function orchestrationProjectTitle(text){
+    const value=String(text||'').replace(/\s+/g,' ').trim();
+    if(!value)return 'Super AI task';
+    return value.length>56?value.slice(0,56)+'…':value;
+  }
+  function ensureOrchestrationProject(taskText,teamCount){
+    if(activeProject&&activeProject.product==='super'){
+      workTaskProjectIdRef.current=activeProject.id;
+      return activeProject.id;
+    }
+    const project={
+      id:crypto.randomUUID(),
+      name:orchestrationProjectTitle(taskText),
+      icon:'sparkles',
+      color:'purple',
+      instructions:'',
+      product:'super',
+      kind:'orchestration',
+      agentCount:Number(teamCount)||0,
+      createdAt:Date.now(),
+      updatedAt:Date.now()
+    };
+    setProjects(prev=>{
+      const next=[project,...prev];
+      localStorage.setItem('freeai.projects',JSON.stringify(next));
+      return next;
+    });
+    setActiveProjectId(project.id);
+    workTaskProjectIdRef.current=project.id;
+    return project.id;
+  }
+  function syncWorkTaskAgentChats(state){
+    if(!state||state.product!=='super'||!Array.isArray(state.agents))return;
+    const projectId=state.projectId||workTaskProjectIdRef.current;
+    const masterChatId=state.masterChatId||workTaskMasterChatIdRef.current;
+    if(!projectId||!masterChatId)return;
+    const now=Date.now();
+    const agentChats=state.agents.filter(agent=>!agent.controller).map(agent=>{
+      const thread=Array.isArray(agent.thread)?agent.thread.map(message=>({
+        role:message.role==='assistant'?'assistant':'user',
+        text:String(message.text||''),
+        phase:message.phase||'',
+        at:message.at||0
+      })):[];
+      const latestAt=thread.reduce((max,message)=>Math.max(max,Number(message.at)||0),0);
+      return {
+        id:'agent:'+state.id+':'+agent.id,
+        title:(agent.modelName||agent.name||'Agent')+' · '+(agent.role||'Agent'),
+        providerId:agent.providerId||'',
+        source:agent.source||'browser',
+        modelName:agent.modelName||agent.name||'Agent',
+        messages:thread,
+        mode:'chat',
+        pinned:false,
+        projectId,
+        parentChatId:masterChatId,
+        isAgentThread:true,
+        agentId:agent.id,
+        agentRole:agent.role||'Agent',
+        agentStatus:agent.status||'idle',
+        agentDetail:agent.detail||'',
+        taskId:state.id,
+        superTeamKeys:[],
+        updatedAt:latestAt||now
+      };
+    });
+    const storageKey='freeai.chats.super';
+    setChats(prev=>{
+      const viewingSuper=localStorage.getItem('freeai.product')==='super';
+      const base=viewingSuper?prev:readJSON(storageKey,[]);
+      const incomingIds=new Set(agentChats.map(chat=>chat.id));
+      const existingById=new Map(base.map(chat=>[chat.id,chat]));
+      const merged=agentChats.map(chat=>{
+        const existing=existingById.get(chat.id);
+        if(existing?.detachedFromTask)return existing;
+        return {...existing,...chat,pinned:!!existing?.pinned};
+      });
+      const next=[
+        ...merged,
+        ...base.filter(chat=>!incomingIds.has(chat.id))
+      ].sort((a,b)=>(Number(b.updatedAt)||0)-(Number(a.updatedAt)||0)).slice(0,120);
+      localStorage.setItem(storageKey,JSON.stringify(next));
+      return viewingSuper?next:prev;
+    });
+  }
   function createProject(){
     stopActiveWorkTask();
     const name=String(projectDraft.name||'').trim();
     if(!name)return;
-    const project={id:crypto.randomUUID(),name,icon:projectDraft.icon||'folder',color:projectDraft.color||'blue',instructions:'',createdAt:Date.now(),updatedAt:Date.now()};
+    const project={id:crypto.randomUUID(),name,icon:projectDraft.icon||'folder',color:projectDraft.color||'blue',instructions:'',product,kind:product==='super'?'orchestration':'standard',createdAt:Date.now(),updatedAt:Date.now()};
     persistProjects([project,...projects]);
     setActiveProjectId(project.id);setProjectDialogOpen(false);setProjectDraft({name:'',icon:'folder',color:'blue'});setPage('project');
   }
@@ -598,33 +709,49 @@ function App(){
       return next;
     });
   }
-  function openProject(project){stopActiveWorkTask();setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false)}
+  function openProject(project){
+    const sameLiveProject=!!activeWorkTaskIdRef.current&&workTaskProjectIdRef.current===project.id;
+    if(!sameLiveProject)stopActiveWorkTask();
+    setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false);
+  }
   function openPluginsPage(){stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false)}
   function startProjectConversation(projectId,nextMode){
     stopActiveWorkTask();
     setActiveProjectId(projectId);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setLocalFolderWorkspace(null);
     setMode(nextMode);setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
-  function saveCurrentChat(nextMessages,model=selected){
-    if(!model||!nextMessages.length)return;
+  function saveCurrentChat(nextMessages,model=selected,options={}){
+    if(!model||!nextMessages.length)return null;
     const firstUser=nextMessages.find(m=>m.role==='user')?.text||'New chat';
-    const title=firstUser.length>46?firstUser.slice(0,46)+'…':firstUser;
-    let id=currentChatId;
-    if(!id){id=crypto.randomUUID();setCurrentChatId(id)}
+    const defaultTitle=firstUser.length>46?firstUser.slice(0,46)+'…':firstUser;
+    const id=options.chatId||currentChatId||crypto.randomUUID();
+    if(!options.chatId&&!currentChatId&&options.setCurrent!==false)setCurrentChatId(id);
     setChats(prev=>{
       const existing=prev.find(c=>c.id===id);
+      const metadata=options.meta&&typeof options.meta==='object'?options.meta:{};
       const chat={
-        id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,
-        mode:product==='super'?'work':mode,pinned:!!existing?.pinned,
-        projectId:existing?.projectId||activeProjectId||null,
-        workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:null,
-        localFolder:mode==='work'&&localFolderWorkspace?localFolderWorkspace:null,
-        superTeamKeys:product==='super'?superTeamKeys:[],
+        ...existing,
+        id,
+        title:options.title||existing?.title||defaultTitle,
+        providerId:model.id,
+        source:model.source,
+        modelName:modelLabel(model),
+        messages:nextMessages,
+        mode:options.mode||existing?.mode||(product==='super'?'work':mode),
+        pinned:!!existing?.pinned,
+        projectId:options.projectId!==undefined?options.projectId:(existing?.projectId||activeProjectId||null),
+        workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:(existing?.workspace||null),
+        localFolder:mode==='work'&&localFolderWorkspace?localFolderWorkspace:(existing?.localFolder||null),
+        superTeamKeys:product==='super'&&!metadata.isAgentThread?superTeamKeys:(existing?.superTeamKeys||[]),
+        ...metadata,
         updatedAt:Date.now()
       };
-      const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
-      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
+      const limit=product==='super'?120:60;
+      const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,limit);
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
     });
+    return id;
   }
   function togglePinChat(id){
     setChats(prev=>{
@@ -657,16 +784,18 @@ function App(){
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
   function openChat(chat){
-    stopActiveWorkTask();
+    const sameLiveTask=!!activeWorkTaskIdRef.current&&chat?.taskId===activeWorkTaskIdRef.current;
+    if(!sameLiveTask)stopActiveWorkTask();
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     if(product==='free')setMode(chat.mode||'chat');
     if(product==='super'){
       setRepositoryWorkspace(chat.workspace||null);
-      setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
+      setSuperTeamKeys(chat.isAgentThread?[]:(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]));
+      setMode(chat.isAgentThread?'chat':'work');
     }
-    setLocalFolderWorkspace((chat.mode==='work'||product==='super')?(chat.localFolder||null):null);
+    setLocalFolderWorkspace((chat.mode==='work'||(product==='super'&&!chat.isAgentThread))?(chat.localFolder||null):null);
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
@@ -698,19 +827,81 @@ function App(){
         }
       }
     }
+
     const taskText=userText||'Review the attached files and determine the next useful step.';
     const finalUserText=inlineParts.length?[taskText,'',...inlineParts].filter(Boolean).join('\n\n'):taskText;
+    const teamModels=product==='super'
+      ? superTeamKeys
+          .map(key=>connected.find(model=>modelKey(model)===key))
+          .filter(Boolean)
+          .filter(model=>model.connected!==false&&modelKey(model)!==modelKey(selected))
+      : [];
+    const team=teamModels.map(model=>({
+      id:model.id,
+      source:model.source||'browser',
+      name:modelLabel(model)
+    }));
+
+    const taskId=crypto.randomUUID();
+    let projectId=activeProjectId||null;
+    let masterChatId=currentChatId||null;
+    const currentRecord=chats.find(chat=>chat.id===currentChatId)||null;
+
+    if(product==='super'&&team.length>0){
+      projectId=ensureOrchestrationProject(taskText,team.length+1);
+      if(!masterChatId||currentRecord?.isAgentThread||currentRecord?.projectId!==projectId){
+        masterChatId=crypto.randomUUID();
+        setCurrentChatId(masterChatId);
+      }
+      workTaskProjectIdRef.current=projectId;
+      workTaskMasterChatIdRef.current=masterChatId;
+      setPage('chat');
+    }else{
+      workTaskProjectIdRef.current=projectId;
+      workTaskMasterChatIdRef.current=masterChatId;
+    }
+
     const userMessage={role:'user',text:userText,attachments:attachments.map(attachmentMeta),attachmentContext:inlineParts.join('\n\n')};
     const next=[...messages,userMessage];
-    setMessages(next);saveCurrentChat(next,selected);
+    setMessages(next);
+    const savedMasterId=saveCurrentChat(next,selected,{
+      chatId:masterChatId||undefined,
+      projectId,
+      mode:'work',
+      meta:product==='super'&&team.length>0
+        ? {isMasterThread:true,orchestration:true,taskId,agentCount:team.length+1}
+        : {}
+    });
+    if(!masterChatId&&savedMasterId){
+      masterChatId=savedMasterId;
+      workTaskMasterChatIdRef.current=savedMasterId;
+    }
+
     setPrompt('');
-    const taskId=crypto.randomUUID();
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
-    setWorkTask({id:taskId,product,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,folder:localFolderWorkspace?{name:localFolderWorkspace.name}:null,finalMessage:'',error:''});
+    setWorkTask({
+      id:taskId,
+      product,
+      projectId:projectId||'',
+      masterChatId:masterChatId||'',
+      status:'running',
+      step:0,
+      maxSteps:product==='super'?24:18,
+      detail:product==='super'?'Starting Super AI task…':'Starting Work task…',
+      approval:null,
+      progress:[],
+      agents:[],
+      workspace:product==='super'?repositoryWorkspace:null,
+      folder:localFolderWorkspace?{name:localFolderWorkspace.name}:null,
+      finalMessage:'',
+      error:''
+    });
+
     try{
-      const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
+      const projectForTask=projects.find(project=>project.id===projectId)||activeProject;
+      const projectInstructions=projectForTask?String(projectForTask.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
       let workspace=repositoryWorkspace;
       if(product==='super'&&workspace?.root){
@@ -722,16 +913,14 @@ function App(){
         localFolder=await window.desktopApi.localFolderSummary(localFolder.root);
         setLocalFolderWorkspace(localFolder);
       }
-      const team=product==='super'
-        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>model.connected!==false&&modelKey(model)!==modelKey(selected)).map(model=>({
-            id:model.id,source:model.source||'browser',name:modelLabel(model)
-          }))
-        : [];
+
       const state=await window.desktopApi.startWorkTask({
         id:taskId,
         provider:selected.id,
         source:selected.source||'browser',
         product,
+        projectId:projectId||'',
+        masterChatId:masterChatId||'',
         text:finalUserText,
         effort,
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
@@ -746,14 +935,25 @@ function App(){
           text:String(message.text||'').slice(0,5000)
         }))
       });
-      if(activeWorkTaskIdRef.current===taskId)setWorkTask(state);
+      if(activeWorkTaskIdRef.current===taskId){
+        syncWorkTaskAgentChats(state);
+        setWorkTask(state);
+      }
       for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
       setAttachments([]);setSelectedMcpIds([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
     }catch(e){
       if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
       setWorkTask(null);
       const failed=[...next,{role:'error',text:e?.message||String(e)}];
-      setMessages(failed);saveCurrentChat(failed,selected);
+      setMessages(failed);
+      saveCurrentChat(failed,selected,{
+        chatId:masterChatId||undefined,
+        projectId,
+        mode:'work',
+        meta:product==='super'&&team.length>0
+          ? {isMasterThread:true,orchestration:true,taskId,agentCount:team.length+1}
+          : {}
+      });
     }
   }
 
@@ -880,7 +1080,11 @@ function App(){
     cancelledRequestRef.current=null;
     activeRequestRef.current=requestId;
     const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true}]:withUser;
-    setMessages(initial);saveCurrentChat(withUser,model);
+    const currentChatMeta=chats.find(chat=>chat.id===currentChatId)||null;
+    const directAgentMeta=currentChatMeta?.isAgentThread
+      ? {isAgentThread:true,parentChatId:currentChatMeta.parentChatId,agentId:currentChatMeta.agentId,agentRole:currentChatMeta.agentRole,taskId:currentChatMeta.taskId,detachedFromTask:true}
+      : {};
+    setMessages(initial);saveCurrentChat(withUser,model,{mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
@@ -1228,7 +1432,7 @@ function App(){
           <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
             <Plus size={15}/><span>New project</span>
           </button>
-          {projects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:projects.map(project=>
+          {visibleProjects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:visibleProjects.map(project=>
             <button key={project.id} className={'projectItem projectNavItem '+(activeProjectId===project.id?'active':'')} onClick={()=>openProject(project)}>
               <ProjectMark project={project} size={18}/><span>{project.name}</span>
             </button>
@@ -1275,6 +1479,18 @@ function App(){
             </div>
           )}
         </>:<>
+          {isWindowsDesktop&&product==='super'&&<>
+            <div className="sidebarGroupTitle">Projects</div>
+            <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'sparkles',color:'purple'});setProjectDialogOpen(true)}}>
+              <Plus size={15}/><span>New project</span>
+            </button>
+            {visibleProjects.length===0
+              ? <div className="sidebarEmpty projectEmpty">Multi-agent tasks create projects automatically</div>
+              : visibleProjects.map(project=><button key={project.id} className={'projectItem projectNavItem '+(activeProjectId===project.id?'active':'')} onClick={()=>openProject(project)}>
+                  <ProjectMark project={project} size={18}/><span>{project.name}</span>
+                </button>)
+            }
+          </>}
           <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
           <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
             {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
@@ -1349,6 +1565,8 @@ function App(){
                 approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+                 onWorkProject={task=>{const project=projects.find(item=>item.id===task?.projectId);if(project){setActiveProjectId(project.id);setPage('project');setMobileNavOpen(false)}}}
+                 onWorkAgent={(task,agent)=>{const chat=chats.find(item=>item.taskId===task?.id&&item.agentId===agent?.id);if(chat)openChat(chat)}}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
@@ -1400,6 +1618,8 @@ function App(){
                   approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
                  workTask={isWindowsDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+                 onWorkProject={task=>{const project=projects.find(item=>item.id===task?.projectId);if(project){setActiveProjectId(project.id);setPage('project');setMobileNavOpen(false)}}}
+                 onWorkAgent={(task,agent)=>{const chat=chats.find(item=>item.taskId===task?.id&&item.agentId===agent?.id);if(chat)openChat(chat)}}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 localFolderWorkspace={localFolderWorkspace} onChooseLocalFolder={chooseLocalFolderWorkspace} onClearLocalFolder={clearLocalFolderWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
@@ -1415,7 +1635,10 @@ function App(){
       </section>}
 
       {page==='project'&&isWindowsDesktop&&activeProject&&<ProjectPage
-        project={activeProject} chats={projectChats} onBack={()=>{setActiveProjectId(null);setPage('chat')}}
+        project={activeProject} chats={projectChats}
+        task={workTask?.projectId===activeProject.id?workTask:null}
+        onApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
+        onBack={()=>{setActiveProjectId(null);setPage('chat')}}
         onStart={nextMode=>startProjectConversation(activeProject.id,nextMode)}
         onOpenChat={openChat} onSave={patch=>updateProject(activeProject.id,patch)}
       />}
@@ -1487,25 +1710,77 @@ function NewProjectDialog({draft,setDraft,onCreate,onClose}){
   </div>
 }
 
-function ProjectPage({project,chats,onBack,onStart,onOpenChat,onSave}){
+function ProjectPage({project,chats,task,onApproval,onBack,onStart,onOpenChat,onSave}){
   const [draft,setDraft]=useState({name:project.name,icon:project.icon||'folder',color:project.color||'blue',instructions:project.instructions||''});
   const [saved,setSaved]=useState(false);
+  const orchestration=project.kind==='orchestration'||project.product==='super';
+  const masterChats=orchestration?chats.filter(chat=>chat.isMasterThread||(!chat.isAgentThread&&chat.mode==='work')):[];
+  const agentChats=orchestration?chats.filter(chat=>chat.isAgentThread):[];
+  const otherChats=orchestration?chats.filter(chat=>!chat.isMasterThread&&!chat.isAgentThread&&chat.mode!=='work'):chats;
   useEffect(()=>{setDraft({name:project.name,icon:project.icon||'folder',color:project.color||'blue',instructions:project.instructions||''});setSaved(false)},[project.id,project.name,project.icon,project.color,project.instructions]);
   const save=()=>{const name=String(draft.name||'').trim();if(!name)return;onSave({name,icon:draft.icon||'folder',color:draft.color||'blue',instructions:String(draft.instructions||'')});setSaved(true);setTimeout(()=>setSaved(false),1400)};
   const preview={...project,...draft,name:String(draft.name||'').trim()||project.name};
+  const conversationRow=(chat,label)=><button key={chat.id} className={chat.isAgentThread?'agentConversationRow':''} onClick={()=>onOpenChat(chat)}>
+    {chat.isAgentThread
+      ? <span className="projectAgentIdentity"><span className="projectAgentBadge">{String(chat.modelName||chat.title||'A').slice(0,1).toUpperCase()}</span><span><b>{chat.modelName||chat.title}</b><small>{chat.agentRole||'Agent'}{chat.agentStatus?' · '+chat.agentStatus:''}{chat.agentDetail?' · '+chat.agentDetail:''}</small></span></span>
+      : <><span className="projectConversationMode">{label||((chat.mode==='work')?'Work':'Chat')}</span><span>{chat.title}</span></>}
+    <ChevronRight size={14}/>
+  </button>;
   return <div className="contentPage projectPage">
     <PageTop onBack={onBack} title={project.name}/>
     <div className="contentInner projectInner">
-      <div className="projectHero"><ProjectMark project={project} size={42}/><div><h1>{project.name}</h1><p className="pageLead">A local Free AI project. Project instructions apply only to conversations started here.</p></div><div className="projectStartActions"><button onClick={()=>onStart('chat')}><SquarePen size={15}/>Chat</button><button onClick={()=>onStart('work')}><Briefcase size={15}/>Work</button></div></div>
-      <section className="projectSection"><div className="sectionHeading"><h2>Project conversations</h2><span className="pluginMeta">{chats.length}</span></div><div className="projectConversationList">
-        {chats.map(chat=><button key={chat.id} onClick={()=>onOpenChat(chat)}><span className="projectConversationMode">{chat.mode==='work'?'Work':'Chat'}</span><span>{chat.title}</span><ChevronRight size={14}/></button>)}
-        {!chats.length&&<div className="projectEmptyState"><Folder size={20}/><b>No conversations yet</b><span>Start a Chat or Work conversation to add it to this project.</span></div>}
-      </div></section>
+      <div className="projectHero">
+        <ProjectMark project={project} size={42}/>
+        <div><h1>{project.name}</h1><p className="pageLead">{orchestration?'A Super AI Master project. The Master delegates work to isolated agent chats and combines their results.':'A local Free AI project. Project instructions apply only to conversations started here.'}</p></div>
+        <div className="projectStartActions">
+          {orchestration
+            ? <button onClick={()=>onStart('work')}><Sparkles size={15}/>New Master task</button>
+            : <><button onClick={()=>onStart('chat')}><SquarePen size={15}/>Chat</button><button onClick={()=>onStart('work')}><Briefcase size={15}/>Work</button></>}
+        </div>
+      </div>
+      {orchestration&&task&&<div className="projectLiveTask">
+        <WorkTaskStatus
+          task={task}
+          onApproval={onApproval}
+          onOpenAgent={(_task,agent)=>{
+            const chat=agentChats.find(item=>item.agentId===agent.id);
+            if(chat)onOpenChat(chat);
+          }}
+        />
+      </div>}
+
+      {orchestration?<>
+        <section className="projectSection">
+          <div className="sectionHeading"><h2>Master</h2><span className="pluginMeta">{masterChats.length}</span></div>
+          <div className="projectConversationList masterConversationList">
+            {masterChats.map(chat=>conversationRow(chat,'Master'))}
+            {!masterChats.length&&<div className="projectEmptyState"><Sparkles size={20}/><b>No Master thread yet</b><span>Start a Master task and Super AI will coordinate the selected models here.</span></div>}
+          </div>
+        </section>
+        <section className="projectSection">
+          <div className="sectionHeading"><h2>Agents</h2><span className="pluginMeta">{agentChats.length}</span></div>
+          <div className="projectConversationList agentConversationList">
+            {agentChats.map(chat=>conversationRow(chat))}
+            {!agentChats.length&&<div className="projectEmptyState"><Bot size={20}/><b>No agent chats yet</b><span>Agent threads appear here as soon as the Master delegates work.</span></div>}
+          </div>
+        </section>
+        {otherChats.length>0&&<section className="projectSection">
+          <div className="sectionHeading"><h2>Other conversations</h2><span className="pluginMeta">{otherChats.length}</span></div>
+          <div className="projectConversationList">{otherChats.map(chat=>conversationRow(chat))}</div>
+        </section>}
+      </>:<section className="projectSection">
+        <div className="sectionHeading"><h2>Project conversations</h2><span className="pluginMeta">{chats.length}</span></div>
+        <div className="projectConversationList">
+          {chats.map(chat=>conversationRow(chat))}
+          {!chats.length&&<div className="projectEmptyState"><Folder size={20}/><b>No conversations yet</b><span>Start a Chat or Work conversation to add it to this project.</span></div>}
+        </div>
+      </section>}
+
       <section className="projectSection projectSettingsCard"><div className="sectionHeading"><h2>Project settings</h2>{saved&&<span className="projectSaved"><Check size={13}/>Saved</span>}</div>
         <label className="projectNameField"><span>Name</span><input value={draft.name} onChange={e=>setDraft({...draft,name:e.target.value})} maxLength={80}/></label>
         <div className="projectChoiceBlock"><span>Icon</span><div className="projectIconGrid">{projectIconOptions.map(([key,label,Icon])=><button type="button" key={key} className={draft.icon===key?'active':''} onClick={()=>setDraft({...draft,icon:key})} aria-label={label} title={label}><Icon size={17}/></button>)}</div></div>
         <div className="projectChoiceBlock"><span>Color</span><div className="projectColorGrid">{projectColorOptions.map(color=><button type="button" key={color} className={draft.color===color?'active':''} data-color={color} onClick={()=>setDraft({...draft,color})} aria-label={color+' color'}><span/></button>)}</div></div>
-        <label className="projectInstructionsField"><span>Project instructions</span><small>These instructions override your global custom instructions while you are in this project.</small><textarea value={draft.instructions} onChange={e=>setDraft({...draft,instructions:e.target.value})} placeholder="Add instructions for this project"/></label>
+        <label className="projectInstructionsField"><span>Project instructions</span><small>{orchestration?'Shared instructions for the Master and delegated agents in this project.':'These instructions override your global custom instructions while you are in this project.'}</small><textarea value={draft.instructions} onChange={e=>setDraft({...draft,instructions:e.target.value})} placeholder="Add instructions for this project"/></label>
         <div className="projectSettingsActions"><div className="projectSettingsPreview"><ProjectMark project={preview} size={22}/><span>{preview.name}</span></div><button onClick={save} disabled={!String(draft.name||'').trim()}>Save</button></div>
       </section>
     </div>
@@ -1516,7 +1791,7 @@ function Composer(props){
   const {
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
-    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
+    product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onWorkProject,onWorkAgent,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
     mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
   }=props;
@@ -1636,7 +1911,7 @@ function Composer(props){
   },[listening]);
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
-    {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval}/>}
+    {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval} onOpenProject={onWorkProject} onOpenAgent={onWorkAgent}/>} 
     {product==='super'&&windowsDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
@@ -1686,7 +1961,7 @@ function Composer(props){
       </div>
 
       <div className="composerRight">
-        {product==='super'&&windowsDesktop&&<div className="menuAnchor">
+        {product==='super'&&windowsDesktop&&mode==='work'&&<div className="menuAnchor">
           <button className="teamButton" aria-haspopup="menu" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
             <Bot size={14}/>Team {1+superTeamKeys.length}<ChevronDown size={12}/>
           </button>
@@ -1852,7 +2127,7 @@ function PermissionModeMenu({value,choose}){
   </div>
 }
 
-function WorkTaskStatus({task,onApproval}){
+function WorkTaskStatus({task,onApproval,onOpenProject,onOpenAgent}){
   const labels={running:'Running',waiting_approval:'Waiting for approval',completed:'Completed',failed:'Failed',stopped:'Stopped'};
   const active=task.status==='running'||task.status==='waiting_approval';
   const agents=Array.isArray(task.agents)?task.agents:[];
@@ -1860,14 +2135,18 @@ function WorkTaskStatus({task,onApproval}){
     <div className="workTaskHead">
       <span className="workTaskStateIcon">{task.status==='completed'?<Check size={15}/>:task.status==='failed'?<X size={15}/>:task.status==='stopped'?<Square size={13}/>:<RefreshCw className={active?'spin':''} size={14}/>}</span>
       <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
+      {task.projectId&&onOpenProject&&<button className="workTaskProjectButton" onClick={()=>onOpenProject(task)}><Folder size={12}/>Project</button>}
     </div>
     {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
     {task.folder&&<div className="workWorkspaceLine"><Folder size={12}/><span>{task.folder.name}</span><small>Local Files</small></div>}
     {Array.isArray(task.apps)&&task.apps.length>0&&<div className="workAppsLine"><Plug size={12}/><span>{task.apps.map(app=>app.name).join(' · ')}</span><small>{task.apps.reduce((sum,app)=>sum+(Number(app.toolCount)||0),0)} direct MCP tools</small></div>}
-    {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
-      <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
-    </div>)}</div>}
-    {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-4).map(item=><span key={item.id}>{item.text}</span>)}</div>}
+    {agents.length>0&&<div className="workAgentList">{agents.map(agent=>{
+      const body=<><span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>{Array.isArray(agent.thread)&&agent.thread.length>0&&<span className="agentMessageCount">{agent.thread.length}</span>}</>;
+      return onOpenAgent&&!agent.controller
+        ? <button type="button" className={'workAgent '+agent.status+' clickable'} key={agent.id} onClick={()=>onOpenAgent(task,agent)}>{body}</button>
+        : <div className={'workAgent '+agent.status} key={agent.id}>{body}</div>;
+    })}</div>}
+    {Array.isArray(task.progress)&&task.progress.length>0&&<div className="workTaskProgress">{task.progress.slice(-6).map(item=><span key={item.id}>{item.text}</span>)}</div>}
     {task.status==='waiting_approval'&&task.approval&&<div className="workApprovalCard">
       <ShieldCheck size={18}/>
       <div><b>{task.approval.title}</b><span>{task.approval.summary}</span>{task.approval.detail&&<small>{task.approval.detail}</small>}</div>
