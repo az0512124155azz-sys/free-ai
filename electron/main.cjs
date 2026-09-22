@@ -289,7 +289,7 @@ Start-Sleep -Milliseconds 80
 }
 
 async function pasteWindowsText(text){
-  clipboard.writeText(String(text||''));
+  await clipboard.writeText(String(text||''));
   await runPowerShell("Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')");
 }
 
