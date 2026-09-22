@@ -20,6 +20,7 @@ let browserBounds=null;
 let browserAttached=false;
 let browserDownloads=[];
 let browserDownloadHooked=false;
+const browserSiteTools=new Map();
 
 const AUTH_SCHEME='freeai';
 const AUTH_CALLBACK_PREFIX='freeai://auth';
@@ -88,7 +89,7 @@ function browserSnapshot(){
   const entry=activeBrowserEntry();
   const tabs=[...browserTabs.entries()].map(([id,view])=>browserTabMeta(id,view));
   if(!entry){
-    return {url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads};
+    return {url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[]};
   }
   const wc=entry.webContents;
   return {
@@ -99,7 +100,8 @@ function browserSnapshot(){
     canGoForward:wc.canGoForward(),
     tabs,
     activeTabId:activeBrowserTabId,
-    downloads:browserDownloads
+    downloads:browserDownloads,
+    siteTools:browserSiteTools.get(activeBrowserTabId)||[]
   };
 }
 
@@ -126,6 +128,57 @@ function attachBrowserView(view){
   }
   try{win.contentView.addChildView(view);browserAttached=true}catch{}
   if(browserBounds)view.setBounds(browserBounds);
+}
+
+async function refreshBrowserSiteTools(id){
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())return [];
+  try{
+    const tools=await view.webContents.executeJavaScript(`
+      (async()=>{
+        const ctx=document.modelContext;
+        if(!ctx||typeof ctx.getTools!=='function')return [];
+        try{
+          const tools=await ctx.getTools();
+          return tools.map(tool=>({
+            name:String(tool.name||''),
+            title:String(tool.title||''),
+            description:String(tool.description||''),
+            origin:String(tool.origin||location.origin||''),
+            inputSchema:tool.inputSchema||{type:'object',properties:{}},
+            annotations:tool.annotations||{}
+          }));
+        }catch{return []}
+      })()
+    `,true);
+    browserSiteTools.set(id,Array.isArray(tools)?tools:[]);
+  }catch{
+    browserSiteTools.set(id,[]);
+  }
+  emitBrowserState();
+  return browserSiteTools.get(id)||[];
+}
+
+async function executeBrowserSiteTool(id,name,input){
+  const view=browserTabs.get(id);
+  if(!view||view.webContents.isDestroyed())throw new Error('That browser tab is no longer available.');
+  const safeName=JSON.stringify(String(name||''));
+  const safeInput=JSON.stringify(input&&typeof input==='object'?input:{});
+  const result=await view.webContents.executeJavaScript(`
+    (async()=>{
+      const ctx=document.modelContext;
+      if(!ctx||typeof ctx.getTools!=='function'||typeof ctx.executeTool!=='function'){
+        throw new Error('This page does not expose WebMCP site tools.');
+      }
+      const tools=await ctx.getTools();
+      const tool=tools.find(t=>t.name===${safeName});
+      if(!tool)throw new Error('The selected site tool is no longer available.');
+      const value=await ctx.executeTool(tool,${safeInput});
+      try{return {ok:true,value:JSON.parse(JSON.stringify(value))}}catch{return {ok:true,value:String(value??'')}}
+    })()
+  `,true);
+  setTimeout(()=>refreshBrowserSiteTools(id),300);
+  return result;
 }
 
 function hookBrowserDownloads(wc){
@@ -176,10 +229,15 @@ function createBrowserTab(input='https://www.google.com/',activate=true){
     createBrowserTab(url,true);
     return {action:'deny'};
   });
-  for(const eventName of ['did-start-loading','did-stop-loading','did-navigate','did-navigate-in-page','page-title-updated']){
+  for(const eventName of ['did-start-loading','did-navigate','did-navigate-in-page','page-title-updated']){
     wc.on(eventName,()=>emitBrowserState());
   }
-  wc.on('render-process-gone',()=>emitBrowserState());
+  wc.on('did-stop-loading',()=>{
+    emitBrowserState();
+    refreshBrowserSiteTools(id);
+    setTimeout(()=>refreshBrowserSiteTools(id),1200);
+  });
+  wc.on('render-process-gone',()=>{browserSiteTools.set(id,[]);emitBrowserState()});
   if(activate)activateBrowserTab(id);
   wc.loadURL(normalizeBrowserUrl(input)).catch(()=>emitBrowserState());
   emitBrowserState();
@@ -233,6 +291,7 @@ function closeBrowserTab(id){
   }
   try{view.webContents.close()}catch{}
   browserTabs.delete(id);
+  browserSiteTools.delete(id);
   if(activeBrowserTabId===id){
     activeBrowserTabId=null;
     const nextId=ids[index+1]||ids[index-1]||[...browserTabs.keys()][0]||null;
@@ -648,6 +707,7 @@ app.on('before-quit',()=>{
   hideBrowserView();
   for(const view of browserTabs.values()){try{view.webContents.close()}catch{}}
   browserTabs.clear();
+  browserSiteTools.clear();
   activeBrowserTabId=null;
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
@@ -713,6 +773,12 @@ ipcMain.handle('browser:newTab',async(_e,input)=>{
 });
 ipcMain.handle('browser:selectTab',(_e,id)=>{activateBrowserTab(id);return browserSnapshot()});
 ipcMain.handle('browser:closeTab',(_e,id)=>closeBrowserTab(id));
+ipcMain.handle('browser:refreshSiteTools',()=>activeBrowserTabId?refreshBrowserSiteTools(activeBrowserTabId):[]);
+ipcMain.handle('browser:executeSiteTool',async(_e,{tabId,name,input}={})=>{
+  const id=tabId||activeBrowserTabId;
+  if(!id)throw new Error('No browser tab is active.');
+  return executeBrowserSiteTool(id,name,input);
+});
 ipcMain.handle('browser:navigate',async(_e,input)=>{
   const view=ensureBrowserView();
   await view.webContents.loadURL(normalizeBrowserUrl(input));
