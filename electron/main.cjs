@@ -893,9 +893,18 @@ function runPowerShell(script){
 
 function displayPoint(displayId,nx,ny){
   const displays=screen.getAllDisplays();
-  const display=displays.find(d=>String(d.id)===String(displayId))||screen.getPrimaryDisplay();
-  const x=display.bounds.x+Math.round(display.bounds.width*Math.min(1,Math.max(0,Number(nx)||0)));
-  const y=display.bounds.y+Math.round(display.bounds.height*Math.min(1,Math.max(0,Number(ny)||0)));
+  const matched=displays.find(d=>String(d.id)===String(displayId))||null;
+  const clamp=value=>Math.min(1,Math.max(0,Number(value)||0));
+  if(process.platform==='win32'){
+    if(!matched)throw new Error('The selected screen is no longer available. Refresh Computer Use and try again.');
+    const physical=screen.dipToScreenRect(null,matched.bounds);
+    const x=physical.x+Math.round(Math.max(0,physical.width-1)*clamp(nx));
+    const y=physical.y+Math.round(Math.max(0,physical.height-1)*clamp(ny));
+    return {x,y,displayId:matched.id,coordinateSpace:'physical'};
+  }
+  const display=matched||screen.getPrimaryDisplay();
+  const x=display.bounds.x+Math.round(display.bounds.width*clamp(nx));
+  const y=display.bounds.y+Math.round(display.bounds.height*clamp(ny));
   return {x,y,displayId:display.id};
 }
 
@@ -905,11 +914,11 @@ Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 public static class FreeAIMouse {
-  [DllImport("user32.dll")] public static extern bool SetCursorPos(int X, int Y);
+  [DllImport("user32.dll")] public static extern bool SetPhysicalCursorPos(int X, int Y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags,uint dx,uint dy,uint data,UIntPtr extra);
 }
 '@
-[FreeAIMouse]::SetCursorPos(${x},${y}) | Out-Null
+if(-not [FreeAIMouse]::SetPhysicalCursorPos(${x},${y})) { throw "SetPhysicalCursorPos failed." }
 Start-Sleep -Milliseconds 80
 [FreeAIMouse]::mouse_event(2,0,0,0,[UIntPtr]::Zero)
 [FreeAIMouse]::mouse_event(4,0,0,0,[UIntPtr]::Zero)
@@ -1299,12 +1308,23 @@ function connectRelay(){
 async function captureScreens(){
   const displays=screen.getAllDisplays();
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:800,height:450}});
-  return sources.map((s,i)=>({
-    id:s.id,
-    name:s.name||('Screen '+(i+1)),
-    thumbnail:s.thumbnail.toDataURL(),
-    displayId:displays[i]?.id||null
-  }));
+  return sources.map((source,index)=>{
+    const reliableWindowsDisplay=process.platform==='win32'&&source.display_id
+      ? displays.find(display=>String(display.id)===String(source.display_id))||null
+      : null;
+    const legacyDisplay=process.platform==='win32'?null:(displays[index]||null);
+    const display=reliableWindowsDisplay||legacyDisplay;
+    return {
+      id:source.id,
+      name:display?.label||source.name||('Screen '+(index+1)),
+      thumbnail:source.thumbnail.toDataURL(),
+      displayId:display?.id??null,
+      interactive:process.platform==='win32'?!!reliableWindowsDisplay:process.platform==='darwin'?!!display:false,
+      scaleFactor:Number(display?.scaleFactor)||1,
+      rotation:Number(display?.rotation)||0,
+      mapping:process.platform==='win32'?(reliableWindowsDisplay?'display_id':'unavailable'):'legacy'
+    };
+  });
 }
 
 function createWindow(){

@@ -1762,6 +1762,10 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
   }
 
   async function clickScreen(e,screen){
+    if(screen?.interactive===false||screen?.displayId===null||screen?.displayId===undefined){
+      setControlError('This screen is preview-only because Windows did not provide a reliable display mapping. Refresh Computer Use after reconnecting or reconfiguring the display.');
+      return;
+    }
     const rect=e.currentTarget.getBoundingClientRect();
     const action={
       displayId:screen.displayId,
@@ -1794,9 +1798,13 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
     </div>}
     {controlError&&<div className="computerError">{controlError}</div>}
     <div className="computerScreens">
-      {screens.map(screen=><div className={'computerScreen '+(previewOnly?'previewOnly':'')} key={screen.id}>
-        <img src={screen.thumbnail} alt={screen.name} onClick={previewOnly?undefined:e=>clickScreen(e,screen)}/><span>{screen.name}</span>
-      </div>)}
+      {screens.map(screen=>{
+        const screenPreviewOnly=previewOnly||screen.interactive===false;
+        return <div className={'computerScreen '+(screenPreviewOnly?'previewOnly':'')} key={screen.id}>
+          <img src={screen.thumbnail} alt={screen.name} onClick={screenPreviewOnly?undefined:e=>clickScreen(e,screen)}/>
+          <span>{screen.name}{screen.interactive===false&&isWindowsDesktop?' · Preview only (display mapping unavailable)':''}</span>
+        </div>;
+      })}
       {!screens.length&&!loading&&<div className="paneEmpty"><Monitor size={34}/><b>No screen preview available</b></div>}
     </div>
     {lastPoint&&<div className="controlStatus"><MousePointer2 size={13}/>Last action completed</div>}
