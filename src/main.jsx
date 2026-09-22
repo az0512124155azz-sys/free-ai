@@ -667,7 +667,16 @@ function App(){
     const file=files[0];
     const preview={name:file.name,type:file.type,size:file.size,kind:'binary',content:'',url:''};
     const textLike=file.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
-    if(file.type.startsWith('image/')){preview.kind='image';preview.url=URL.createObjectURL(file)}
+    if(file.type.startsWith('image/')){
+      preview.kind='image';
+      try{
+        const dataUrl=await fileAsDataUrl(file);
+        preview.url=dataUrl;
+        const asset={id:crypto.randomUUID(),name:file.name,type:file.type,size:file.size,dataUrl,createdAt:Date.now()};
+        await saveImageAsset(asset);
+        setImageAssets(prev=>[asset,...prev]);
+      }catch{preview.url=URL.createObjectURL(file)}
+    }
     else if(textLike&&file.size<=2*1024*1024){preview.kind='text';try{preview.content=await file.text()}catch{}}
     else if(/\.(zip|rar|7z|tar|gz)$/i.test(file.name))preview.kind='archive';
     setSelectedFile(preview);setSidePanel('file');
