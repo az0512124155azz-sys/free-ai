@@ -1292,7 +1292,7 @@ function App(){
         onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
       />}
       {page==='explore'&&<ExplorePage
-        tools={mcpTools} directMcpConnections={mcpConnections}
+        tools={mcpTools} chats={chats} directMcpConnections={mcpConnections}
         selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
         onRefreshMcp={refreshMcpConnections} onRemoveMcp={removeMcpConnection}
         onBack={()=>setPage('chat')} onManagePlugins={openPluginsPage} onOpenPublicDirectory={openPublicPluginDirectory}
@@ -1865,6 +1865,37 @@ function PluginsPage({
   const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
+  if(!isWindowsDesktop){
+    const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
+    const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
+    return <div className="contentPage">
+      <PageTop onBack={onBack} title={pageName} action={isDesktop?'Refresh':null} onAction={onRefresh}/>
+      <div className="contentInner">
+        <h1>{pageName}</h1>
+        <p className="pageLead">Provider-managed connectors are surfaced only when a connected AI provider exposes them in its own interface.</p>
+        <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search provider hints"/></div>
+        <section className="pluginSection">
+          <div className="sectionHeading"><h2>Provider-managed connector hints</h2><span className="pluginMeta">{visibleTools.length} hints</span></div>
+          <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Not direct MCP verification</b><span>These labels come from visible provider UI detected by the browser extension. Free AI does not treat them as proof that a tool exists or that a provider actually used it.</span></div></div>
+          <div className="installedStrip">
+            {visibleTools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
+            {!visibleTools.length&&<span className="muted">{query?'No provider hint matches your search.':'No provider-managed connector hints detected.'}</span>}
+          </div>
+        </section>
+        <section className="pluginSection">
+          <h2>Connected AI providers</h2>
+          <div className="pluginGrid">
+            {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
+              <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
+              <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API model':((provider.mcps?.length||0)+' provider UI hints')}</small></span>
+              <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
+            </div>)}
+            {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No AI provider is connected</b><span>Open a supported AI site in Chromium with the Free AI extension, or add an API model in Settings.</span></div>}
+          </div>
+        </section>
+      </div>
+    </div>;
+  }
   const categories=['All',...new Set(publicPluginDirectory.map(item=>item.category))];
   const visibleTools=tools.filter(t=>pluginSearchMatch([t.mcp,t.ownerName],needle));
   const visibleProviders=connected.filter(p=>pluginSearchMatch([modelLabel(p),...(p.mcps||[])],needle));
@@ -1967,8 +1998,19 @@ function PluginsPage({
   </div>;
 }
 
-function ExplorePage({tools,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onRefreshMcp,onRemoveMcp,onBack,onManagePlugins,onOpenPublicDirectory}){
+function ExplorePage({tools,chats=[],directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onRefreshMcp,onRemoveMcp,onBack,onManagePlugins,onOpenPublicDirectory}){
   const [query,setQuery]=useState('');
+  if(!isWindowsDesktop){
+    return <div className="contentPage">
+      <PageTop onBack={onBack} title="Explore"/>
+      <div className="contentInner exploreInner">
+        <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
+        {!isNative&&<><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>}
+        <h3>{isNative?'Apps':'Provider connector hints'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+(isNative?'':' · unverified')}/>)}
+        <h3>Conversations</h3>{chats.slice(0,8).map(chat=><MenuRow key={chat.id} icon={Bot} label={chat.title} sub={chat.modelName}/>)}
+      </div>
+    </div>;
+  }
   const [filter,setFilter]=useState('all');
   const [category,setCategory]=useState('All');
   const [details,setDetails]=useState(null);
