@@ -55,4 +55,18 @@ has(main,"apiConnections=apiConnections.filter(item=>item.id!==connection.id)",'
 has(main,"apiConnections=previous;",'Failed API connection removals must roll back the in-memory removal.');
 has(main,"raw?.mode==='plain'&&apiConnections.some(item=>item?.apiKey)&&safeStorage.isEncryptionAvailable()",'Legacy plaintext API credentials must migrate when secure storage is available.');
 
+const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
+const installerSmoke=fs.readFileSync('scripts/windows-installer-smoke.ps1','utf8');
+has(workflow,'Windows clean install and first-launch smoke','Windows CI is missing the installer smoke step.');
+has(workflow,'.\\scripts\\windows-installer-smoke.ps1','Windows CI is not invoking the installer smoke script.');
+has(installerSmoke,"'/S'",'Installer smoke must use NSIS silent install mode.');
+has(installerSmoke,'"/D=$installDir"','Installer smoke must use an isolated install directory.');
+has(installerSmoke,'Free AI.exe','Installer smoke must verify and launch the installed app.');
+has(installerSmoke,'resources\\app.asar','Installer smoke must verify the packaged ASAR.');
+has(installerSmoke,'Uninstall*.exe','Installer smoke must verify the installed uninstaller.');
+has(installerSmoke,'Start-Sleep -Seconds 12','Installer smoke must keep first launch alive long enough to catch early crashes.');
+has(installerSmoke,'taskkill.exe /PID','Installer smoke must terminate the launched Electron process tree before uninstall.');
+has(installerSmoke,'"_?=$installDir"','Installer smoke must wait for the NSIS uninstaller in-place.');
+has(installerSmoke,'Free AI.exe still exists after uninstall','Installer smoke must verify removal after uninstall.');
+
 console.log('Windows 7 QA regression checks passed.');
