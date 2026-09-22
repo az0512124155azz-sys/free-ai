@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -443,6 +443,41 @@ Start-Sleep -Milliseconds 80
 async function pasteWindowsText(text){
   await clipboard.writeText(String(text||''));
   await runPowerShell("Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')");
+}
+
+function runAppleScript(script){
+  return new Promise((resolve,reject)=>{
+    execFile('/usr/bin/osascript',['-e',script],{windowsHide:true},(error,stdout,stderr)=>{
+      if(error){
+        const detail=String(stderr||error.message||error);
+        if(/not allowed assistive access|-25211|accessibility/i.test(detail)){
+          return reject(new Error('Free AI needs Accessibility permission in System Settings → Privacy & Security → Accessibility to control macOS apps.'));
+        }
+        return reject(new Error(detail));
+      }
+      resolve(String(stdout||'').trim());
+    });
+  });
+}
+
+function ensureMacAccessibility(){
+  if(process.platform!=='darwin')return true;
+  if(systemPreferences.isTrustedAccessibilityClient(false))return true;
+  systemPreferences.isTrustedAccessibilityClient(true);
+  throw new Error('Free AI needs Accessibility permission in System Settings → Privacy & Security → Accessibility. Enable it, then try again.');
+}
+
+async function clickMacPoint(x,y){
+  ensureMacAccessibility();
+  const px=Math.round(Number(x)||0);
+  const py=Math.round(Number(y)||0);
+  await runAppleScript(`tell application "System Events" to click at {${px}, ${py}}`);
+}
+
+async function pasteMacText(text){
+  ensureMacAccessibility();
+  clipboard.writeText(String(text||''));
+  await runAppleScript('tell application "System Events" to keystroke "v" using command down');
 }
 
 async function startWindowsVoiceTyping(){
@@ -908,16 +943,27 @@ ipcMain.handle('browser:reload',()=>{activeBrowserEntry()?.webContents.reload();
 ipcMain.handle('browser:close',()=>{hideBrowserView();return true});
 
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
-  if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows. Screen preview still works on this platform.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'){
+    throw new Error('Interactive desktop control is available on Windows and macOS. Linux currently supports screen preview and browser actions.');
+  }
   const point=displayPoint(displayId,nx,ny);
-  await clickWindowsPoint(point.x,point.y);
+  if(process.platform==='darwin')await clickMacPoint(point.x,point.y);
+  else await clickWindowsPoint(point.x,point.y);
   return point;
 });
 ipcMain.handle('computer:clickAndType',async(_e,{displayId,nx,ny,text}={})=>{
-  if(process.platform!=='win32')throw new Error('Interactive computer control is currently available on Windows.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'){
+    throw new Error('Interactive desktop control is available on Windows and macOS.');
+  }
   const point=displayPoint(displayId,nx,ny);
-  await clickWindowsPoint(point.x,point.y);
-  await pasteWindowsText(text);
+  if(process.platform==='darwin'){
+    await clickMacPoint(point.x,point.y);
+    await new Promise(resolve=>setTimeout(resolve,120));
+    await pasteMacText(text);
+  }else{
+    await clickWindowsPoint(point.x,point.y);
+    await pasteWindowsText(text);
+  }
   return point;
 });
 
