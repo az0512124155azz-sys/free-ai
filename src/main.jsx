@@ -14,7 +14,7 @@ import {
   File,FileText,Folder,GitBranch,Globe2,HardDrive,HelpCircle,Image,Keyboard,Link2,
   LogOut,Mail,Menu,Mic2,Monitor,MoreHorizontal,MousePointer2,Palette,PanelLeft,Paperclip,PenLine,Pin,Plug,
   Plus,RefreshCw,RotateCcw,Search,Settings,ShieldCheck,SlidersHorizontal,Sparkles,Square,
-  SquarePen,Table2,Target,SquareTerminal,UserRound,Volume2,X
+  SquarePen,Table2,Target,SquareTerminal,Trash2,UserRound,Volume2,X
 } from 'lucide-react';
 import './styles.css';
 
@@ -161,6 +161,58 @@ function attachmentMeta(item){
   return {id:item.id,name:item.name,type:item.type,size:item.size,kind:item.kind};
 }
 
+function safeExportFileName(value){
+  const base=String(value||'Free AI chat').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').replace(/\s+/g,' ').trim().slice(0,90)||'Free AI chat';
+  return base+'.md';
+}
+function chatExportMarkdown(chat){
+  const lines=[
+    '# '+String(chat?.title||'Free AI chat'),
+    '',
+    '- Exported from: Free AI',
+    '- Exported at: '+new Date().toISOString(),
+    '- Mode: '+String(chat?.mode||'chat'),
+    '- Model: '+String(chat?.modelName||chat?.providerId||'Unknown'),
+    ...(chat?.isMasterThread?['- Thread: Master']:chat?.isAgentThread?['- Thread: '+String(chat?.agentRole||'Agent')]:[]),
+    '',
+    '---',
+    ''
+  ];
+  for(const message of Array.isArray(chat?.messages)?chat.messages:[]){
+    const role=message?.role==='user'?'You':message?.role==='error'?'Error':'Assistant';
+    lines.push('## '+role,'',String(message?.text||'').trim()||'_(empty message)_');
+    if(Array.isArray(message?.attachments)&&message.attachments.length){
+      lines.push('','Attachments:');
+      for(const item of message.attachments)lines.push('- '+String(item?.name||'attachment'));
+    }
+    lines.push('');
+  }
+  return lines.join('\n').trim()+'\n';
+}
+
+function ChatContextMenu({chat,onPin,onExport,onDelete}){
+  return <div className="recentContextMenu" role="menu" aria-label={'Chat options for '+chat.title}>
+    <button role="menuitem" onClick={()=>onPin?.(chat.id)}><Pin size={14}/><span>{chat.pinned?'Unpin chat':'Pin chat'}</span></button>
+    <button role="menuitem" onClick={()=>onExport?.(chat)}><Download size={14}/><span>Export chat</span></button>
+    <div className="contextMenuSeparator"/>
+    <button className="dangerMenuItem" role="menuitem" onClick={()=>onDelete?.(chat)}><Trash2 size={14}/><span>Delete chat</span></button>
+  </div>;
+}
+
+function DeleteChatDialog({chat,onClose,onConfirm}){
+  if(!chat)return null;
+  return <div className="projectDialogScrim" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget)onClose?.()}}>
+    <div className="deleteChatDialog" role="dialog" aria-modal="true" aria-labelledby="delete-chat-title">
+      <div className="projectDialogHeader">
+        <div><b id="delete-chat-title">Delete chat?</b><small>This removes “{chat.title}” from Free AI on this device.</small></div>
+        <button type="button" onClick={onClose} aria-label="Close"><X size={17}/></button>
+      </div>
+      <p>This action cannot be undone. It does not delete the original conversations in ChatGPT, Claude, Gemini, or another connected provider.</p>
+      <div className="projectDialogActions"><button type="button" onClick={onClose}>Cancel</button><button className="dangerAction" type="button" onClick={()=>onConfirm?.(chat)}>Delete</button></div>
+    </div>
+  </div>;
+}
+
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
@@ -260,6 +312,7 @@ function App(){
   const [recentsFilter,setRecentsFilter]=useState('all');
   const [recentsFilterOpen,setRecentsFilterOpen]=useState(false);
   const [chatMenuId,setChatMenuId]=useState(null);
+  const [deleteChatTarget,setDeleteChatTarget]=useState(null);
   const [responseMenuIndex,setResponseMenuIndex]=useState(null);
   const [copiedMessageIndex,setCopiedMessageIndex]=useState(null);
   const [projects,setProjects]=useState(()=>readJSON('freeai.projects',[]));
@@ -450,6 +503,7 @@ function App(){
   useEffect(()=>{
     const onKey=e=>{
       if(e.key!=='Escape')return;
+      if(deleteChatTarget){setDeleteChatTarget(null);return}
       if(projectDialogOpen){setProjectDialogOpen(false);return}
       if(profileMenu){setProfileMenu(false);return}
       if(responseMenuIndex!==null){setResponseMenuIndex(null);return}
@@ -477,7 +531,7 @@ function App(){
     window.addEventListener('keydown',onKey);
     document.addEventListener('pointerdown',onPointer);
     return()=>{window.removeEventListener('keydown',onKey);document.removeEventListener('pointerdown',onPointer)};
-  },[projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
+  },[deleteChatTarget,projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,productMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel]);
 
   useEffect(()=>{
     localStorage.setItem('freeai.product',product);
@@ -804,6 +858,38 @@ function App(){
       return next;
     });
     setChatMenuId(null);
+  }
+  async function exportChat(chat){
+    setChatMenuId(null);
+    const content=chatExportMarkdown(chat);
+    const defaultName=safeExportFileName(chat?.title);
+    if(isDesktop&&window.desktopApi?.saveTextFile){
+      try{await window.desktopApi.saveTextFile({defaultName,content});return}catch(error){console.error('Chat export failed',error)}
+    }
+    const blob=new Blob([content],{type:'text/markdown;charset=utf-8'});
+    const href=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=href;a.download=defaultName;document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(href),1500);
+  }
+  function askDeleteChat(chat){
+    setChatMenuId(null);
+    setDeleteChatTarget(chat);
+  }
+  function deleteChat(chat){
+    const id=String(chat?.id||'');
+    if(!id)return;
+    if(activeWorkTaskIdRef.current&&chat?.taskId===activeWorkTaskIdRef.current)stopActiveWorkTask();
+    setChats(prev=>{
+      const next=prev.filter(item=>item.id!==id);
+      localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));
+      return next;
+    });
+    if(currentChatId===id){
+      setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+      if(chat?.isMasterThread||chat?.isAgentThread)setPage('chat');
+    }
+    setDeleteChatTarget(null);
   }
   function selectProduct(nextProduct){
     stopActiveWorkTask();
@@ -1517,9 +1603,8 @@ function App(){
                 aria-expanded={chatMenuId===chat.id}
                 onClick={e=>{e.stopPropagation();setChatMenuId(current=>current===chat.id?null:chat.id)}}
               ><MoreHorizontal size={15}/></button>
-              {chatMenuId===chat.id&&<div className="recentContextMenu" role="menu">
-                <button role="menuitem" onClick={()=>togglePinChat(chat.id)}><Pin size={14}/><span>{chat.pinned?'Unpin chat':'Pin chat'}</span></button>
-              </div>}
+              {chatMenuId===chat.id&&<ChatContextMenu chat={chat} onPin={togglePinChat} onExport={exportChat} onDelete={askDeleteChat}/>}
+
             </div>
           )}
         </>:<>
@@ -1542,7 +1627,14 @@ function App(){
           </button>
           <div className="sidebarGroupTitle">Recents</div>
           {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
-            <button key={chat.id} className={'recentItem '+(currentChatId===chat.id?'active':'')} onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>{chat.title}</button>
+            <div className={'recentRow '+(currentChatId===chat.id?'active':'')} key={chat.id}>
+              <button className="recentItem" onClick={()=>{openChat(chat);setMobileNavOpen(false)}}>
+                {chat.pinned&&<Pin size={11} className="recentPin"/>}
+                <span>{chat.title}</span>
+              </button>
+              <button className="recentMore" aria-label={'More options for '+chat.title} aria-haspopup="menu" aria-expanded={chatMenuId===chat.id} onClick={e=>{e.stopPropagation();setChatMenuId(current=>current===chat.id?null:chat.id)}}><MoreHorizontal size={15}/></button>
+              {chatMenuId===chat.id&&<ChatContextMenu chat={chat} onPin={togglePinChat} onExport={exportChat} onDelete={askDeleteChat}/>}
+            </div>
           )}
         </>}
       </div>
@@ -1724,6 +1816,7 @@ function App(){
       onClose={()=>setSidePanel(null)}
     />}
 
+    {deleteChatTarget&&<DeleteChatDialog chat={deleteChatTarget} onClose={()=>setDeleteChatTarget(null)} onConfirm={deleteChat}/>}
     {projectDialogOpen&&isWindowsDesktop&&<NewProjectDialog draft={projectDraft} setDraft={setProjectDraft} onCreate={createProject} onClose={()=>setProjectDialogOpen(false)}/>}
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
