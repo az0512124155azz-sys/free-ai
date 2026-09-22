@@ -1966,9 +1966,16 @@ async function executeWorkTool(task,decision){
   const action=decision.action||{};
   const type=String(action.type||'').toLowerCase();
   if(decision.tool==='browser_builtin'){
+    const coordinateAction=['click','double_click','move','scroll','type','keypress'].includes(type);
+    const targetTabId=action.tabId||activeBrowserTabId;
+    if(coordinateAction&&(!task.builtInSnapshotTabId||String(task.builtInSnapshotTabId)!==String(targetTabId))){
+      throw new Error('Built-in Browser Use must take a fresh snapshot of the target tab before coordinate or keyboard actions.');
+    }
     if(win&&!win.isDestroyed())win.webContents.send('app-command','open-browser');
     await new Promise(resolve=>setTimeout(resolve,120));
-    return performBuiltInBrowserAction({tabId:action.tabId,action});
+    const result=await performBuiltInBrowserAction({tabId:action.tabId,action});
+    task.builtInSnapshotTabId=result?.tab?.id||null;
+    return result;
   }
   if(decision.tool==='browser_extension'){
     const providerTab=browserProviders.find(item=>item.id===task.provider)?.tabId;
@@ -1996,17 +2003,22 @@ async function executeWorkTool(task,decision){
     },20000);
   }
   if(decision.tool==='computer'){
+    if(type!=='screenshot'&&type!=='wait'&&!task.computerSnapshotReady){
+      throw new Error('Computer Use must take a fresh desktop screenshot before mouse or keyboard actions.');
+    }
     if(win&&!win.isDestroyed())win.webContents.send('app-command','open-computer');
     await new Promise(resolve=>setTimeout(resolve,120));
     const provider=browserProviders.find(item=>item.id===task.provider);
     if(task.source!=='browser'||provider?.fileUpload!==true){
       throw new Error('Computer Use needs a connected browser model with real image/file upload so it can see the desktop screenshot.');
     }
-    return performWindowsComputerAction({
+    const result=await performWindowsComputerAction({
       displayId:action.displayId,
       viewport:action.viewport||{},
       action
     });
+    if(Array.isArray(result?.screens)&&result.screens.length)task.computerSnapshotReady=true;
+    return result;
   }
   throw new Error('Unsupported Work tool.');
 }
@@ -2149,6 +2161,8 @@ function startWorkTask(input={}){
     approval:null,
     stopped:false,
     currentPromptId:null,
+    builtInSnapshotTabId:null,
+    computerSnapshotReady:false,
     finalMessage:'',
     error:'',
     instructions:String(input.instructions||'').slice(0,8000),
