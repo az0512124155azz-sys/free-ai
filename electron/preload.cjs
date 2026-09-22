@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('desktopApi',{
   scanProviders:()=>ipcRenderer.invoke('bridge:scanProviders'),
   sendPrompt:(m)=>ipcRenderer.invoke('bridge:sendPrompt',m),
   cancelPrompt:(id)=>ipcRenderer.invoke('bridge:cancelPrompt',id),
+  startWorkTask:(payload)=>ipcRenderer.invoke('work:start',payload),
+  stopWorkTask:(id)=>ipcRenderer.invoke('work:stop',id),
+  resolveWorkApproval:(payload)=>ipcRenderer.invoke('work:resolveApproval',payload),
   configureRelay:(c)=>ipcRenderer.invoke('bridge:configureRelay',c),
   listApiConnections:()=>ipcRenderer.invoke('api:listConnections'),
   addApiConnection:(c)=>ipcRenderer.invoke('api:addConnection',c),
@@ -54,6 +57,11 @@ contextBridge.exposeInMainWorld('desktopApi',{
     const h=(_e,event)=>cb(event);
     ipcRenderer.on('prompt-stream',h);
     return()=>ipcRenderer.removeListener('prompt-stream',h);
+  },
+  onWorkTask:(cb)=>{
+    const h=(_e,state)=>cb(state);
+    ipcRenderer.on('work-task',h);
+    return()=>ipcRenderer.removeListener('work-task',h);
   },
   onBrowserState:(cb)=>{
     const h=(_e,state)=>cb(state);
