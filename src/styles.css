@@ -97,6 +97,7 @@ body{font-family:inherit;color:var(--text);background:var(--canvas);-webkit-font
 .windowsChromeMenus button:hover,.windowsChromeMenus button:focus-visible{background:var(--hover);color:var(--text)}
 body,button,input,textarea,select{font:inherit}
 button,input,textarea,select{outline:none}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:auto}
 button{border:0;color:inherit}
 button:not(:disabled){cursor:pointer}
 button:disabled{opacity:.42;cursor:default}
@@ -162,7 +163,8 @@ button:disabled{opacity:.42;cursor:default}
   border-radius:18px;box-shadow:var(--shadow-lg);animation:popoverIn 140ms var(--ease)
 }
 .productMenu button{width:100%;display:grid;grid-template-columns:26px minmax(0,1fr) 18px;gap:10px;align-items:center;background:transparent;border-radius:12px;padding:10px;text-align:left;color:var(--text-secondary)}
-.productMenu button:hover,.productMenu button.active{background:var(--hover);color:var(--text)}
+.productMenu button:hover{background:var(--hover);color:var(--text)}
+.productMenu button.active,.productMenu button[aria-checked="true"]{background:var(--selected);color:var(--text)}
 .productMenu button>span{display:flex;min-width:0;flex-direction:column}
 .productMenu button b{font-size:13px;font-weight:620}.productMenu button small{font-size:10.5px;color:var(--muted);line-height:1.35;margin-top:2px}
 .brandActions{display:flex;gap:2px}
@@ -200,7 +202,8 @@ button:disabled{opacity:.42;cursor:default}
 .recentsFilterButton:hover,.recentsFilterButton.active{background:var(--hover);color:var(--text)}
 .recentsFilterMenu{position:absolute;z-index:145;right:0;top:30px;width:128px;padding:5px;background:var(--popover);border:1px solid var(--border);border-radius:11px;box-shadow:var(--shadow-lg)}
 .recentsFilterMenu button{width:100%;height:31px;padding:0 8px;display:grid;grid-template-columns:minmax(0,1fr) 18px;align-items:center;background:transparent;border-radius:7px;color:var(--text-secondary);text-align:left;font-size:11.5px}
-.recentsFilterMenu button:hover,.recentsFilterMenu button.active{background:var(--hover);color:var(--text)}
+.recentsFilterMenu button:hover{background:var(--hover);color:var(--text)}
+.recentsFilterMenu button.active,.recentsFilterMenu button[aria-checked="true"]{background:var(--selected);color:var(--text)}
 .projectItem,.recentItem{width:100%;border-radius:var(--r-lg);background:transparent;color:var(--text-secondary);text-align:left}
 .projectItem{height:32px;display:flex;align-items:center;gap:8px;padding:0 7px;font-size:12.5px}.projectItem>span:last-child{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.projectItem.active{background:var(--selected);color:var(--text)}
 .newProjectItem{width:100%;height:32px;display:flex;align-items:center;gap:8px;padding:0 7px;background:transparent;border-radius:var(--r-lg);color:var(--text-secondary);font-size:12.5px;text-align:left}
@@ -325,7 +328,8 @@ button:disabled{opacity:.42;cursor:default}
 .permissionAnchor .floatingMenu{left:0;right:auto;transform-origin:bottom left}
 .permissionPicker{bottom:40px;width:330px}
 .permissionRow{width:100%;display:grid;grid-template-columns:24px minmax(0,1fr) 18px;gap:9px;align-items:center;background:transparent;border-radius:11px;padding:9px;text-align:left;color:var(--text-secondary)}
-.permissionRow:hover,.permissionRow.active{background:var(--hover);color:var(--text)}
+.permissionRow:hover{background:var(--hover);color:var(--text)}
+.permissionRow.active{background:var(--selected);color:var(--text)}
 .permissionRow.disabled{opacity:.42;cursor:not-allowed}.permissionRow.disabled:hover{background:transparent;color:var(--text-secondary)}
 .permissionRow>span{display:flex;min-width:0;flex-direction:column}.permissionRow b{font-size:12px;font-weight:600}.permissionRow small{font-size:10px;color:var(--muted);line-height:1.35;margin-top:2px}
 .workActions{
@@ -362,6 +366,7 @@ button:disabled{opacity:.42;cursor:default}
   width:100%;display:flex;align-items:center;gap:10px;background:transparent;border-radius:var(--r-xl);padding:8px 9px;text-align:left;color:var(--text-secondary)
 }
 .pickerRow:hover,.menuRow:hover{background:var(--hover);color:var(--text)}
+.pickerRow[aria-selected="true"]{background:var(--selected);color:var(--text)}
 .pickerText,.menuRow span{min-width:0;display:flex;flex-direction:column;flex:1}
 .pickerText b,.menuRow b{font-size:12.5px;font-weight:570;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .pickerText small,.menuRow small{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
