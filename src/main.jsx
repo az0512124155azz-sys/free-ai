@@ -823,7 +823,7 @@ function BrowserPane({onClose}){
       setState(next);
       if(next.url)setUrl(next.url);
     });
-    return()=>{off?.();window.desktopApi.browserClose?.().catch(()=>{})};
+    return()=>{off?.();window.desktopApi.browserHide?.().catch(()=>{})};
   },[]);
 
   useEffect(()=>{
