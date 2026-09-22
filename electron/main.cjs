@@ -16,6 +16,7 @@ const activePrompts=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
 const browserTabs=new Map();
+const browserErrors=new Map();
 let activeBrowserTabId=null;
 let browserBounds=null;
 let browserAttached=false;
@@ -101,7 +102,8 @@ function browserTabMeta(id,view){
     id,
     url:wc.getURL()||'',
     title:wc.getTitle()||'New tab',
-    loading:wc.isLoading()
+    loading:wc.isLoading(),
+    error:browserErrors.get(id)||null
   };
 }
 
@@ -109,7 +111,7 @@ function browserSnapshot(){
   const entry=activeBrowserEntry();
   const tabs=[...browserTabs.entries()].map(([id,view])=>browserTabMeta(id,view));
   if(!entry){
-    return {url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[]};
+    return {url:'',title:'New tab',loading:false,canGoBack:false,canGoForward:false,tabs,activeTabId:null,downloads:browserDownloads,siteTools:[],error:null};
   }
   const wc=entry.webContents;
   return {
@@ -121,7 +123,8 @@ function browserSnapshot(){
     tabs,
     activeTabId:activeBrowserTabId,
     downloads:browserDownloads,
-    siteTools:browserSiteTools.get(activeBrowserTabId)||[]
+    siteTools:browserSiteTools.get(activeBrowserTabId)||[],
+    error:browserErrors.get(activeBrowserTabId)||null
   };
 }
 
@@ -335,23 +338,54 @@ function createBrowserTab(input='https://www.google.com/',activate=true){
     }
   });
   browserTabs.set(id,view);
+  browserErrors.delete(id);
   const wc=view.webContents;
   hookBrowserDownloads(wc);
   wc.setWindowOpenHandler(({url})=>{
     createBrowserTab(url,true);
     return {action:'deny'};
   });
-  for(const eventName of ['did-start-loading','did-navigate','did-navigate-in-page','page-title-updated']){
+  wc.on('did-start-loading',()=>{browserErrors.delete(id);emitBrowserState()});
+  for(const eventName of ['did-navigate','did-navigate-in-page','page-title-updated']){
     wc.on(eventName,()=>emitBrowserState());
   }
+  wc.on('did-fail-load',(_event,errorCode,errorDescription,validatedURL,isMainFrame)=>{
+    if(process.platform!=='win32'||isMainFrame===false||Number(errorCode)===-3)return;
+    browserErrors.set(id,{
+      type:'load',
+      code:Number(errorCode)||0,
+      description:String(errorDescription||'This page could not be loaded.'),
+      url:String(validatedURL||wc.getURL()||'')
+    });
+    browserSiteTools.set(id,[]);
+    emitBrowserState();
+  });
   wc.on('did-stop-loading',()=>{
     emitBrowserState();
-    refreshBrowserSiteTools(id);
-    setTimeout(()=>refreshBrowserSiteTools(id),1200);
+    if(!browserErrors.has(id)){
+      refreshBrowserSiteTools(id);
+      setTimeout(()=>refreshBrowserSiteTools(id),1200);
+    }
   });
-  wc.on('render-process-gone',()=>{browserSiteTools.set(id,[]);emitBrowserState()});
+  wc.on('render-process-gone',(_event,details)=>{
+    browserSiteTools.set(id,[]);
+    if(process.platform==='win32')browserErrors.set(id,{
+      type:'crash',
+      description:'The page process stopped unexpectedly.',
+      reason:String(details?.reason||'crashed'),
+      url:String(wc.getURL()||'')
+    });
+    emitBrowserState();
+  });
   if(activate)activateBrowserTab(id);
-  wc.loadURL(normalizeBrowserUrl(input)).catch(()=>emitBrowserState());
+  wc.loadURL(normalizeBrowserUrl(input)).catch(error=>{
+    if(process.platform==='win32')browserErrors.set(id,{
+      type:'load',
+      description:String(error?.message||'This page could not be loaded.'),
+      url:String(wc.getURL()||normalizeBrowserUrl(input))
+    });
+    emitBrowserState();
+  });
   emitBrowserState();
   return {id,view};
 }
@@ -404,6 +438,7 @@ function closeBrowserTab(id){
   try{view.webContents.close()}catch{}
   browserTabs.delete(id);
   browserSiteTools.delete(id);
+  browserErrors.delete(id);
   if(activeBrowserTabId===id){
     activeBrowserTabId=null;
     const nextId=ids[index+1]||ids[index-1]||[...browserTabs.keys()][0]||null;
@@ -1039,7 +1074,15 @@ ipcMain.handle('browser:executeSiteTool',async(_e,{tabId,name,input}={})=>{
 });
 ipcMain.handle('browser:navigate',async(_e,input)=>{
   const view=ensureBrowserView();
-  await view.webContents.loadURL(normalizeBrowserUrl(input));
+  try{
+    await view.webContents.loadURL(normalizeBrowserUrl(input));
+  }catch(error){
+    if(process.platform==='win32'&&activeBrowserTabId)browserErrors.set(activeBrowserTabId,{
+      type:'load',
+      description:String(error?.message||'This page could not be loaded.'),
+      url:normalizeBrowserUrl(input)
+    });
+  }
   emitBrowserState();
   return browserSnapshot();
 });

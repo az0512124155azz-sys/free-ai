@@ -670,6 +670,7 @@ function App(){
       }catch(e){console.error('Free AI mobile browser failed',e)}
       return;
     }
+    if(isWindowsDesktop&&product==='free'&&mode!=='work')selectExperience('work');
     setSidePanel('browser');
   }
 
@@ -1415,7 +1416,7 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
 
 function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
-  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[]});
+  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[],error:null});
   const [siteToolsOpen,setSiteToolsOpen]=useState(false);
   const [selectedSiteTool,setSelectedSiteTool]=useState(null);
   const [siteToolInput,setSiteToolInput]=useState('{}');
@@ -1452,7 +1453,13 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
     return()=>{ro.disconnect();window.removeEventListener('resize',sync)};
   },[]);
 
-  function navigate(){window.desktopApi?.browserNavigate(url).catch(()=>{})}
+  async function navigate(){
+    try{
+      const next=await window.desktopApi?.browserNavigate(url);
+      if(next){setState(next);if(next.url)setUrl(next.url)}
+    }catch{}
+  }
+  function retryPage(){window.desktopApi?.browserReload?.()}
   function chooseTab(id){
     window.desktopApi?.browserCancelAnnotation?.().catch(()=>{});
     setAnnotating(false);setAnnotation(null);setAnnotationNote('');
@@ -1536,6 +1543,11 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       <button className={annotating?'active':''} onClick={annotating?cancelAnnotation:startAnnotation} title={annotating?'Cancel annotation':'Annotate page'}><PenLine size={15}/></button>
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
+
+    {isWindowsDesktop&&state.error&&<div className="siteToolsHeader browserErrorBar" role="alert">
+      <span><b>{state.error.type==='crash'?'Page stopped':'Page unavailable'}</b><small>{state.error.description||'This page could not be loaded.'}</small></span>
+      <button onClick={retryPage}><RefreshCw size={14}/>Retry</button>
+    </div>}
 
     {siteToolsOpen&&<div className="siteToolsPanel">
       <div className="siteToolsHeader">
