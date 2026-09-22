@@ -789,13 +789,18 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
 
 function BrowserPane({onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
-  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false});
+  const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,activeTabId:null,tabs:[]});
   const surfaceRef=useRef(null);
+
   useEffect(()=>{
     if(!isDesktop)return;
-    const off=window.desktopApi.onBrowserState?.(s=>{setState(s);if(s.url)setUrl(s.url)});
+    const off=window.desktopApi.onBrowserState?.(next=>{
+      setState(next);
+      if(next.url)setUrl(next.url);
+    });
     return()=>{off?.();window.desktopApi.browserClose?.().catch(()=>{})};
   },[]);
+
   useEffect(()=>{
     if(!isDesktop||!surfaceRef.current)return;
     const el=surfaceRef.current;
@@ -803,22 +808,66 @@ function BrowserPane({onClose}){
       const r=el.getBoundingClientRect();
       window.desktopApi.browserSetBounds({x:r.x,y:r.y,width:r.width,height:r.height}).catch(()=>{});
     };
-    const ro=new ResizeObserver(sync);ro.observe(el);window.addEventListener('resize',sync);sync();
+    const ro=new ResizeObserver(sync);
+    ro.observe(el);
+    window.addEventListener('resize',sync);
+    sync();
     const r=el.getBoundingClientRect();
-    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).catch(()=>{});
+    window.desktopApi.browserOpen({url,bounds:{x:r.x,y:r.y,width:r.width,height:r.height}}).then(next=>{
+      if(next){setState(next);if(next.url)setUrl(next.url)}
+    }).catch(()=>{});
     return()=>{ro.disconnect();window.removeEventListener('resize',sync)};
   },[]);
-  function navigate(){if(isDesktop)window.desktopApi.browserNavigate(url).catch(()=>{})}
+
+  async function navigate(){
+    if(!isDesktop)return;
+    const next=await window.desktopApi.browserNavigate(url).catch(()=>null);
+    if(next){setState(next);if(next.url)setUrl(next.url)}
+  }
+
+  async function newTab(){
+    if(!isDesktop)return;
+    const next=await window.desktopApi.browserNewTab('https://www.google.com/').catch(()=>null);
+    if(next){setState(next);setUrl(next.url||'https://www.google.com/')}
+  }
+
+  async function switchTab(id){
+    const next=await window.desktopApi.browserSwitchTab(id).catch(()=>null);
+    if(next){setState(next);setUrl(next.url||'')}
+  }
+
+  async function closeTab(e,id){
+    e.stopPropagation();
+    let next=await window.desktopApi.browserCloseTab(id).catch(()=>null);
+    if(next?.tabs?.length===0)next=await window.desktopApi.browserNewTab('https://www.google.com/').catch(()=>next);
+    if(next){setState(next);setUrl(next.url||'https://www.google.com/')}
+  }
+
   return <aside className="sidePane browserPane">
-    <div className="paneTabs"><div className="browserTab"><Globe2 size={14}/><span>{state.title||'New tab'}</span><X size={13}/></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="browserTabsBar">
+      <div className="browserTabsScroller">
+        {(state.tabs||[]).map(tab=><button
+          key={tab.id}
+          className={'browserTopTab '+(tab.id===state.activeTabId?'active':'')}
+          onClick={()=>switchTab(tab.id)}
+          title={tab.title||tab.url||'New tab'}
+        >
+          <Globe2 size={13}/>
+          <span>{tab.title||'New tab'}</span>
+          <span className="browserTabClose" role="button" tabIndex={0} onClick={e=>closeTab(e,tab.id)}><X size={12}/></span>
+        </button>)}
+        <button className="browserNewTab" onClick={newTab} aria-label="New browser tab"><Plus size={15}/></button>
+      </div>
+      <button className="browserPaneClose" onClick={onClose} aria-label="Close browser"><X size={16}/></button>
+    </div>
     <div className="browserToolbar">
       <button disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
       <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
-      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)}><ExternalLink size={15}/></button>
+      <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in default browser"><ExternalLink size={15}/></button>
     </div>
-    <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
+    <div className="nativeBrowserSurface" ref={surfaceRef}/>
   </aside>
 }
 
