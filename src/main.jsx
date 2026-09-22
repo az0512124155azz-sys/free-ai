@@ -82,6 +82,30 @@ function ProjectMark({project,size=16}){
   return <span className="projectMark" data-color={project?.color||'blue'} style={{'--project-mark-size':size+'px'}} aria-hidden="true"><Icon size={Math.max(12,size-3)}/></span>;
 }
 
+function DesktopProductSwitcher({product,open,setOpen,onSelect,compact=false}){
+  const current=product==='super'?'Super AI':'Free AI';
+  return <div className={'productSwitcher '+(compact?'headerProductSwitcher':'')}>
+    <button
+      className="brandButton"
+      title="Switch product"
+      aria-label={'Switch product. Current: '+current}
+      aria-haspopup="menu"
+      aria-expanded={open}
+      onClick={()=>setOpen(v=>!v)}
+    >
+      <BrandMark size={compact?18:20} className={product==='super'?'superMark':''}/><b>{current}</b><ChevronDown size={14}/>
+    </button>
+    {open&&<div className="productMenu" role="menu" aria-label="Product">
+      <button role="menuitemradio" aria-checked={product==='free'} className={product==='free'?'active':''} onClick={()=>onSelect('free')}>
+        <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
+      </button>
+      <button role="menuitemradio" aria-checked={product==='super'} className={product==='super'?'active':''} onClick={()=>onSelect('super')}>
+        <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Coding and computer workspace</small></span>{product==='super'&&<Check size={16}/>}
+      </button>
+    </div>}
+  </div>;
+}
+
 function WindowsChrome(){
   const menus=['File','Edit','View','Help'];
   return <div className="windowsChrome" role="menubar" aria-label="Application menu">
@@ -365,6 +389,18 @@ function App(){
     });
     setChatMenuId(null);
   }
+  function selectProduct(nextProduct){
+    setProductMenu(false);
+    if(nextProduct===product)return;
+    setProduct(nextProduct);
+    setMode(nextProduct==='super'?'work':'chat');
+  }
+  function selectExperience(nextMode){
+    if(product!=='free'||nextMode===mode)return;
+    const hasThread=!!currentChatId||messages.length>0;
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setPage('chat');
+    if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
+  }
   function newChat(){
     setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
@@ -508,19 +544,21 @@ function App(){
 
     {(sidebarOpen||mobileNavOpen)&&<aside className={'gptSidebar '+(mobileNavOpen?'mobileOpen':'')}>
       <div className="brandRow">
-        <div className="productSwitcher">
-          <button className="brandButton" title={isNative?'Free AI':'Switch product'} aria-haspopup={!isNative?'menu':undefined} aria-expanded={!isNative?productMenu:undefined} onClick={()=>!isNative&&setProductMenu(v=>!v)}>
-            <BrandMark size={20}/><b>{isNative?'Free AI':product==='super'?'Super AI':'Free AI'}</b>{!isNative&&<ChevronDown size={14}/>}
-          </button>
-          {!isNative&&productMenu&&<div className="productMenu" role="menu">
-            <button className={product==='free'?'active':''} onClick={()=>{setProduct('free');setProductMenu(false);setMode('chat')}}>
-              <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
-            </button>
-            <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
-              <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Local coding, repositories and computer tasks</small></span>{product==='super'&&<Check size={16}/>}
-            </button>
-          </div>}
-        </div>
+        {isWindowsDesktop
+          ? <DesktopProductSwitcher product={product} open={productMenu} setOpen={setProductMenu} onSelect={selectProduct}/>
+          : <div className="productSwitcher">
+              <button className="brandButton" title={isNative?'Free AI':'Switch product'} aria-haspopup={!isNative?'menu':undefined} aria-expanded={!isNative?productMenu:undefined} onClick={()=>!isNative&&setProductMenu(v=>!v)}>
+                <BrandMark size={20}/><b>{isNative?'Free AI':product==='super'?'Super AI':'Free AI'}</b>{!isNative&&<ChevronDown size={14}/>}
+              </button>
+              {!isNative&&productMenu&&<div className="productMenu" role="menu">
+                <button className={product==='free'?'active':''} onClick={()=>{setProduct('free');setProductMenu(false);setMode('chat')}}>
+                  <BrandMark size={20}/><span><b>Free AI</b><small>Chat and Work with connected models</small></span>{product==='free'&&<Check size={16}/>}
+                </button>
+                <button className={product==='super'?'active':''} onClick={()=>{setProduct('super');setProductMenu(false);setMode('work')}}>
+                  <BrandMark size={20} className="superMark"/><span><b>Super AI</b><small>Local coding, repositories and computer tasks</small></span>{product==='super'&&<Check size={16}/>}
+                </button>
+              </div>}
+            </div>}
         <div className="brandActions">
           <button title="Search chats" aria-label="Search chats" onClick={()=>setSidebarSearchOpen(v=>!v)}><Search size={16}/></button>
           <button className="mobileCloseNav" title="Close navigation" onClick={()=>setMobileNavOpen(false)}><X size={17}/></button>
@@ -624,11 +662,12 @@ function App(){
         <div className="headerLeft">
           <button className="headerIcon mobileNavTrigger" onClick={()=>setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={18}/></button>
           {!sidebarOpen&&<button className="headerIcon desktopSidebarTrigger" onClick={()=>setSidebarOpen(true)} aria-label="Open sidebar"><PanelLeft size={18}/></button>}
+          {isWindowsDesktop&&!sidebarOpen&&<DesktopProductSwitcher compact product={product} open={productMenu} setOpen={setProductMenu} onSelect={selectProduct}/>}
         </div>
-        {product==='free'?<div className="modeSwitch" role="tablist" aria-label="Experience">
-          <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>setMode('chat')}>Chat</button>
-          <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>setMode('work')}>Work</button>
-        </div>:<div className="superHeaderLabel"><BrandMark size={16}/><span>Super AI</span></div>}
+        {product==='free'?<div className={'modeSwitch '+(isWindowsDesktop?'windowsModeSwitch':'')} role="tablist" aria-label="Chat or Work">
+          <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>isWindowsDesktop?selectExperience('chat'):setMode('chat')}>Chat</button>
+          <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>isWindowsDesktop?selectExperience('work'):setMode('work')}>Work</button>
+        </div>:(!isWindowsDesktop&&<div className="superHeaderLabel"><BrandMark size={16}/><span>Super AI</span></div>)}
         <div className="mobileModeAnchor">
           <button className="mobileModeButton" aria-haspopup={product==='free'?'menu':undefined} aria-expanded={product==='free'?mobileModeMenu:undefined} onClick={()=>product==='free'&&setMobileModeMenu(v=>!v)}>
             <span>{product==='super'?(isNative?'Remote':'Super AI'):mode==='work'?'Free AI · Work':'Free AI · Chat'}</span>{product==='free'&&<ChevronDown size={14}/>}
