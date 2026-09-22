@@ -608,6 +608,7 @@ function App(){
           approvalMode:appPrefs.approvalMode||'ask',
           modelFileUpload:canUploadFiles,
           attachments:outboundAttachments,
+          browserPreference:sidePanel==='browser'?'built-in':(status.browserExtension?.connected?'extension':'built-in'),
           maxSteps:12
         });
         delegatedWork=true;
