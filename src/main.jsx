@@ -1167,6 +1167,7 @@ function App(){
           effort:routedEffort,
           attachments:outboundAttachments,
           mode,product,approvalMode:'ask',
+          nativeTool:webSearchEnabled?'search':null,
           toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
         });
       }));
@@ -1174,7 +1175,7 @@ function App(){
       const responses=settled.map((result,index)=>{
         const model=targets[index];
         const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
-        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),...meta};
+        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,...meta};
         return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
       });
       const next=[...withUser,...responses];
@@ -1195,6 +1196,11 @@ function App(){
     );
     if((!userText&&!hasAttachmentIntent)||busy)return;
     if(!model){setModelMenu(true);return}
+    const nativeSearch=isWindowsDesktop&&mode==='chat'&&webSearchEnabled;
+    if(nativeSearch&&model.source!=='browser'){
+      setAttachmentError('Web Search currently requires a connected browser AI with its live Search tool available.');
+      return;
+    }
     const activeAttachments=isWindowsDesktop&&!retryContext?attachments:[];
     const retryAttachmentContext=String(retryContext?.attachmentContext||'');
     const retryAttachmentMeta=Array.isArray(retryContext?.attachments)?retryContext.attachments:[];
@@ -1224,7 +1230,7 @@ function App(){
     streamedTextRef.current='';
     cancelledRequestRef.current=null;
     activeRequestRef.current=requestId;
-    const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true}]:withUser;
+    const initial=requestId?[...withUser,{role:'assistant',text:'',provider:model.id,requestId,streaming:true,activity:nativeSearch?'Searching the web…':''}]:withUser;
     const currentChatMeta=chats.find(chat=>chat.id===currentChatId)||null;
     const directAgentMeta=currentChatMeta?.isAgentThread
       ? {isAgentThread:true,parentChatId:currentChatMeta.parentChatId,agentId:currentChatMeta.agentId,agentRole:currentChatMeta.agentRole,taskId:currentChatMeta.taskId,detachedFromTask:true}
@@ -1259,11 +1265,13 @@ function App(){
         requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
         attachments:outboundAttachments,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
+        nativeTool:nativeSearch?'search':null,
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
       const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
       const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
-      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id}];
+      const resultSources=Array.isArray(result?.sources)?result.sources.filter(item=>item?.url).slice(0,12).map(item=>({title:String(item.title||''),url:String(item.url||''),domain:String(item.domain||'')})):[];
+      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,sources:resultSources}];
       setMessages(next);saveCurrentChat(next,model);
       if(isWindowsDesktop&&!retryContext){
         for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
@@ -1327,6 +1335,11 @@ function App(){
     });
   }
   function retryFrom(index){regenerateFrom(index)}
+  async function openWebSource(url){
+    const value=String(url||'');
+    if(!/^https:\/\//i.test(value))return;
+    try{await window.desktopApi?.openExternal?.(value)}catch{}
+  }
   async function copyMessage(text,index){
     try{
       await navigator.clipboard.writeText(String(text||''));
@@ -1721,7 +1734,7 @@ function App(){
                 modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                 parallelCount={parallelCount} setParallelCount={setParallelCount}
                 effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
-                plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
+                plusMenu={plusMenu} setPlusMenu={setPlusMenu} webSearchEnabled={webSearchEnabled} onToggleWebSearch={toggleWebSearch} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                 mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                 product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                 spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
@@ -1746,7 +1759,8 @@ function App(){
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
-                    <div className="messageBody">{m.streaming&&!m.text?<RefreshCw className="spin" size={16}/>:m.text}</div>
+                    <div className="messageBody">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
+                    {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<MessageSources sources={m.sources} onOpen={openWebSource}/>} 
                     {isWindowsDesktop&&m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
                       {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
                     </div>}
@@ -1774,7 +1788,7 @@ function App(){
                   modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                   parallelCount={parallelCount} setParallelCount={setParallelCount}
                   effort={effort} setEffort={setEffort} effortMenu={effortMenu} setEffortMenu={setEffortMenu}
-                  plusMenu={plusMenu} setPlusMenu={setPlusMenu} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
+                  plusMenu={plusMenu} setPlusMenu={setPlusMenu} webSearchEnabled={webSearchEnabled} onToggleWebSearch={toggleWebSearch} fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef}
                   mcpTools={mcpTools} selectedTool={selectedTool} setSelectedTool={setSelectedTool}
                   product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                   spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
