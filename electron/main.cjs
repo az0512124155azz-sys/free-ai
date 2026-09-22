@@ -1158,6 +1158,9 @@ async function repositoryRead(inputRoot,relativePath,startLine=1,endLine=null){
     end=Math.max(start,end-Math.max(1,Math.ceil((end-start+1)/8)));
     selected=lines.slice(start-1,end);
   }
+  if(selected.join('\n').length>18000){
+    throw new Error('A repository line exceeds the bounded text observation limit. Split or reformat the file manually before agent editing.');
+  }
   return {
     path:target.relative,
     size:stat.size,
