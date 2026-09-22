@@ -485,6 +485,7 @@ function App(){
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='computer'&&<ComputerPane
       screens={screens} setScreens={setScreens} approvalMode={appPrefs.approvalMode||'ask'}
+      permissionOptions={{auto:!!appPrefs.autoReviewEnabled,full:!!appPrefs.fullAccessEnabled}}
       setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
       onClose={()=>setSidePanel(null)}
     />}
@@ -888,7 +889,7 @@ function FilePane({file,onClose}){
   </aside>
 }
 
-function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose}){
+function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setApprovalMode,onClose}){
   const [loading,setLoading]=useState(false);
   const [lastPoint,setLastPoint]=useState(null);
   const [typeText,setTypeText]=useState('');
@@ -931,8 +932,8 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
       <div><b>Computer use</b><small>{label}</small></div>
       <select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
         <option value="ask">Ask for approval</option>
-        <option value="auto">Approve for me</option>
-        <option value="full">Full access</option>
+        <option value="auto" disabled={!permissionOptions.auto}>Approve for me</option>
+        <option value="full" disabled={!permissionOptions.full}>Full access</option>
       </select>
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
     </div>
@@ -996,9 +997,9 @@ function GeneralSettings({prefs,setPrefs}){
     <h3>Permissions</h3>
     <div className="settingBlock">
       {!isNative&&<>
-        <SettingRow title="Default permissions" desc="Free AI can read and edit files in the current workspace. Additional access asks for approval." control={<Toggle value={true} onChange={()=>{}}/>}/>
-        <SettingRow title="Auto-review" desc="Makes “Approve for me” available. The workspace boundary stays the same; additional-access requests are automatically reviewed." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
-        <SettingRow title="Full access" desc="Makes Full access available. It can edit files outside the workspace and use the network without repeated approval prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
+        <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
+        <SettingRow title="Auto-review" desc="Makes “Approve for me” available. Simple pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
+        <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
       </>}
     </div>
     {!isNative&&<><h3>General</h3>
