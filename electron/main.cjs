@@ -1910,7 +1910,7 @@ function workModelPrompt(task,observation){
     ? task.history.map(item=>String(item.role||'user')+': '+String(item.text||'')).join('\n')
     : 'No prior conversation context.';
   const experience=task.product==='super'
-    ? 'You are controlling a Super AI agent task. Super AI is the agent workspace in Free AI: use the available browser and computer tools to complete the user task end-to-end, but do not claim repository, terminal, Git, plugin, or MCP capabilities unless they are actually exposed as tools in this task.'
+    ? 'You are controlling a Super AI agent task. Choose exactly ONE next step. Super AI is the agent workspace in Free AI: use the available browser and computer tools to complete the user task end-to-end, but do not claim repository, terminal, Git, plugin, or MCP capabilities unless they are actually exposed as tools in this task.'
     : 'You are controlling a Free AI Work task. Choose exactly ONE next step.';
   return [
     experience,
