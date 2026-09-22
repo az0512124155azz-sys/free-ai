@@ -205,6 +205,17 @@ button:disabled{opacity:.42;cursor:default}
 .projectItem{height:32px;display:flex;align-items:center;gap:8px;padding:0 7px;font-size:12.5px}
 .recentItem{display:block;padding:7px 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12.5px;line-height:18px}
 .projectItem:hover,.recentItem:hover{background:var(--hover)}
+.recentRow{position:relative;display:grid;grid-template-columns:minmax(0,1fr) 28px;align-items:center;border-radius:var(--r-lg)}
+.recentRow:hover,.recentRow.active{background:var(--hover)}
+.recentRow.active{background:var(--selected)}
+.recentRow .recentItem{min-width:0;background:transparent!important}
+.recentItem small{display:block;font-size:9px;color:var(--muted);line-height:12px;margin-top:1px}
+.recentMore{width:27px;height:27px;border-radius:7px;background:transparent;color:var(--muted);display:grid;place-items:center;opacity:0}
+.recentRow:hover .recentMore,.recentMore:focus-visible{opacity:1}
+.recentMore:hover{background:var(--surface-tertiary);color:var(--text)}
+.recentMenu{position:absolute;right:2px;top:30px;z-index:90;width:142px;background:var(--popover);border:1px solid var(--border);border-radius:10px;padding:5px;box-shadow:var(--shadow-lg)}
+.recentMenu button{width:100%;height:31px;border-radius:7px;background:transparent;color:var(--text-secondary);display:flex;align-items:center;gap:8px;padding:0 8px;font-size:11px;text-align:left}
+.recentMenu button:hover{background:var(--hover);color:var(--text)}
 .recentItem.active{background:var(--selected);color:var(--text)}
 .sidebarEmpty{font-size:11px;color:var(--muted);padding:8px 7px}
 .sidebarFooter{
@@ -501,6 +512,11 @@ button:disabled{opacity:.42;cursor:default}
 .confirmInline{display:flex;gap:6px}.confirmInline button{border-radius:8px;padding:6px 9px;font-size:10px;background:var(--surface-secondary);color:var(--text-secondary)}
 .confirmInline .dangerAction{background:rgba(160,45,45,.26);border:1px solid rgba(255,100,100,.22);color:#ffb3b3}.dangerText{color:#ffaaa9}
 .settingsStatus{margin-top:10px;color:var(--muted);font-size:10.5px}
+.archivedChatRow{min-height:45px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 13px;border-bottom:1px solid var(--border-soft)}
+.archivedChatRow>span{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:11px;color:var(--text-secondary)}
+.archivedChatRow>div{display:flex;gap:5px}
+.archivedChatRow button{height:27px;border-radius:7px;background:var(--surface-secondary);border:1px solid var(--border-soft);padding:0 8px;color:var(--text-secondary);font-size:9.5px}
+.archivedChatRow button:hover{background:var(--surface-tertiary);color:var(--text)}
 .toggle{width:31px;height:19px;border-radius:999px;background:var(--surface-tertiary);padding:2px}.toggle span{width:15px;height:15px;border-radius:50%;display:block;background:var(--text-tertiary);transition:transform 180ms var(--ease),background 180ms var(--ease)}
 .toggle.on{background:var(--accent)}.toggle.on span{transform:translateX(12px);background:#fff}
 .valuePill,.connectionStatus{background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:999px;padding:5px 9px;font-size:10px;color:var(--text-secondary)}
