@@ -1247,9 +1247,12 @@ async function canonicalLocalFolderRoot(input){
 
 function sensitiveLocalFile(relativePath){
   const normalized=String(relativePath||'').replace(/\\/g,'/').toLowerCase();
+  const parts=normalized.split('/').filter(Boolean);
   const base=path.posix.basename(normalized);
-  if(normalized.split('/').includes('.git'))return true;
-  if(['.env','.env.local','.env.production','.env.development','.npmrc','.pypirc','.netrc','credentials','credentials.json'].includes(base))return true;
+  const blockedDirs=new Set(['.git','.ssh','.aws','.azure','.kube','.gnupg']);
+  if(parts.some(part=>blockedDirs.has(part)))return true;
+  if(/^\.env(?:\.|$)/.test(base))return true;
+  if(['.npmrc','.pypirc','.netrc','credentials','credentials.json','secrets.json','secrets.yml','secrets.yaml'].includes(base))return true;
   if(/^id_(rsa|dsa|ecdsa|ed25519)(\.pub)?$/.test(base))return true;
   if(/\.(pem|p12|pfx|key)$/i.test(base))return true;
   return false;
@@ -2462,7 +2465,7 @@ function workActionIsReadOnly(tool,type){
   if(tool==='browser_builtin')return type==='snapshot'||type==='wait';
   if(tool==='browser_extension')return type==='snapshot'||type==='list_tabs';
   if(tool==='repository')return ['status','list','read','diff'].includes(type);
-  if(tool==='files')return ['list','stat','read','attach'].includes(type);
+  if(tool==='files')return ['list','stat','read'].includes(type);
   return false;
 }
 
@@ -2471,7 +2474,7 @@ function workActionIsSensitive(tool,type){
   if(tool==='browser_builtin')return ['click','double_click','type','keypress','close_tab'].includes(type);
   if(tool==='browser_extension')return ['click','type','select','close_tab'].includes(type);
   if(tool==='repository')return type==='write';
-  if(tool==='files')return type==='write';
+  if(tool==='files')return type==='write'||type==='attach';
   return true;
 }
 
@@ -2521,7 +2524,7 @@ function workApprovalFor(task,decision){
   }else if(tool==='files'&&task.localFolder?.root&&!task.approvedScopes.has('files:'+task.localFolder.root)){
     scope='files:'+task.localFolder.root;
     scopeTitle='Allow local folder access for this task?';
-    scopeDetail='Free AI will list and read files inside the selected local folder "'+task.localFolder.name+'" for this task and may send a file you explicitly opened through the Files tool to the selected AI model. Writes are approved separately. Credential and private-key files remain blocked.';
+    scopeDetail='Free AI will list and read files inside the selected local folder "'+task.localFolder.name+'" for this task. Sending a complete file to the selected AI model and writing files are approved separately. Credential and private-key paths remain blocked.';
   }
 
   const resolvedMcp=tool==='mcp'&&type!=='list'?workMcpTool(task,action):null;
@@ -2552,6 +2555,9 @@ function workApprovalFor(task,decision){
     : '';
   const fileTarget=tool==='files'
     ? 'Local folder: '+String(task.localFolder?.name||'selected folder')+'.'+(action.path?' Path: '+String(action.path).slice(0,500)+'.':'')
+    : '';
+  const fileTransfer=tool==='files'&&type==='attach'
+    ? 'The complete selected file will be sent to the controller model as an attachment for the next step.'
     : '';
   const mcpTarget=tool==='mcp'&&resolvedMcp
     ? 'App: '+resolvedMcp.connection.name+'. Tool: '+resolvedMcp.tool.name+'. '+(
@@ -2595,6 +2601,7 @@ function workApprovalFor(task,decision){
     repositoryTarget,
     repositoryWrite,
     fileTarget,
+    fileTransfer,
     localFileWrite,
     mcpTarget,
     typedText?'Text to enter: "'+typedText+(String(action.text).length>160?'…':'')+'"':'',
