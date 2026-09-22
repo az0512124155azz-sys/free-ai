@@ -299,6 +299,8 @@ function App(){
   const cancelledRequestRef=useRef(null);
   const activeWorkTaskIdRef=useRef(null);
   const workTaskModelRef=useRef(null);
+  const workTaskProjectIdRef=useRef(null);
+  const workTaskMasterChatIdRef=useRef(null);
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -374,7 +376,7 @@ function App(){
   useEffect(()=>{
     setSuperTeamKeys(current=>{
       const primary=modelKey(selected);
-      const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,3);
+      const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,16);
       localStorage.setItem('freeai.super.team',JSON.stringify(next));
       return next;
     });
