@@ -32,6 +32,7 @@ const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:
 
 const settingsSections=[
   ['personal','General',Settings],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
+  ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
   ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
   ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',SquareTerminal]
@@ -99,8 +100,8 @@ function App(){
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
-    autoReviewEnabled:false,fullAccessEnabled:false,
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,language:'English',showBottomPanel:true})
+    autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
