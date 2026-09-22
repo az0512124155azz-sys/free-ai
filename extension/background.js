@@ -298,7 +298,7 @@ function connect(){
         type:'response',
         id:m.id,
         text:result?.text||'',
-        usedTool:result?.usedTool||null
+        requestedTool:result?.requestedTool||null
       });
       await scanProviders();
     }catch(err){
