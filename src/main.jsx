@@ -69,6 +69,65 @@ function BrandMark({size=22,className=''}) {
   </span>;
 }
 
+function WindowsTitlebar({onNewChat,onSettings,onToggleSidebar,onBrowser,onHelp}){
+  const [open,setOpen]=useState('');
+  const barRef=useRef(null);
+  useEffect(()=>{
+    const close=e=>{if(!barRef.current?.contains(e.target))setOpen('')};
+    const esc=e=>{if(e.key==='Escape')setOpen('')};
+    document.addEventListener('pointerdown',close);
+    window.addEventListener('keydown',esc);
+    return()=>{document.removeEventListener('pointerdown',close);window.removeEventListener('keydown',esc)};
+  },[]);
+  function edit(command){try{document.execCommand(command)}catch{}setOpen('')}
+  function choose(name){setOpen(v=>v===name?'':name)}
+  return <div className="windowsTitlebar" ref={barRef}>
+    <div className="windowsTitlebarLeft">
+      <BrandMark size={15}/>
+      <button className="titleNavButton" aria-label="Back" onClick={()=>history.back()}><ArrowLeft size={14}/></button>
+      <button className="titleNavButton" aria-label="Forward" onClick={()=>history.forward()}><ArrowRight size={14}/></button>
+      <div className="titleMenuAnchor">
+        <button className={open==='file'?'active':''} onClick={()=>choose('file')}>File</button>
+        {open==='file'&&<div className="titleMenuPopup">
+          <button onClick={()=>{setOpen('');onNewChat()}}><span>New chat</span><kbd>Ctrl+N</kbd></button>
+          <button onClick={()=>{setOpen('');onSettings()}}><span>Settings</span><kbd>Ctrl+,</kbd></button>
+          <span className="titleMenuDivider"/>
+          <button onClick={()=>window.desktopApi?.quitApp?.()}><span>Exit</span></button>
+        </div>}
+      </div>
+      <div className="titleMenuAnchor">
+        <button className={open==='edit'?'active':''} onClick={()=>choose('edit')}>Edit</button>
+        {open==='edit'&&<div className="titleMenuPopup">
+          <button onClick={()=>edit('undo')}><span>Undo</span><kbd>Ctrl+Z</kbd></button>
+          <button onClick={()=>edit('redo')}><span>Redo</span><kbd>Ctrl+Y</kbd></button>
+          <span className="titleMenuDivider"/>
+          <button onClick={()=>edit('cut')}><span>Cut</span><kbd>Ctrl+X</kbd></button>
+          <button onClick={()=>edit('copy')}><span>Copy</span><kbd>Ctrl+C</kbd></button>
+          <button onClick={()=>edit('paste')}><span>Paste</span><kbd>Ctrl+V</kbd></button>
+          <button onClick={()=>edit('selectAll')}><span>Select all</span><kbd>Ctrl+A</kbd></button>
+        </div>}
+      </div>
+      <div className="titleMenuAnchor">
+        <button className={open==='view'?'active':''} onClick={()=>choose('view')}>View</button>
+        {open==='view'&&<div className="titleMenuPopup">
+          <button onClick={()=>{setOpen('');onToggleSidebar()}}><span>Toggle sidebar</span><kbd>Ctrl+Shift+S</kbd></button>
+          <button onClick={()=>{setOpen('');onBrowser()}}><span>Browser</span><kbd>Ctrl+Shift+B</kbd></button>
+          <span className="titleMenuDivider"/>
+          <button onClick={()=>{setOpen('');window.desktopApi?.reloadApp?.()}}><span>Reload</span><kbd>Ctrl+R</kbd></button>
+        </div>}
+      </div>
+      <div className="titleMenuAnchor">
+        <button className={open==='help'?'active':''} onClick={()=>choose('help')}>Help</button>
+        {open==='help'&&<div className="titleMenuPopup">
+          <button onClick={()=>{setOpen('');onHelp()}}><span>Free AI help</span></button>
+          <button onClick={()=>{setOpen('');onSettings()}}><span>About Free AI</span></button>
+        </div>}
+      </div>
+    </div>
+    <div className="windowsDragRegion" aria-hidden="true"/>
+  </div>;
+}
+
 function App(){
   const [authReady,setAuthReady]=useState(false);
   const [session,setSession]=useState(null);
@@ -392,7 +451,14 @@ function App(){
     ? (isNative?'Continue on your desktop':'What should we build?')
     : mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
-  return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
+  return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')+' '+(isDesktop&&desktopPlatform==='win32'?'windowsDesktop':'')}>
+    {isDesktop&&desktopPlatform==='win32'&&<WindowsTitlebar
+      onNewChat={newChat}
+      onSettings={()=>{setSettingsSection('General');setSettingsOpen(true)}}
+      onToggleSidebar={()=>setSidebarOpen(v=>!v)}
+      onBrowser={openBrowser}
+      onHelp={openHelp}
+    />}
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
     <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={attachFiles}/>
     <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={attachFiles}/>
