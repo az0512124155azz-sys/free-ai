@@ -3,6 +3,8 @@ import fs from 'node:fs';
 const main=fs.readFileSync('electron/main.cjs','utf8');
 const source=fs.readFileSync('src/main.jsx','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
+const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
 
 function fail(message){
   console.error('Windows 7 QA regression failed: '+message);
