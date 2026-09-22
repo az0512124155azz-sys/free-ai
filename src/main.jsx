@@ -965,6 +965,14 @@ function App(){
     return()=>off?.();
   },[sidePanel,product,mode,currentChatId,messages.length]);
 
+  async function openPublicPluginDirectory(){
+    try{
+      if(isDesktop)await window.desktopApi.openAuthUrl(PUBLIC_PLUGIN_DIRECTORY_URL);
+      else if(isNative)await Browser.open({url:PUBLIC_PLUGIN_DIRECTORY_URL,presentationStyle:'popover'});
+      else window.open(PUBLIC_PLUGIN_DIRECTORY_URL,'_blank','noopener,noreferrer');
+    }catch{}
+  }
+
   async function openHelp(){
     const url='https://github.com/az0512124155azz-sys/free-ai#readme';
     try{
@@ -1079,7 +1087,7 @@ function App(){
       <nav className="primaryNav desktopPrimaryNav">
         <NavItem icon={SquarePen} label="New chat" active={page==='chat'&&!currentChatId} onClick={newChat}/>
         <NavItem icon={Plug} label="Plugins" active={page==='plugins'} onClick={openPluginsPage}/>
-        {!isWindowsDesktop&&<NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{setPage('explore');setMobileNavOpen(false)}}/>}
+        <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{stopActiveWorkTask();setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
         {isWindowsDesktop&&product==='free'?<>
@@ -1277,11 +1285,17 @@ function App(){
       />}
       {page==='plugins'&&<PluginsPage
         tools={mcpTools} connected={connected} directMcpConnections={mcpConnections}
+        selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
         mcpDraft={mcpDraft} setMcpDraft={setMcpDraft} mcpError={mcpError}
         onAddMcp={addMcpConnection} onRemoveMcp={removeMcpConnection} onRefreshMcp={refreshMcpConnections}
-        onBack={()=>setPage('chat')} onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
+        onBack={()=>setPage('chat')} onExplore={()=>setPage('explore')} onOpenPublicDirectory={openPublicPluginDirectory}
+        onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
       />}
-      {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
+      {page==='explore'&&<ExplorePage
+        tools={mcpTools} directMcpConnections={mcpConnections}
+        selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
+        onBack={()=>setPage('chat')} onManagePlugins={openPluginsPage} onOpenPublicDirectory={openPublicPluginDirectory}
+      />}
     </main>
 
     {sidePanel==='browser'&&<BrowserPane
