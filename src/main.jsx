@@ -35,7 +35,7 @@ const settingsSections=[
   ['personal','General',Settings],['personal','Import',Upload],['personal','Profile',UserRound],['personal','Appearance',Palette],['personal','Voice',Volume2],
   ['personal','Personalization',Sparkles],['personal','Data controls',Database],
   ['personal','Configuration',SlidersHorizontal],['personal','Keyboard shortcuts',Keyboard],
-  ['integrations','Computer use',Monitor],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
+  ['integrations','Computer use',Monitor],['integrations','Appshots',Camera],['integrations','Plugins',Plug],['integrations','Browser',Globe2],
   ['coding','Connections',Link2],['coding','Git',GitBranch],['coding','Environments',SquareTerminal]
 ];
 
@@ -993,6 +993,7 @@ function App(){
       onExportData={exportLocalData} onImportData={importLocalData} onClearHistory={clearLocalHistory}
       archivedChats={archivedChats} onUnarchiveChat={unarchiveChat} onDeleteArchived={chat=>deleteChat(chat,true)} onArchiveAll={archiveAllChats} onDeleteAll={deleteAllChats}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
+      onAppshot={()=>{setSettingsOpen(false);captureAppshot()}}
       onPlugins={()=>{setSettingsOpen(false);setPage('plugins')}}
       onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
     />}
@@ -1668,7 +1669,7 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onImportData,onClearHistory,archivedChats,onUnarchiveChat,onDeleteArchived,onArchiveAll,onDeleteAll,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onImportData,onClearHistory,archivedChats,onUnarchiveChat,onDeleteArchived,onArchiveAll,onDeleteAll,onComputer,onAppshot,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
   const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
@@ -1697,7 +1698,8 @@ function SettingsView(props){
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Approve for me':'Ask for approval'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Auto':'Read-only'} action={onComputer}/>}
+      {section==='Appshots'&&isDesktop&&desktopPlatform==='win32'&&<AppshotsSettings onCapture={onAppshot}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -1839,6 +1841,16 @@ function ConfigurationSettings({prefs,setPrefs}){
 function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<span className="valuePill">{b}</span>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
 
+function AppshotsSettings({onCapture}){
+  return <div className="settingsPane">
+    <h3>Appshots</h3>
+    <div className="settingBlock">
+      <SettingRow title="Shortcut" desc="Share the frontmost Windows app with Free AI." control={<span className="valuePill">Both Alt keys</span>}/>
+      <SettingRow title="Attachment" desc="Includes a screenshot plus text exposed by Windows accessibility APIs." control={<span className="valuePill">Screenshot + text</span>}/>
+      <SettingRow title="Capture now" desc="Capture the current foreground app and attach it to the active chat." control={<button className="settingsInlineButton" onClick={onCapture}>Capture</button>}/>
+    </div>
+  </div>
+}
 function BrowserSettings({prefs,setPrefs,onBrowser}){
   const [clearState,setClearState]=useState('');
   const [confirmClear,setConfirmClear]=useState(false);
