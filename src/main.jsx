@@ -382,11 +382,13 @@ function App(){
   useEffect(()=>{
     setSuperTeamKeys(current=>{
       const primary=modelKey(selected);
-      const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,16);
+      const eligible=connected.filter(model=>model.connected!==false&&modelKey(model)!==primary).map(modelKey);
+      const retained=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&eligible.includes(key));
+      const next=product==='super'&&retained.length===0?eligible:retained;
       localStorage.setItem('freeai.super.team',JSON.stringify(next));
       return next;
     });
-  },[connected,selected?.id,selected?.source]);
+  },[connected,selected?.id,selected?.source,product]);
 
   useEffect(()=>{
     if(!isWindowsDesktop)return;
