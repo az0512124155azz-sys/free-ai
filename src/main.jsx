@@ -1419,6 +1419,8 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   const addressEditingRef=useRef(false);
   const [state,setState]=useState({url:'',title:'New tab',favicon:'',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[],error:null});
   const [siteToolsOpen,setSiteToolsOpen]=useState(false);
+  const [downloadsOpen,setDownloadsOpen]=useState(false);
+  const [downloadActionStatus,setDownloadActionStatus]=useState('');
   const [selectedSiteTool,setSelectedSiteTool]=useState(null);
   const [siteToolInput,setSiteToolInput]=useState('{}');
   const [siteToolStatus,setSiteToolStatus]=useState('');
@@ -1478,8 +1480,29 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
     setSiteToolsOpen(false);setSelectedSiteTool(null);setSiteToolStatus('');
     window.desktopApi?.browserNewTab('https://www.google.com/').then(next=>{if(next?.url)setUrl(next.url)}).catch(()=>{})
   }
+  async function cancelDownload(id){
+    setDownloadActionStatus('');
+    try{
+      const next=await window.desktopApi?.browserCancelDownload?.(id);
+      if(next)setState(next);
+    }catch(e){setDownloadActionStatus(e?.message||'Could not cancel the download.')}
+  }
+  async function openDownload(id){
+    setDownloadActionStatus('');
+    try{
+      const result=await window.desktopApi?.browserOpenDownload?.(id);
+      if(result?.ok===false)setDownloadActionStatus(result.error||'Could not open the downloaded file.');
+    }catch(e){setDownloadActionStatus(e?.message||'Could not open the downloaded file.')}
+  }
+  async function showDownload(id){
+    setDownloadActionStatus('');
+    try{
+      const result=await window.desktopApi?.browserShowDownload?.(id);
+      if(result?.ok===false)setDownloadActionStatus(result.error||'Could not show the downloaded file.');
+    }catch(e){setDownloadActionStatus(e?.message||'Could not show the downloaded file.')}
+  }
   async function startAnnotation(){
-    setSiteToolsOpen(false);setAnnotation(null);setAnnotationNote('');setAnnotating(true);
+    setSiteToolsOpen(false);setDownloadsOpen(false);setDownloadActionStatus('');setAnnotation(null);setAnnotationNote('');setAnnotating(true);
     try{
       const result=await window.desktopApi?.browserStartAnnotation?.();
       setAnnotating(false);
@@ -1526,8 +1549,20 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       setSiteToolStatus(typeof value==='string'?value:JSON.stringify(value??'Done',null,2));
     }catch(e){setSiteToolStatus(e?.message||'Site tool failed.')}
   }
-  const activeDownloads=(state.downloads||[]).filter(d=>d.state==='progressing').length;
+  const downloads=Array.isArray(state.downloads)?state.downloads:[];
+  const activeDownloads=downloads.filter(d=>!d.terminal&&(d.state==='progressing'||d.state==='interrupted')).length;
   const siteTools=Array.isArray(state.siteTools)?state.siteTools:[];
+  const downloadStateLabel=download=>{
+    if(download.state==='completed')return 'Completed';
+    if(download.state==='cancelled')return 'Cancelled';
+    if(download.state==='interrupted')return download.terminal?'Failed':'Interrupted';
+    if(download.totalBytes>0&&Number.isFinite(download.percentComplete))return `Downloading · ${Math.max(0,Math.min(100,Math.round(download.percentComplete)))}%`;
+    return 'Downloading';
+  };
+  const downloadBytesLabel=download=>{
+    if(download.totalBytes>0)return `${humanSize(download.receivedBytes||0)} / ${humanSize(download.totalBytes)}`;
+    return download.receivedBytes>0?`${humanSize(download.receivedBytes)} downloaded`:'';
+  };
 
   return <aside className="sidePane browserPane">
     <div className="paneTabs browserTabsBar">
@@ -1551,8 +1586,8 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onFocus={()=>{addressEditingRef.current=true}} onBlur={()=>{addressEditingRef.current=false;if(state.url)setUrl(state.url)}} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL" aria-label="Address and search"/></form>
-      {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
-      {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
+      {isWindowsDesktop&&downloads.length>0&&<button className={downloadsOpen?'downloadStatus browserToolButton active':'downloadStatus browserToolButton'} onClick={()=>{setSiteToolsOpen(false);setDownloadsOpen(v=>!v);setDownloadActionStatus('')}} title={activeDownloads?activeDownloads+' active download'+(activeDownloads===1?'':'s'):'Downloads'}><Download size={14}/><small>{activeDownloads||downloads.length}</small></button>}
+      {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>{setDownloadsOpen(false);setDownloadActionStatus('');setSiteToolsOpen(v=>!v)}} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
       <button className={annotating?'active':''} onClick={annotating?cancelAnnotation:startAnnotation} title={annotating?'Cancel annotation':'Annotate page'}><PenLine size={15}/></button>
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
@@ -1560,6 +1595,29 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
     {isWindowsDesktop&&state.error&&<div className="siteToolsHeader browserErrorBar" role="alert">
       <span><b>{state.error.type==='crash'?'Page stopped':'Page unavailable'}</b><small>{state.error.description||'This page could not be loaded.'}</small></span>
       <button onClick={retryPage}><RefreshCw size={14}/>Retry</button>
+    </div>}
+
+    {isWindowsDesktop&&downloadsOpen&&downloads.length>0&&<div className="siteToolsPanel">
+      <div className="siteToolsHeader">
+        <span><b>Downloads</b><small>{downloadActionStatus|| (activeDownloads?activeDownloads+' in progress':downloads.length+' recent download'+(downloads.length===1?'':'s'))}</small></span>
+        <button onClick={()=>{setDownloadsOpen(false);setDownloadActionStatus('')}}><X size={14}/>Close</button>
+      </div>
+      <div className="downloadList">
+        {downloads.map(download=><div className="downloadItem" key={download.id}>
+          <Download size={14}/>
+          <div className="downloadDetails">
+            <b>{download.filename||download.suggestedFilename||'Download'}</b>
+            <small>{downloadStateLabel(download)}{downloadBytesLabel(download)?' · '+downloadBytesLabel(download):''}</small>
+            {!download.terminal&&download.totalBytes>0&&<progress max={download.totalBytes} value={Math.min(download.receivedBytes||0,download.totalBytes)} aria-label={'Download progress for '+(download.filename||'file')}/>}
+            {download.savePath&&<small className="downloadPath" title={download.savePath}>{download.savePath}</small>}
+          </div>
+          <div className="downloadActions">
+            {download.canCancel&&<button onClick={()=>cancelDownload(download.id)} title="Cancel download"><X size={13}/>Cancel</button>}
+            {download.canOpen&&<button onClick={()=>openDownload(download.id)} title="Open downloaded file"><ExternalLink size={13}/>Open</button>}
+            {download.canOpen&&<button onClick={()=>showDownload(download.id)} title="Show downloaded file in folder"><Folder size={13}/>Folder</button>}
+          </div>
+        </div>)}
+      </div>
     </div>}
 
     {siteToolsOpen&&<div className="siteToolsPanel">
