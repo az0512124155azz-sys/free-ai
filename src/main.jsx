@@ -815,7 +815,7 @@ function PermissionModeMenu({value,options={},choose}){
   const rows=[
     ['ask','Manual','Ask before each supported action that needs approval.',true],
     ['auto','Automatic','Automatically continue eligible low-risk actions and pause for sensitive actions.',!!options.auto],
-    ['full','Full access','Allow supported disk and network actions without repeated approval prompts.',!!options.full]
+    ['full','Full access','Run supported computer actions without repeated approval prompts.',!!options.full]
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
@@ -1190,7 +1190,7 @@ function SettingsView(props){
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Approve for me':'Ask for approval'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Automatic':'Manual'} action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
@@ -1213,7 +1213,7 @@ function GeneralSettings({prefs,setPrefs}){
     <h3>Permissions</h3>
     <div className="settingBlock">
       <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
-      <SettingRow title="Auto-review" desc="Makes “Approve for me” available. Simple pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
+      <SettingRow title="Auto-review" desc="Makes Automatic mode available. Eligible low-risk pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
       <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
     </div>
     <h3>General</h3>
