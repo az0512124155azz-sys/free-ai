@@ -1438,7 +1438,7 @@ function EffortMenu({effort,levels,choose}){
 
 function PermissionModeMenu({value,choose}){
   const rows=[
-    ['ask','Always ask','Ask before tool actions. Website and desktop access still require explicit task approval.'],
+    ['ask','Always ask','Ask before state-changing tool actions. Website and desktop reads still require explicit task access approval.'],
     ['read','Allow reads','Allow approved page/screen reads; ask before actions that change state.'],
     ['low','Allow low-risk','Also allow low-risk navigation, scrolling and pointer movement. Sensitive actions still ask.']
   ];
