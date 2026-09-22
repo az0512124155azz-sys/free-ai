@@ -1,7 +1,7 @@
 {
   "manifest_version":3,
   "name":"Free AI Browser Bridge",
-  "version":"0.3.0",
+  "version":"0.3.1",
   "description":"Connects your Chromium tabs and supported AI provider chats to the Free AI desktop app.",
   "permissions":["tabs","scripting","storage"],
   "host_permissions":["<all_urls>"],

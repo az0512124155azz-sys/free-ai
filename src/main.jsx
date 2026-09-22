@@ -219,6 +219,10 @@ function App(){
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
   const [apiError,setApiError]=useState('');
+  const [mcpConnections,setMcpConnections]=useState([]);
+  const [selectedMcpIds,setSelectedMcpIds]=useState([]);
+  const [mcpDraft,setMcpDraft]=useState({name:'',url:'',token:''});
+  const [mcpError,setMcpError]=useState('');
   const fileRef=useRef(null);
   const photoRef=useRef(null);
   const cameraRef=useRef(null);
@@ -254,6 +258,7 @@ function App(){
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
+    window.desktopApi.listMcpConnections?.().then(items=>active&&setMcpConnections(Array.isArray(items)?items:[])).catch(()=>{});
     return()=>{active=false;offStatus?.();offWork?.();offCommand?.()};
   },[]);
 
@@ -541,6 +546,7 @@ function App(){
   }
   function selectProduct(nextProduct){
     stopActiveWorkTask();
+    setSelectedMcpIds([]);
     setProductMenu(false);
     if(nextProduct===product)return;
     setProduct(nextProduct);
@@ -550,12 +556,12 @@ function App(){
     if(product!=='free'||nextMode===mode)return;
     stopActiveWorkTask();
     const hasThread=!!currentChatId||messages.length>0;
-    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setPage('chat');
+    setMode(nextMode);setModelMenu(false);setPlusMenu(false);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');
     if(hasThread){setCurrentChatId(null);setMessages([]);setPrompt('')}
   }
   function newChat(){
     stopActiveWorkTask();
-    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);
+    setActiveProjectId(null);setCurrentChatId(null);setMessages([]);setPrompt('');setSelectedTool(null);setSelectedMcpIds([]);
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setModelMenu(false);setPlusMenu(false);setPage('chat');setSidePanel(null);setMobileNavOpen(false);
   }
@@ -569,7 +575,7 @@ function App(){
       setRepositoryWorkspace(chat.workspace||null);
       setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
     }
-    setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
+    setActiveProjectId(chat.projectId||null);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
 
@@ -578,7 +584,7 @@ function App(){
     if((!userText&&!attachments.length)||workBusy)return;
     if(!selected){setModelMenu(true);return}
     if(selectedTool){
-      setAttachmentError('Plugin/MCP orchestration is not part of Windows 4. Remove the selected plugin or use Chat; plugin orchestration remains a Windows 5 checkpoint.');
+      setAttachmentError('That item is only a provider-managed connector hint, not a verified direct MCP app. Remove it and select a Direct MCP app from Add → Direct MCP apps.');
       return;
     }
     const canUploadFiles=selected.source==='browser'&&selected.fileUpload===true;
@@ -635,6 +641,7 @@ function App(){
         attachments:outbound,
         workspace:product==='super'?workspace:null,
         team,
+        mcpConnectionIds:selectedMcpIds,
         instructions:projectInstructions||globalInstructions,
         history:messages.slice(-12).filter(message=>message?.role==='user'||message?.role==='assistant').map(message=>({
           role:message.role,
@@ -643,7 +650,7 @@ function App(){
       });
       if(activeWorkTaskIdRef.current===taskId)setWorkTask(state);
       for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
-      setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
+      setAttachments([]);setSelectedMcpIds([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
     }catch(e){
       if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
       setWorkTask(null);
@@ -797,6 +804,41 @@ function App(){
     catch(e){setApiError(e?.message||String(e))}
   }
   async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
+  async function addMcpConnection(){
+    if(!isWindowsDesktop)return;
+    setMcpError('');
+    try{
+      const added=await window.desktopApi.addMcpConnection(mcpDraft);
+      setMcpConnections(current=>[...current.filter(item=>item.id!==added.id),added]);
+      setMcpDraft({name:'',url:'',token:''});
+    }catch(error){setMcpError(error?.message||String(error))}
+  }
+  async function removeMcpConnection(id){
+    if(!isWindowsDesktop)return;
+    setMcpError('');
+    try{
+      const items=await window.desktopApi.removeMcpConnection(id);
+      setMcpConnections(Array.isArray(items)?items:[]);
+      setSelectedMcpIds(current=>current.filter(value=>value!==id));
+    }catch(error){setMcpError(error?.message||String(error))}
+  }
+  async function refreshMcpConnections(){
+    if(!isWindowsDesktop)return;
+    setMcpError('');
+    try{
+      const items=await window.desktopApi.refreshAllMcpConnections();
+      setMcpConnections(Array.isArray(items)?items:[]);
+    }catch(error){setMcpError(error?.message||String(error))}
+  }
+  function toggleMcpConnection(id){
+    if(workBusy)return;
+    setSelectedMcpIds(current=>{
+      const key=String(id||'');
+      if(current.includes(key))return current.filter(value=>value!==key);
+      if(current.length>=4)return current;
+      return [...current,key];
+    });
+  }
 
   function clearLocalHistory(){
     localStorage.removeItem('freeai.chats');
@@ -1108,6 +1150,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
                 onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={openPluginsPage}
@@ -1155,6 +1198,7 @@ function App(){
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                 repositoryWorkspace={repositoryWorkspace} onChooseRepository={chooseRepositoryWorkspace} onClearRepository={clearRepositoryWorkspace}
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=keys.slice(0,3);setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
+                mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
                   onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={openPluginsPage}
@@ -1170,7 +1214,12 @@ function App(){
         onStart={nextMode=>startProjectConversation(activeProject.id,nextMode)}
         onOpenChat={openChat} onSave={patch=>updateProject(activeProject.id,patch)}
       />}
-      {page==='plugins'&&<PluginsPage tools={mcpTools} connected={connected} onBack={()=>setPage('chat')} onRefresh={()=>window.desktopApi?.scanProviders?.().catch(()=>{})}/>}
+      {page==='plugins'&&<PluginsPage
+        tools={mcpTools} connected={connected} directMcpConnections={mcpConnections}
+        mcpDraft={mcpDraft} setMcpDraft={setMcpDraft} mcpError={mcpError}
+        onAddMcp={addMcpConnection} onRemoveMcp={removeMcpConnection} onRefreshMcp={refreshMcpConnections}
+        onBack={()=>setPage('chat')} onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
+      />}
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
 
@@ -1200,7 +1249,7 @@ function App(){
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
-      saveSettings={saveSettings} connected={connected} apiDraft={apiDraft} setApiDraft={setApiDraft}
+      saveSettings={saveSettings} connected={connected} mcpConnections={mcpConnections} apiDraft={apiDraft} setApiDraft={setApiDraft}
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
       onExportData={exportLocalData} onClearHistory={clearLocalHistory}
       onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
@@ -1256,7 +1305,8 @@ function Composer(props){
     windowsDesktop,stopGeneration,attachments=[],attachmentError,onRemoveAttachment,onOpenAttachment,compact,mode,prompt,setPrompt,send,busy,selected,connected,setSelected,modelMenu,setModelMenu,
     effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,
-    repositoryWorkspace,onChooseRepository,onClearRepository,superTeamKeys=[],setSuperTeamKeys,onBrowser,onComputer,onPlugins
+    repositoryWorkspace,onChooseRepository,onClearRepository,superTeamKeys=[],setSuperTeamKeys,
+    mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -1268,6 +1318,7 @@ function Composer(props){
   const webRecognition=useRef(null);
   const dictationBase=useRef('');
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'}[effort]||'Reasoning';
+  const selectedMcpConnections=mcpConnections.filter(connection=>selectedMcpIds.includes(connection.id));
 
   async function stopVoice(){
     setDictationError('');
@@ -1378,6 +1429,12 @@ function Composer(props){
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
     </div>}
+    {windowsDesktop&&mode==='work'&&selectedMcpConnections.length>0&&<div className="mcpSelectionTray" aria-label="Selected MCP apps">
+      {selectedMcpConnections.map(connection=><div className="mcpSelectionChip" key={connection.id}>
+        <Plug size={12}/><span><b>{connection.name}</b><small>{connection.connected?'Connected':connection.hasToken?'Saved · connects on send':'Saved · connects on send'}</small></span>
+        <button type="button" aria-label={'Remove '+connection.name} disabled={busy} onClick={()=>!busy&&onToggleMcp?.(connection.id)}><X size={11}/></button>
+      </div>)}
+    </div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
     {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
@@ -1400,6 +1457,7 @@ function Composer(props){
           {plusMenu&&<PlusMenu
             fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
             tools={mcpTools} setSelectedTool={setSelectedTool} mode={mode}
+            directMcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={onToggleMcp}
           />}
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
@@ -1556,6 +1614,7 @@ function WorkTaskStatus({task,onApproval}){
       <span><b>{task.product==='super'?'Super AI · '+(labels[task.status]||task.status):(labels[task.status]||task.status)}</b><small>{task.detail||('Step '+(task.step||0)+' of '+(task.maxSteps||0))}</small></span>
     </div>
     {task.workspace&&<div className="workWorkspaceLine"><GitBranch size={12}/><span>{task.workspace.name}</span><small>{task.workspace.branch}{Number(task.workspace.dirty)>0?' · '+task.workspace.dirty+' changed':''}</small></div>}
+    {Array.isArray(task.apps)&&task.apps.length>0&&<div className="workAppsLine"><Plug size={12}/><span>{task.apps.map(app=>app.name).join(' · ')}</span><small>{task.apps.reduce((sum,app)=>sum+(Number(app.toolCount)||0),0)} direct MCP tools</small></div>}
     {agents.length>0&&<div className="workAgentList">{agents.map(agent=><div className={'workAgent '+agent.status} key={agent.id}>
       <span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>
     </div>)}</div>}
@@ -1572,7 +1631,7 @@ function WorkTaskStatus({task,onApproval}){
   </div>
 }
 
-function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode}){
+function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode,directMcpConnections=[],selectedMcpIds=[],onToggleMcp}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     {isNative?<>
@@ -1582,9 +1641,26 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
     </>:<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Folder} label="Add project files" sub="Attach context to this Work task" onClick={()=>fileRef.current?.click()}/>} 
-    <div className="floatingTitle section">Plugins</div>
-    {tools.length===0?<div className="menuEmpty compact">No installed MCP tools detected.</div>:tools.slice(0,10).map(t=>
-      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName} onClick={()=>setSelectedTool(t)}/>
+    {mode==='work'&&isWindowsDesktop&&<>
+      <div className="floatingTitle section">Direct MCP apps</div>
+      {directMcpConnections.length===0
+        ? <div className="menuEmpty compact">No direct MCP apps configured.</div>
+        : directMcpConnections.slice(0,10).map(connection=><button
+            key={connection.id}
+            className={'menuRow mcpMenuRow '+(selectedMcpIds.includes(connection.id)?'active':'')}
+            role="menuitemcheckbox"
+            aria-checked={selectedMcpIds.includes(connection.id)}
+            onClick={()=>onToggleMcp?.(connection.id)}>
+            <Plug size={18}/>
+            <span><b>{connection.name}</b><small>{connection.connected?(connection.tools?.length||0)+' tools · MCP '+connection.protocolVersion:'Saved · connects when task starts'}</small></span>
+            <span className={'teamCheck '+(selectedMcpIds.includes(connection.id)?'checked':'')}>{selectedMcpIds.includes(connection.id)&&<Check size={12}/>}</span>
+          </button>)
+      }
+      <div className="menuHint">Select up to 4 apps for this Work task. Tool calls still follow approval rules.</div>
+    </>}
+    <div className="floatingTitle section">{mode==='work'&&isWindowsDesktop?'Provider hints':'Plugins'}</div>
+    {tools.length===0?<div className="menuEmpty compact">No provider-managed connector hints detected.</div>:tools.slice(0,10).map(t=>
+      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · provider-managed, unverified'} onClick={mode==='work'&&isWindowsDesktop?undefined:()=>setSelectedTool(t)}/>
     )}
     <MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>
     {!isNative&&<MenuRow icon={Monitor} label="Computer" sub="View or control your desktop" onClick={onComputer}/>} 
@@ -1607,47 +1683,86 @@ function ProfileMenu({session,onSettings}){
   </div>
 }
 
-function PluginsPage({tools,connected,onBack,onRefresh}){
+function PluginsPage({
+  tools,connected,directMcpConnections=[],mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh
+}){
   const [query,setQuery]=useState('');
   const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
   const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
   const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
+  const visibleDirect=needle
+    ? directMcpConnections.filter(connection=>(
+        connection.name+' '+connection.url+' '+(connection.tools||[]).map(tool=>tool.name+' '+tool.title).join(' ')
+      ).toLowerCase().includes(needle))
+    : directMcpConnections;
   return <div className="contentPage">
     <PageTop onBack={onBack} title={pageName} action={isDesktop?'Refresh':null} onAction={onRefresh}/>
     <div className="contentInner">
       <h1>{pageName}</h1>
-      <p className="pageLead">Use MCP/connectors that are already installed and authorized in a connected AI provider.</p>
-      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search detected plugins"/></div>
+      <p className="pageLead">{isWindowsDesktop
+        ? 'Connect remote MCP apps directly to Free AI, then select the apps you want to use for each Work or Super AI task.'
+        : 'Provider-managed connectors are surfaced only when a connected AI provider exposes them in its own interface.'}</p>
+      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isWindowsDesktop?'Search apps and tools':'Search provider hints'}/></div>
+
+      {isWindowsDesktop&&<section className="pluginSection">
+        <div className="sectionHeading"><h2>Direct MCP apps</h2><span className="pluginMeta">{visibleDirect.length} apps</span></div>
+        <div className="directMcpGrid">
+          {visibleDirect.map(connection=><div className="directMcpCard" key={connection.id}>
+            <div className="directMcpTop">
+              <span className="pluginIcon"><Plug size={17}/></span>
+              <span><b>{connection.name}</b><small>{connection.url}</small></span>
+              <span className={'connectionStatus '+(connection.connected?'good':'')}>{connection.connected?'Connected':'Saved'}</span>
+            </div>
+            <div className="directMcpMeta">
+              <span>MCP {connection.protocolVersion||'2025-11-25'}</span>
+              <span>{connection.tools?.length||0} tools</span>
+              {connection.hasToken&&<span>Token saved securely</span>}
+            </div>
+            {connection.error&&<div className="formError">{connection.error}</div>}
+            {Array.isArray(connection.tools)&&connection.tools.length>0&&<div className="directMcpTools">
+              {connection.tools.slice(0,12).map(tool=><span key={tool.name} title={tool.description||tool.name}>
+                {tool.title||tool.name}{tool.annotations?.readOnlyHint===true?' · read-only':''}
+              </span>)}
+              {connection.tools.length>12&&<span>+{connection.tools.length-12} more</span>}
+            </div>}
+            <div className="directMcpActions">
+              <button onClick={onRefreshMcp}>Refresh</button>
+              <button className="dangerText" onClick={()=>onRemoveMcp?.(connection.id)}>Remove</button>
+            </div>
+          </div>)}
+          {!visibleDirect.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{needle?'No direct MCP app matches':'No direct MCP apps yet'}</b><span>Add an HTTPS MCP endpoint below. Localhost HTTP is also allowed for local development.</span></div>}
+        </div>
+        <div className="mcpAddCard">
+          <div><b>Add remote MCP app</b><small>This checkpoint supports Streamable HTTP MCP 2025-11-25. The token is stored by the desktop process, not in the renderer.</small></div>
+          <div className="mcpAddForm">
+            <input placeholder="App name" value={mcpDraft?.name||''} onChange={e=>setMcpDraft?.({...mcpDraft,name:e.target.value})}/>
+            <input placeholder="https://example.com/mcp" value={mcpDraft?.url||''} onChange={e=>setMcpDraft?.({...mcpDraft,url:e.target.value})}/>
+            <input type="password" placeholder="Bearer token (optional)" value={mcpDraft?.token||''} onChange={e=>setMcpDraft?.({...mcpDraft,token:e.target.value})}/>
+            <button className="primaryAction" onClick={onAddMcp} disabled={!String(mcpDraft?.url||'').trim()}>Connect and add</button>
+          </div>
+          {mcpError&&<div className="formError">{mcpError}</div>}
+        </div>
+      </section>}
 
       <section className="pluginSection">
-        <div className="sectionHeading"><h2>Installed and detected</h2><span className="pluginMeta">{visibleTools.length} tools</span></div>
+        <div className="sectionHeading"><h2>Provider-managed connector hints</h2><span className="pluginMeta">{visibleTools.length} hints</span></div>
+        <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Not direct MCP verification</b><span>These labels come from visible provider UI detected by the browser extension. Free AI does not treat them as proof that a tool exists or that a provider actually used it.</span></div></div>
         <div className="installedStrip">
           {visibleTools.map(t=><div key={t.key} className="installedIcon tool" title={t.mcp}><Plug size={16}/></div>)}
-          {!visibleTools.length&&<span className="muted">{query?'No plugin matches your search.':'No MCP tools are currently detected.'}</span>}
+          {!visibleTools.length&&<span className="muted">{query?'No provider hint matches your search.':'No provider-managed connector hints detected.'}</span>}
         </div>
       </section>
 
       <section className="pluginSection">
-        <h2>Connected providers</h2>
+        <h2>Connected AI providers</h2>
         <div className="pluginGrid">
           {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
             <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
-            <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API connection':((provider.mcps?.length||0)+' MCP/connectors detected')}</small></span>
+            <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API model':((provider.mcps?.length||0)+' provider UI hints')}</small></span>
             <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
           </div>)}
-          {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider is connected</b><span>Open a supported AI site in Chrome with the Free AI extension, or add an API model in Settings.</span></div>}
-        </div>
-      </section>
-
-      <section className="pluginSection">
-        <h2>Tools available across models</h2>
-        <div className="toolList">
-          {visibleTools.map(t=><div className="detectedToolRow" key={t.key}>
-            <span className="pluginIcon"><Plug size={18}/></span>
-            <span><b>{t.mcp}</b><small>Installed in {t.ownerName}. Free AI can route its result to another connected model.</small></span>
-          </div>)}
-          {!visibleTools.length&&!query&&<div className="pluginHint"><Chrome size={20}/><div><b>Install or authorize the MCP in its provider first</b><span>Free AI only exposes tools that the connected provider reports as installed.</span></div></div>}
+          {!visibleProviders.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No AI provider is connected</b><span>Open a supported AI site in Chromium with the Free AI extension, or add an API model in Settings.</span></div>}
         </div>
       </section>
     </div>
@@ -1660,7 +1775,7 @@ function ExplorePage({tools,chats,onBack}){
     <div className="contentInner exploreInner">
       <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
       {!isNative&&<><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>}
-      <h3>{isNative?'Apps':'Plugins'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName}/>)}
+      <h3>{isNative?'Apps':'Provider connector hints'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+(isNative?'':' · unverified')}/>)}
       <h3>Conversations</h3>{chats.slice(0,8).map(c=><MenuRow key={c.id} icon={Bot} label={c.title} sub={c.modelName}/>)}
     </div>
   </div>
@@ -2078,7 +2193,7 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [mobileList,setMobileList]=useState(true);
   const [settingsQuery,setSettingsQuery]=useState('');
   const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Configuration','Browser','Git','Environments']);
@@ -2107,7 +2222,7 @@ function SettingsView(props){
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
-      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
+      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
       {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Local repository workspace','Super AI · user-selected Git folder'],['Repository actions','Status, list, read, diff, and approval-gated writes']]}/>}
