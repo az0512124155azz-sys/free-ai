@@ -2000,6 +2000,9 @@ function PluginsPage({
 
 function ExplorePage({tools,chats=[],directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onRefreshMcp,onRemoveMcp,onBack,onManagePlugins,onOpenPublicDirectory}){
   const [query,setQuery]=useState('');
+  const [filter,setFilter]=useState('all');
+  const [category,setCategory]=useState('All');
+  const [details,setDetails]=useState(null);
   if(!isWindowsDesktop){
     return <div className="contentPage">
       <PageTop onBack={onBack} title="Explore"/>
@@ -2011,9 +2014,6 @@ function ExplorePage({tools,chats=[],directMcpConnections=[],selectedMcpIds=[],o
       </div>
     </div>;
   }
-  const [filter,setFilter]=useState('all');
-  const [category,setCategory]=useState('All');
-  const [details,setDetails]=useState(null);
   const needle=query.trim().toLowerCase();
   const categories=['All',...new Set(publicPluginDirectory.map(item=>item.category))];
   const direct=directMcpConnections.filter(connection=>pluginSearchMatch([
