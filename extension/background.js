@@ -65,6 +65,9 @@ async function scanProviders(){
       title:chosen.title||p.name,
       source:'browser',
       modelName:typeof capabilities?.modelName==='string'?capabilities.modelName:'',
+      effortLevels:[],
+      effortControl:null,
+      activeEffort:'default',
       mcps:Array.isArray(capabilities?.mcps)?capabilities.mcps:[]
     });
   }

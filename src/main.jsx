@@ -258,6 +258,21 @@ function App(){
   },[connected]);
 
   useEffect(()=>{
+    if(!isWindowsDesktop)return;
+    const levels=Array.isArray(selected?.effortLevels)?selected.effortLevels.filter(Boolean):[];
+    if(!levels.length||selected?.effortControl!=='native'){
+      setEffort(current=>current==='default'?current:'default');
+      setEffortMenu(false);
+      return;
+    }
+    setEffort(current=>{
+      if(levels.includes(current))return current;
+      if(selected?.activeEffort&&levels.includes(selected.activeEffort))return selected.activeEffort;
+      return levels[0];
+    });
+  },[selected]);
+
+  useEffect(()=>{
     const root=document.documentElement;
     const scheme=window.matchMedia?.('(prefers-color-scheme: light)');
     const highContrast=window.matchMedia?.('(prefers-contrast: more)');
@@ -478,8 +493,12 @@ function App(){
         role:message.role,
         content:index===lastUserIndex?routedText:String(message.text||'')
       }));
+      const effortLevels=Array.isArray(model.effortLevels)?model.effortLevels.filter(Boolean):[];
+      const routedEffort=isWindowsDesktop
+        ? (model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default')
+        : effort;
       const payload={
-        requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort,
+        requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
@@ -948,7 +967,7 @@ function Composer(props){
   const nativeSpeechHandles=useRef([]);
   const webRecognition=useRef(null);
   const dictationBase=useRef('');
-  const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High'}[effort]||'Instant';
+  const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'}[effort]||'Reasoning';
 
   async function stopVoice(){
     setDictationError('');
@@ -1085,7 +1104,7 @@ function Composer(props){
           </button>
           {modelMenu&&<ModelMenu connected={connected} selected={selected} choose={m=>{setSelected(m);setModelMenu(false)}}/>}
         </div>}
-        {!isNative&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1&&<div className="menuAnchor">
+        {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{setEffort(v);setEffortMenu(false)}}/>}
         </div>}
@@ -1145,15 +1164,14 @@ function ModelMenu({connected,selected,choose}){
     {connected.length===0?<div className="menuEmpty"><b>No models connected</b><span>Open an AI tab in Chrome or add an API model in Settings.</span></div>:
       connected.map(model=><button role="option" aria-selected={selected?.id===model.id&&selected?.source===model.source} key={(model.source||'browser')+model.id} className="pickerRow" onClick={()=>choose(model)}>
         <span className={'providerBadge '+(model.source==='api'?'api':model.id)}>{modelLabel(model).slice(0,1)}</span>
-        <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name}</small></span>
+        <span className="pickerText"><b>{modelLabel(model)}</b><small>{model.source==='api'?'API · '+model.model:'Browser · '+model.name+' · current tab'}</small></span>
         {selected?.id===model.id&&selected?.source===model.source&&<Check size={16}/>}
       </button>)}
   </div>
 }
 
 function EffortMenu({effort,levels,choose}){
-  const fallback=['instant','medium','high','extra'];
-  const values=Array.isArray(levels)&&levels.length?levels:fallback;
+  const values=Array.isArray(levels)?levels.filter(Boolean):[];
   const labels={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High'};
   const index=Math.max(0,values.indexOf(effort));
   return <div className="floatingMenu effortPicker sliderPicker">
@@ -1163,7 +1181,7 @@ function EffortMenu({effort,levels,choose}){
       aria-label="Reasoning effort" aria-valuetext={labels[effort]}
       onChange={e=>choose(values[Number(e.target.value)])}
     />
-    <div className="effortTicks"><span/><span/><span/><span/></div>
+    <div className="effortTicks">{values.map(level=><span key={level}/>)}</div>
     <div className="effortScale"><span>Fast</span><span>Deep</span></div>
   </div>
 }
