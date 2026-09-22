@@ -731,7 +731,7 @@ function Composer(props){
         </div>
         {mode==='work'&&!isNative&&<div className="menuAnchor permissionAnchor">
           <button className={'accessButton '+(approvalMode==='full'?'enabled':'')} aria-haspopup="menu" aria-expanded={approvalMenu} onClick={()=>setApprovalMenu(v=>!v)}>
-            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval'}<ChevronDown size={12}/>
+            <ShieldCheck size={15}/>{approvalMode==='full'?'Full access':approvalMode==='auto'?'Auto':'Read-only'}<ChevronDown size={12}/>
           </button>
           {approvalMenu&&<PermissionModeMenu value={approvalMode} options={permissionOptions} choose={value=>{setApprovalMode(value);setApprovalMenu(false)}}/>}
         </div>}
@@ -825,9 +825,9 @@ function EffortMenu({effort,levels,choose}){
 
 function PermissionModeMenu({value,options={},choose}){
   const rows=[
-    ['ask','Ask for approval','Default workspace permissions. Ask before additional access.',true],
-    ['auto','Approve for me','Keep the workspace boundary and send additional-access requests to automatic review.',!!options.auto],
-    ['full','Full access','Allow supported disk and network actions without repeated approval prompts.',!!options.full]
+    ['ask','Read-only','Read the current workspace and ask explicitly before actions that need write or broader access.',true],
+    ['auto','Auto','Use the current workspace automatically, but ask before access outside the workspace.',!!options.auto],
+    ['full','Full access','Read files anywhere and run supported commands with network access without repeated approval prompts.',!!options.full]
   ];
   return <div className="floatingMenu permissionPicker" role="menu" aria-label="Permission mode">
     <div className="floatingTitle">Permissions</div>
@@ -1144,14 +1144,14 @@ function ComputerPane({screens,setScreens,approvalMode,permissionOptions={},setA
     await executeAction(action);
   }
 
-  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Approve for me':'Ask for approval';
+  const label=approvalMode==='full'?'Full access':approvalMode==='auto'?'Auto':'Read-only';
   return <aside className="sidePane computerPane">
     <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
     <div className="computerToolbar">
       <div><b>Computer use</b><small>{label}</small></div>
       <select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Ask for approval</option>
-        <option value="auto" disabled={!permissionOptions.auto}>Approve for me</option>
+        <option value="ask">Read-only</option>
+        <option value="auto" disabled={!permissionOptions.auto}>Auto</option>
         <option value="full" disabled={!permissionOptions.full}>Full access</option>
       </select>
       <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
@@ -1226,7 +1226,7 @@ function GeneralSettings({prefs,setPrefs}){
     <h3>Permissions</h3>
     <div className="settingBlock">
       <SettingRow title="Default permissions" desc="Supported computer actions ask for approval by default." control={<span className="valuePill">On</span>}/>
-      <SettingRow title="Auto-review" desc="Makes “Approve for me” available. Simple pointer actions can continue automatically; typing still asks." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
+      <SettingRow title="Auto" desc="Makes Auto available: tasks can work inside the current workspace automatically and ask before broader access." control={<Toggle value={!!prefs.autoReviewEnabled} onChange={v=>setPrefs({...prefs,autoReviewEnabled:v,approvalMode:!v&&prefs.approvalMode==='auto'?'ask':prefs.approvalMode})}/>}/>
       <SettingRow title="Full access" desc="Makes Full access available for supported computer actions without repeated prompts." control={<Toggle value={!!prefs.fullAccessEnabled} onChange={v=>setPrefs({...prefs,fullAccessEnabled:v,approvalMode:!v&&prefs.approvalMode==='full'?'ask':prefs.approvalMode})}/>}/>
     </div>
     <h3>General</h3>
