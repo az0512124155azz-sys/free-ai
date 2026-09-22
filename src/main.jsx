@@ -82,9 +82,9 @@ function ProjectMark({project,size=16}){
   return <span className="projectMark" data-color={project?.color||'blue'} style={{'--project-mark-size':size+'px'}} aria-hidden="true"><Icon size={Math.max(12,size-3)}/></span>;
 }
 
-function DesktopProductSwitcher({product,open,setOpen,onSelect,compact=false}){
+function DesktopProductSwitcher({product,open,setOpen,onSelect}){
   const current=product==='super'?'Super AI':'Free AI';
-  return <div className={'productSwitcher '+(compact?'headerProductSwitcher':'')}>
+  return <div className="productSwitcher">
     <button
       className="brandButton"
       title="Switch product"
@@ -93,7 +93,7 @@ function DesktopProductSwitcher({product,open,setOpen,onSelect,compact=false}){
       aria-expanded={open}
       onClick={()=>setOpen(v=>!v)}
     >
-      <BrandMark size={compact?18:20} className={product==='super'?'superMark':''}/><b>{current}</b><ChevronDown size={14}/>
+      <BrandMark size={20} className={product==='super'?'superMark':''}/><b>{current}</b><ChevronDown size={14}/>
     </button>
     {open&&<div className="productMenu" role="menu" aria-label="Product">
       <button role="menuitemradio" aria-checked={product==='free'} className={product==='free'?'active':''} onClick={()=>onSelect('free')}>
