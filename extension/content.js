@@ -4,6 +4,7 @@
 
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const visible=el=>!!(el&&el.getClientRects().length);
+  let browserElementMap=new Map();
 
   function first(selectors){
     for(const s of selectors){
@@ -142,6 +143,129 @@
     el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
   }
 
+  function browserLabel(el){
+    const text=[
+      el.getAttribute?.('aria-label'),
+      el.getAttribute?.('title'),
+      el.getAttribute?.('placeholder'),
+      el.innerText,
+      el.textContent
+    ].filter(Boolean).join(' ');
+    return String(text||'').replace(/\s+/g,' ').trim().slice(0,180);
+  }
+
+  function browserRole(el){
+    const explicit=el.getAttribute?.('role');
+    if(explicit)return explicit;
+    const tag=String(el.tagName||'').toLowerCase();
+    if(tag==='a')return 'link';
+    if(tag==='button')return 'button';
+    if(tag==='textarea')return 'textbox';
+    if(tag==='select')return 'combobox';
+    if(tag==='input'){
+      const type=String(el.type||'text').toLowerCase();
+      if(type==='checkbox')return 'checkbox';
+      if(type==='radio')return 'radio';
+      if(type==='submit'||type==='button')return 'button';
+      return 'textbox';
+    }
+    if(el.isContentEditable)return 'textbox';
+    return tag||'element';
+  }
+
+  function browserSnapshot(){
+    browserElementMap=new Map();
+    const selector=[
+      'a[href]','button','input:not([type="hidden"])','textarea','select','summary',
+      '[role="button"]','[role="link"]','[role="textbox"]','[role="checkbox"]','[role="radio"]',
+      '[contenteditable="true"]','[tabindex]:not([tabindex="-1"])'
+    ].join(',');
+    const elements=[];
+    let index=0;
+    for(const el of document.querySelectorAll(selector)){
+      if(elements.length>=140||!visible(el))continue;
+      const rect=el.getBoundingClientRect();
+      if(rect.width<2||rect.height<2)continue;
+      if(rect.bottom<0||rect.right<0||rect.top>innerHeight||rect.left>innerWidth)continue;
+      const id='e'+(++index);
+      browserElementMap.set(id,el);
+      const tag=String(el.tagName||'').toLowerCase();
+      const inputType=tag==='input'?String(el.type||'text').toLowerCase():'';
+      elements.push({
+        id,
+        role:browserRole(el),
+        tag,
+        label:browserLabel(el),
+        inputType,
+        href:tag==='a'?String(el.href||''):'',
+        disabled:!!el.disabled,
+        checked:typeof el.checked==='boolean'?el.checked:undefined,
+        rect:{
+          x:Math.round(rect.x),y:Math.round(rect.y),
+          width:Math.round(rect.width),height:Math.round(rect.height)
+        }
+      });
+    }
+    const rawText=String(document.body?.innerText||'').replace(/\n{3,}/g,'\n\n').trim();
+    return {
+      url:location.href,
+      title:document.title,
+      text:rawText.slice(0,18000),
+      selectedText:String(getSelection?.()?.toString?.()||'').slice(0,4000),
+      viewport:{
+        width:innerWidth,height:innerHeight,
+        scrollX:Math.round(scrollX),scrollY:Math.round(scrollY),
+        documentWidth:Math.max(document.documentElement?.scrollWidth||0,document.body?.scrollWidth||0),
+        documentHeight:Math.max(document.documentElement?.scrollHeight||0,document.body?.scrollHeight||0)
+      },
+      elements
+    };
+  }
+
+  async function browserAction(action={}){
+    const type=String(action.type||'').toLowerCase();
+    if(type==='snapshot')return {ok:true,snapshot:browserSnapshot()};
+    if(type==='scroll'){
+      const x=Math.max(-5000,Math.min(5000,Number(action.deltaX)||0));
+      const y=Math.max(-5000,Math.min(5000,Number(action.deltaY)||0));
+      window.scrollBy({left:x,top:y,behavior:'auto'});
+      await sleep(80);
+      return {ok:true};
+    }
+
+    const id=String(action.elementId||'');
+    const el=browserElementMap.get(id);
+    if(!el||!el.isConnected)throw new Error('The selected page element is no longer available. Take a new browser snapshot.');
+
+    if(type==='click'){
+      el.scrollIntoView({block:'center',inline:'center'});
+      await sleep(40);
+      el.click();
+      return {ok:true};
+    }
+    if(type==='focus'){
+      el.scrollIntoView({block:'center',inline:'center'});
+      el.focus();
+      return {ok:true};
+    }
+    if(type==='type'){
+      if(el.disabled)throw new Error('The selected input is disabled.');
+      await setInput(el,String(action.text||''));
+      return {ok:true};
+    }
+    if(type==='select'){
+      if(!(el instanceof HTMLSelectElement))throw new Error('The selected element is not a select control.');
+      const value=String(action.value??'');
+      if(![...el.options].some(option=>option.value===value))throw new Error('The requested select option is not available.');
+      el.value=value;
+      el.dispatchEvent(new Event('input',{bubbles:true}));
+      el.dispatchEvent(new Event('change',{bubbles:true}));
+      return {ok:true};
+    }
+
+    throw new Error('Unsupported Browser Use page action: '+String(action.type||'unknown'));
+  }
+
   async function waitForAnswer(c,before,requestId){
     let stable='';
     let stableCount=0;
@@ -195,6 +319,20 @@
     if(m?.type==='freeai:scanCapabilities'){
       sendResponse({mcps:scanMcps(),modelName:detectActiveModel(),fileUpload:detectFileUpload()});
       return;
+    }
+
+    if(m?.type==='freeai:browserSnapshot'){
+      try{sendResponse(browserSnapshot())}
+      catch(e){sendResponse({error:e?.message||String(e)})}
+      return;
+    }
+
+    if(m?.type==='freeai:browserAction'){
+      (async()=>{
+        try{sendResponse(await browserAction(m.action||{}))}
+        catch(e){sendResponse({error:e?.message||String(e)})}
+      })();
+      return true;
     }
 
     if(m?.type==='freeai:cancel'){
