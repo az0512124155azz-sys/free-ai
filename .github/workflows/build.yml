@@ -163,6 +163,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}
 
       - name: Create Android project
         run: npx cap add android
@@ -206,6 +207,7 @@ jobs:
         run: |
           node --check extension/background.js
           node --check extension/content.js
+          node --check extension/popup.js
 
       - name: Package extension
         run: cd extension && zip -r ../free-ai-extension.zip .

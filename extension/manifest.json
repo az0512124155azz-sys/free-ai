@@ -1,18 +1,45 @@
 {
-  "manifest_version":3,
-  "name":"Free AI Browser Bridge",
-  "version":"0.3.1",
-  "description":"Connects your Chromium tabs and supported AI provider chats to the Free AI desktop app.",
-  "permissions":["tabs","scripting","storage"],
-  "host_permissions":["<all_urls>"],
-  "background":{"service_worker":"background.js"},
-  "content_scripts":[{
-    "matches":[
-      "http://*/*",
-      "https://*/*"
-    ],
-    "js":["content.js"],
-    "run_at":"document_idle"
-  }],
-  "action":{"default_title":"Free AI Browser Bridge"}
+  "manifest_version": 3,
+  "name": "Free AI Browser Bridge",
+  "version": "0.4.0",
+  "description": "Connects Chromium tabs and supported AI provider chats to the Free AI desktop app.",
+  "permissions": [
+    "tabs",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "Free AI Browser Bridge",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  }
 }

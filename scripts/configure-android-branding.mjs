@@ -1,13 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import sharp from 'sharp';
 
 const res=path.resolve('android/app/src/main/res');
+const source=path.resolve('public/free-ai-logo.png');
 if(!fs.existsSync(res)){
   console.error('Android resources not found. Run "npx cap add android" first.');
   process.exit(1);
 }
+if(!fs.existsSync(source)){
+  console.error('Missing public/free-ai-logo.png');
+  process.exit(1);
+}
 
-const ensureDir=p=>fs.mkdirSync(path.join(res,p),{recursive:true});
 const write=(rel,value)=>{
   const target=path.join(res,rel);
   fs.mkdirSync(path.dirname(target),{recursive:true});
@@ -16,88 +21,52 @@ const write=(rel,value)=>{
 
 const colors=`<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="free_ai_icon_background">#181818</color>
+    <color name="free_ai_icon_background">#000000</color>
 </resources>
 `;
 
 const foreground=`<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#3183F7"
-        android:strokeWidth="13"
-        android:strokeLineCap="round"
-        android:pathData="M34,18 C61,9 91,29 91,58 C91,75 82,90 68,97" />
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#3183F7"
-        android:strokeWidth="13"
-        android:strokeLineCap="round"
-        android:pathData="M74,90 C47,99 17,79 17,50 C17,33 26,18 40,11" />
-</vector>
-`;
-
-const monochrome=`<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="13"
-        android:strokeLineCap="round"
-        android:pathData="M34,18 C61,9 91,29 91,58 C91,75 82,90 68,97" />
-    <path
-        android:fillColor="@android:color/transparent"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="13"
-        android:strokeLineCap="round"
-        android:pathData="M74,90 C47,99 17,79 17,50 C17,33 26,18 40,11" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="center">
+        <bitmap android:src="@drawable/free_ai_logo" android:gravity="center" />
+    </item>
+</layer-list>
 `;
 
 const adaptive=`<?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/free_ai_icon_background" />
     <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
 </adaptive-icon>
 `;
-
-const legacy=`<?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:fillColor="#181818" android:pathData="M0,0 H108 V108 H0 Z" />
-    <path android:fillColor="@android:color/transparent" android:strokeColor="#3183F7" android:strokeWidth="13" android:strokeLineCap="round" android:pathData="M34,18 C61,9 91,29 91,58 C91,75 82,90 68,97" />
-    <path android:fillColor="@android:color/transparent" android:strokeColor="#3183F7" android:strokeWidth="13" android:strokeLineCap="round" android:pathData="M74,90 C47,99 17,79 17,50 C17,33 26,18 40,11" />
-</vector>
-`
 
 const splash=`<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:drawable="@color/free_ai_icon_background" />
-    <item android:gravity="center" android:drawable="@drawable/ic_launcher_foreground" />
+    <item android:gravity="center">
+        <bitmap android:src="@drawable/free_ai_logo" android:gravity="center" />
+    </item>
 </layer-list>
 `;
 
-ensureDir('values');
 write('values/free_ai_colors.xml',colors);
 write('drawable/ic_launcher_foreground.xml',foreground);
-write('drawable/ic_launcher_monochrome.xml',monochrome);
 write('drawable/splash.xml',splash);
 write('mipmap-anydpi-v26/ic_launcher.xml',adaptive);
 write('mipmap-anydpi-v26/ic_launcher_round.xml',adaptive);
-write('mipmap-anydpi/ic_launcher.xml',legacy);
-write('mipmap-anydpi/ic_launcher_round.xml',legacy);
+
+const logoTarget=path.join(res,'drawable-nodpi','free_ai_logo.png');
+fs.mkdirSync(path.dirname(logoTarget),{recursive:true});
+await sharp(source).resize(384,384,{fit:'contain'}).png().toFile(logoTarget);
+
+const densitySizes={mdpi:48,hdpi:72,xhdpi:96,xxhdpi:144,xxxhdpi:192};
+for(const [density,size] of Object.entries(densitySizes)){
+  const dir=path.join(res,'mipmap-'+density);
+  fs.mkdirSync(dir,{recursive:true});
+  for(const name of ['ic_launcher.png','ic_launcher_round.png','ic_launcher_foreground.png']){
+    await sharp(source).resize(size,size,{fit:'contain'}).png().toFile(path.join(dir,name));
+  }
+}
 
 for(const dirent of fs.readdirSync(res,{withFileTypes:true})){
   if(!dirent.isDirectory()||!dirent.name.startsWith('drawable'))continue;
@@ -142,4 +111,4 @@ if(fs.existsSync(stylesPath)){
   fs.writeFileSync(stylesPath,xml,'utf8');
 }
 
-console.log('Applied Free AI adaptive icon, splash and edge-to-edge Android branding.');
+console.log('Applied the supplied Free AI logo to Android launcher icons, splash and adaptive icon.');

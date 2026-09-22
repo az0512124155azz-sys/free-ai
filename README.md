@@ -4,9 +4,25 @@ Free AI is a cross-platform AI workspace that can use AI services already open i
 
 ## Download
 
-Download the latest Chrome extension ZIP:
+### Browser extension
 
-**[Download free-ai-extension.zip](https://github.com/az0512124155azz-sys/free-ai/releases/latest/download/free-ai-extension.zip)**
+**[Download the Free AI Browser Bridge ZIP](https://github.com/az0512124155azz-sys/free-ai/releases/latest/download/free-ai-extension.zip)**
+
+The extension is a Chrome/Edge Manifest V3 bridge with:
+- the Free AI app logo
+- a status popup
+- local desktop-bridge connection status
+- supported AI tab detection
+- Rescan and Reconnect controls
+- Browser Use tab/action support
+
+Install it manually:
+1. Download and extract `free-ai-extension.zip`.
+2. Open `chrome://extensions` or `edge://extensions`.
+3. Enable **Developer mode**.
+4. Choose **Load unpacked**.
+5. Select the extracted extension folder.
+6. Open Free AI on the same computer; the popup should report **Connected to Free AI**.
 
 All installers and release files are available from the [Releases page](https://github.com/az0512124155azz-sys/free-ai/releases/latest).
 
@@ -63,7 +79,7 @@ npm install
 npm run dev
 ```
 
-Load `extension/` as an unpacked Chrome extension from `chrome://extensions`.
+Load `extension/` as an unpacked Chrome/Edge extension from `chrome://extensions` or `edge://extensions`.
 
 ## Relay
 

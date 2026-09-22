@@ -110,9 +110,8 @@ button:disabled{opacity:.42;cursor:default}
 :root[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.20)}
 
 .freeAiMark{width:var(--mark-size);height:var(--mark-size);display:inline-grid;place-items:center;flex:none;color:var(--accent)}
-.freeAiMark svg{width:100%;height:100%;display:block;overflow:visible}
-.freeAiMark .markArc{fill:none;stroke:currentColor;stroke-width:76;stroke-linecap:round}
-.superMark{color:#9a77ff}
+.freeAiMark img{width:100%;height:100%;display:block;object-fit:contain;border-radius:24%}
+.superMark{filter:hue-rotate(35deg) saturate(.9)}
 .authBrand .freeAiMark{width:44px;height:44px}
 .projectMark{--project-tone:#3a83f7;width:var(--project-mark-size);height:var(--project-mark-size);display:inline-grid;place-items:center;border-radius:7px;background:color-mix(in srgb,var(--project-tone) 15%,transparent);color:var(--project-tone);flex:none}
 .projectMark[data-color="green"]{--project-tone:#40b76d}.projectMark[data-color="orange"]{--project-tone:#ee7c37}.projectMark[data-color="purple"]{--project-tone:#9a77ff}.projectMark[data-color="pink"]{--project-tone:#e969a6}.projectMark[data-color="neutral"]{--project-tone:#a9a9a9}
