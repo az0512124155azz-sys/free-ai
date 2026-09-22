@@ -257,11 +257,18 @@ jobs:
           TAG="v$VERSION"
           TITLE="Free AI v$VERSION"
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release-assets/* --clobber
-          else
-            gh release create "$TAG" release-assets/* \
+          mapfile -d '' ASSETS < <(find release-assets -type f -print0)
+
+          if [ "${#ASSETS[@]}" -eq 0 ]; then
+            echo "No release assets found."
+            exit 1
+          fi
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
               --target "$GITHUB_SHA" \
               --title "$TITLE" \
               --notes "Free AI desktop, Android and Chrome extension builds."
           fi
+
+          gh release upload "$TAG" "${ASSETS[@]}" --clobber
