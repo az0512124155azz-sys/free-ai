@@ -396,12 +396,20 @@ function App(){
   },[]);
 
   useEffect(()=>{
-    if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
-      persistPrefs({...appPrefs,approvalMode:'ask'});
-    }else if(appPrefs.approvalMode==='full'&&!appPrefs.fullAccessEnabled){
-      persistPrefs({...appPrefs,approvalMode:'ask'});
-    }
-  },[appPrefs.autoReviewEnabled,appPrefs.fullAccessEnabled]);
+    if(!workTask||!['completed','failed','stopped'].includes(workTask.status))return;
+    const terminalKey=workTask.id+':'+workTask.status;
+    if(handledWorkTerminalRef.current===terminalKey)return;
+    handledWorkTerminalRef.current=terminalKey;
+    if(workTask.status==='stopped')return;
+    setMessages(prev=>{
+      const entry=workTask.status==='completed'
+        ? {role:'assistant',text:String(workTask.finalMessage||'Task completed.'),provider:selected?.id}
+        : {role:'error',text:String(workTask.error||'Work task failed.')};
+      const next=[...prev,entry];
+      queueMicrotask(()=>saveCurrentChat(next,selected));
+      return next;
+    });
+  },[workTask?.id,workTask?.status]);
 
   const activeProject=useMemo(()=>projects.find(project=>project.id===activeProjectId)||null,[projects,activeProjectId]);
   const projectChats=useMemo(()=>activeProjectId
@@ -494,6 +502,58 @@ function App(){
     if(product==='free')setMode(chat.mode||'chat');
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
+  const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
+
+  async function runWorkGeneration(text){
+    const userText=String(text||'').trim();
+    if((!userText&&!attachments.length)||workBusy)return;
+    if(!selected){setModelMenu(true);return}
+    const canUploadFiles=selected.source==='browser'&&selected.fileUpload===true;
+    const inlineParts=[];
+    const outbound=[];
+    setAttachmentError('');
+    if(canUploadFiles){
+      for(const item of attachments){
+        outbound.push({name:item.name,type:item.type,size:item.size,dataUrl:await readFileDataUrl(item.file)});
+      }
+    }else{
+      for(const item of attachments){
+        if(item.kind==='text'&&item.content)inlineParts.push('[File: '+item.name+']\n'+item.content);
+        else{
+          setAttachmentError(selected.source==='api'
+            ? 'This API model cannot receive desktop screenshots or binary Work attachments. Choose a browser model with real file upload for Computer Use.'
+            : 'The selected browser model does not expose real file upload. Choose a model with file upload for binary Work attachments or Computer Use.');
+          return;
+        }
+      }
+    }
+    const finalUserText=inlineParts.length?[userText,'',...inlineParts].filter(Boolean).join('\n\n'):userText;
+    const userMessage={role:'user',text:userText,attachments:attachments.map(attachmentMeta),attachmentContext:inlineParts.join('\n\n')};
+    const next=[...messages,userMessage];
+    setMessages(next);saveCurrentChat(next,selected);
+    setPrompt('');
+    const taskId=crypto.randomUUID();
+    handledWorkTerminalRef.current=null;
+    try{
+      const state=await window.desktopApi.startWorkTask({
+        id:taskId,
+        provider:selected.id,
+        source:selected.source||'browser',
+        product,
+        text:finalUserText,
+        effort,
+        approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
+        attachments:outbound
+      });
+      setWorkTask(state);
+      for(const item of attachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
+      setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
+    }catch(e){
+      const failed=[...next,{role:'error',text:e?.message||String(e)}];
+      setMessages(failed);saveCurrentChat(failed,selected);
+    }
+  }
+
   async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null){
     const userText=String(text||'').trim();
     const hasAttachmentIntent=isWindowsDesktop&&(
@@ -581,8 +641,15 @@ function App(){
       setBusy(false);
     }
   }
-  async function send(){return runGeneration(prompt,messages,selected)}
+  async function send(){
+    if(isWindowsDesktop&&mode==='work')return runWorkGeneration(prompt);
+    return runGeneration(prompt,messages,selected);
+  }
   async function stopGeneration(){
+    if(isWindowsDesktop&&mode==='work'&&workTask&&['running','waiting_approval'].includes(workTask.status)){
+      try{await window.desktopApi.stopWorkTask(workTask.id)}catch{}
+      return;
+    }
     const requestId=activeRequestRef.current;
     if(!requestId||!isWindowsDesktop||!isDesktop)return;
     cancelledRequestRef.current=requestId;
