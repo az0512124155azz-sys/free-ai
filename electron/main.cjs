@@ -2813,6 +2813,24 @@ async function callWorkModel(task,observation,attachments=[]){
   return parseWorkDecision(raw);
 }
 
+function validateWorkToolDecision(task,decision){
+  if(decision?.tool!=='mcp')return null;
+  const action=decision.action||{};
+  const type=String(action.type||'').toLowerCase();
+  if(!['list','describe','call'].includes(type)){
+    return 'Unsupported MCP action type. Use list, describe, or call.';
+  }
+  if(type==='list')return null;
+  const resolved=workMcpTool(task,action);
+  if(!resolved){
+    return 'The requested MCP connection/tool is not available in the apps selected for this task. Use mcp list and then describe an exact listed tool.';
+  }
+  if(type==='call'&&(action.arguments===null||typeof action.arguments!=='object'||Array.isArray(action.arguments))){
+    return 'MCP call arguments must be a JSON object matching the tool inputSchema.';
+  }
+  return null;
+}
+
 async function executeWorkTool(task,decision){
   const action=decision.action||{};
   const type=String(action.type||'').toLowerCase();
@@ -3004,6 +3022,15 @@ async function runWorkTask(task){
       }
 
       const label=workActionLabel(decision);
+      const validationError=validateWorkToolDecision(task,decision);
+      if(validationError){
+        observation={error:validationError,tool:decision.tool,action:decision.action};
+        task.trace.push(label+' — rejected before execution: '+validationError);
+        addWorkProgress(task,'Invalid tool plan: '+label);
+        task.detail='Tool plan was invalid; asking the model to correct it…';
+        emitWorkTask(task);
+        continue;
+      }
       task.detail=label;
       addWorkProgress(task,'Proposed: '+label);
       emitWorkTask(task);
@@ -3310,6 +3337,9 @@ ipcMain.handle('mcp:addConnection',async(_e,input)=>{
     url:validateMcpUrl(input?.url),
     token:String(input?.token||'').trim()
   };
+  if(connection.token&&!safeStorage.isEncryptionAvailable()){
+    throw new Error('Secure credential storage is unavailable. Free AI will not send or save this MCP bearer token.');
+  }
   const tested=await listMcpTools(connection,{forceSession:true});
   mcpConnections.push(connection);
   try{saveMcpConnections()}
