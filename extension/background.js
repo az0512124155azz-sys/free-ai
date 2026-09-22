@@ -1,5 +1,7 @@
 let ws=null;
 let reconnectTimer=null;
+let scanTimer=null;
+let browserStateTimer=null;
 
 const PROVIDERS={
   chatgpt:{name:'ChatGPT',matches:['https://chatgpt.com/*']},
@@ -14,6 +16,25 @@ function safeSend(message){
   if(ws&&ws.readyState===WebSocket.OPEN){
     try{ws.send(JSON.stringify(message))}catch{}
   }
+}
+
+function isWebUrl(value){
+  return /^https?:\/\//i.test(String(value||''));
+}
+
+function safeTab(tab){
+  return {
+    id:Number(tab?.id),
+    windowId:Number(tab?.windowId),
+    active:!!tab?.active,
+    audible:!!tab?.audible,
+    pinned:!!tab?.pinned,
+    status:String(tab?.status||''),
+    title:String(tab?.title||''),
+    url:String(tab?.url||''),
+    favIconUrl:String(tab?.favIconUrl||''),
+    controlled:isWebUrl(tab?.url)
+  };
 }
 
 async function sendToTab(tabId,message){
@@ -77,6 +98,101 @@ async function scanProviders(){
   return connected;
 }
 
+async function currentBrowserState(){
+  const tabs=(await chrome.tabs.query({})).map(safeTab).filter(tab=>Number.isFinite(tab.id));
+  const active=(await chrome.tabs.query({active:true,lastFocusedWindow:true}))[0]||null;
+  return {
+    tabs,
+    activeTabId:Number.isFinite(active?.id)?active.id:null,
+    activeWindowId:Number.isFinite(active?.windowId)?active.windowId:null
+  };
+}
+
+async function emitBrowserState(){
+  try{safeSend({type:'browserState',state:await currentBrowserState()})}catch{}
+}
+
+function scheduleBrowserState(delay=120){
+  clearTimeout(browserStateTimer);
+  browserStateTimer=setTimeout(()=>emitBrowserState(),delay);
+}
+
+async function requireBrowserTab(tabId){
+  const id=Number(tabId);
+  if(!Number.isFinite(id))throw new Error('A valid browser tab is required.');
+  const tab=await chrome.tabs.get(id);
+  if(!isWebUrl(tab.url))throw new Error('Free AI can control only http/https tabs.');
+  return tab;
+}
+
+function normalizedWebUrl(value){
+  const raw=String(value||'').trim();
+  const candidate=/^[a-z][a-z0-9+.-]*:/i.test(raw)?raw:'https://'+raw;
+  const parsed=new URL(candidate);
+  if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')throw new Error('Only http/https pages can be controlled by Browser Use.');
+  return parsed.toString();
+}
+
+async function browserSnapshot(tabId){
+  const tab=await requireBrowserTab(tabId);
+  await ensureContentScript(tab.id);
+  const page=await sendToTab(tab.id,{type:'freeai:browserSnapshot'});
+  let screenshot='';
+  if(tab.active){
+    try{screenshot=await chrome.tabs.captureVisibleTab(tab.windowId,{format:'jpeg',quality:70})}catch{}
+  }
+  return {tab:safeTab(await chrome.tabs.get(tab.id)),page,screenshot};
+}
+
+async function handleBrowserRequest(message){
+  const command=String(message?.command||'');
+  const payload=message?.payload||{};
+
+  if(command==='listTabs')return currentBrowserState();
+
+  if(command==='activateTab'){
+    const tab=await requireBrowserTab(payload.tabId);
+    await chrome.tabs.update(tab.id,{active:true});
+    if(Number.isFinite(tab.windowId))await chrome.windows.update(tab.windowId,{focused:true}).catch(()=>{});
+    await emitBrowserState();
+    return {tab:safeTab(await chrome.tabs.get(tab.id))};
+  }
+
+  if(command==='createTab'){
+    const url=normalizedWebUrl(payload.url||'https://www.google.com/');
+    const tab=await chrome.tabs.create({url,active:payload.active!==false});
+    await emitBrowserState();
+    return {tab:safeTab(tab)};
+  }
+
+  if(command==='closeTab'){
+    const tab=await requireBrowserTab(payload.tabId);
+    await chrome.tabs.remove(tab.id);
+    await emitBrowserState();
+    return {ok:true};
+  }
+
+  if(command==='navigate'){
+    const tab=await requireBrowserTab(payload.tabId);
+    const url=normalizedWebUrl(payload.url);
+    const updated=await chrome.tabs.update(tab.id,{url});
+    await emitBrowserState();
+    return {tab:safeTab(updated)};
+  }
+
+  if(command==='snapshot')return browserSnapshot(payload.tabId);
+
+  if(command==='action'){
+    const tab=await requireBrowserTab(payload.tabId);
+    await ensureContentScript(tab.id);
+    const result=await sendToTab(tab.id,{type:'freeai:browserAction',action:payload.action||{}});
+    await new Promise(r=>setTimeout(r,Math.max(80,Math.min(800,Number(payload.settleMs)||180))));
+    return {result,...await browserSnapshot(tab.id)};
+  }
+
+  throw new Error('Unsupported Browser Use command: '+command);
+}
+
 chrome.runtime.onMessage.addListener(m=>{
   if(m?.type==='freeai:stream'&&m.id){
     safeSend({type:'stream',id:m.id,text:String(m.text||'')});
@@ -103,7 +219,7 @@ async function handlePrompt(m){
   if(!provider)throw new Error('Unsupported provider: '+m.provider);
 
   const tabs=await chrome.tabs.query({url:provider.matches});
-  if(!tabs.length)throw new Error(provider.name+' is not open in Chrome.');
+  if(!tabs.length)throw new Error(provider.name+' is not open in this browser.');
 
   let lastError=null;
   for(const tab of [...tabs.filter(t=>t.active),...tabs.filter(t=>!t.active)]){
@@ -144,8 +260,8 @@ function connect(){
   }
 
   ws.onopen=async()=>{
-    safeSend({type:'hello',role:'extension'});
-    await scanProviders();
+    safeSend({type:'hello',role:'extension',browserUseVersion:1});
+    await Promise.allSettled([scanProviders(),emitBrowserState()]);
   };
 
   ws.onmessage=async event=>{
@@ -155,8 +271,21 @@ function connect(){
       await scanProviders();
       return;
     }
+    if(m.type==='scanBrowser'){
+      await emitBrowserState();
+      return;
+    }
     if(m.type==='cancel'){
       await cancelPrompt(m);
+      return;
+    }
+    if(m.type==='browserRequest'&&m.id){
+      try{
+        const result=await handleBrowserRequest(m);
+        safeSend({type:'browserResponse',id:m.id,result});
+      }catch(err){
+        safeSend({type:'browserResponse',id:m.id,error:err?.message||String(err)});
+      }
       return;
     }
 
@@ -184,17 +313,21 @@ function connect(){
   ws.onerror=()=>{try{ws?.close()}catch{}};
 }
 
-let scanTimer=null;
 function scheduleScan(delay=500){
   clearTimeout(scanTimer);
   scanTimer=setTimeout(()=>scanProviders().catch(()=>{}),delay);
 }
 
-chrome.tabs.onCreated.addListener(()=>scheduleScan());
-chrome.tabs.onRemoved.addListener(()=>scheduleScan(250));
+chrome.tabs.onCreated.addListener(()=>{scheduleScan();scheduleBrowserState()});
+chrome.tabs.onRemoved.addListener(()=>{scheduleScan(250);scheduleBrowserState(80)});
+chrome.tabs.onActivated.addListener(()=>scheduleBrowserState(50));
 chrome.tabs.onUpdated.addListener((_id,info)=>{
-  if(info.status==='complete'||info.url)scheduleScan();
+  if(info.status==='complete'||info.url||info.title){
+    scheduleScan();
+    scheduleBrowserState();
+  }
 });
+chrome.windows.onFocusChanged.addListener(()=>scheduleBrowserState(50));
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);
 
