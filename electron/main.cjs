@@ -1,4 +1,4 @@
-const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences,session}=require('electron');
+const {app,BrowserWindow,ipcMain,desktopCapturer,screen,safeStorage,shell,Menu,WebContentsView,clipboard,systemPreferences,session,dialog}=require('electron');
 const path=require('path');
 const fs=require('fs');
 const crypto=require('crypto');
@@ -1017,6 +1017,145 @@ function runPowerShell(script){
       resolve(String(stdout||'').trim());
     });
   });
+}
+
+function runExecFile(command,args=[],options={}){
+  return new Promise((resolve,reject)=>{
+    execFile(command,args,{
+      windowsHide:true,
+      cwd:options.cwd,
+      timeout:Math.max(1000,Math.min(60000,Number(options.timeout)||15000)),
+      maxBuffer:Math.max(1024*1024,Math.min(16*1024*1024,Number(options.maxBuffer)||4*1024*1024))
+    },(error,stdout,stderr)=>{
+      if(error){
+        const detail=String(stderr||error.message||error).trim();
+        return reject(new Error(detail||('Command failed: '+command)));
+      }
+      resolve(String(stdout||'').trim());
+    });
+  });
+}
+
+async function gitCommand(root,args,options={}){
+  return runExecFile('git',args,{cwd:root,timeout:options.timeout||15000,maxBuffer:options.maxBuffer||4*1024*1024});
+}
+
+async function canonicalRepositoryRoot(input){
+  if(process.platform!=='win32')throw new Error('Local repository workspace is currently available on Windows.');
+  const requested=path.resolve(String(input||''));
+  if(!requested||!fs.existsSync(requested)||!fs.statSync(requested).isDirectory())throw new Error('Repository folder is not available.');
+  let root;
+  try{root=await gitCommand(requested,['rev-parse','--show-toplevel'])}catch{
+    throw new Error('Choose a Git repository folder.');
+  }
+  const resolved=path.resolve(root);
+  if(!fs.existsSync(resolved)||!fs.statSync(resolved).isDirectory())throw new Error('Git repository root is not available.');
+  return resolved;
+}
+
+function safeRepositoryPath(root,relativePath,{allowMissing=false}={}){
+  const rel=String(relativePath||'').replace(/\\/g,'/').trim();
+  if(!rel||path.isAbsolute(rel)||rel.split('/').some(part=>part==='..'||part===''))throw new Error('Repository path must be a relative file path.');
+  if(rel==='.git'||rel.startsWith('.git/'))throw new Error('Direct access to .git is not allowed.');
+  const resolved=path.resolve(root,...rel.split('/'));
+  const prefix=root.endsWith(path.sep)?root:root+path.sep;
+  if(resolved!==root&&!resolved.toLowerCase().startsWith(prefix.toLowerCase()))throw new Error('Repository path escapes the selected workspace.');
+  if(!allowMissing&&!fs.existsSync(resolved))throw new Error('Repository file does not exist: '+rel);
+  return {resolved,relative:rel};
+}
+
+async function repositorySummary(inputRoot){
+  const root=await canonicalRepositoryRoot(inputRoot);
+  const [branch,head,statusText]=await Promise.all([
+    gitCommand(root,['rev-parse','--abbrev-ref','HEAD']).catch(()=>'(detached)'),
+    gitCommand(root,['rev-parse','--short','HEAD']).catch(()=>''),
+    gitCommand(root,['status','--porcelain=v1','--untracked-files=normal'],{maxBuffer:2*1024*1024}).catch(()=>'')
+  ]);
+  const statusLines=String(statusText||'').split(/\r?\n/).filter(Boolean);
+  return {
+    root,
+    name:path.basename(root),
+    branch:String(branch||'(detached)'),
+    head:String(head||''),
+    dirty:statusLines.length,
+    status:statusLines.slice(0,120)
+  };
+}
+
+const repositoryIgnoredDirs=new Set(['.git','node_modules','.next','dist','build','release','coverage','.cache','.turbo']);
+
+function listRepositoryFiles(root,limit=700){
+  const files=[];
+  const walk=(dir,relativeBase='')=>{
+    if(files.length>=limit)return;
+    let entries=[];
+    try{entries=fs.readdirSync(dir,{withFileTypes:true})}catch{return}
+    entries.sort((a,b)=>a.name.localeCompare(b.name));
+    for(const entry of entries){
+      if(files.length>=limit)break;
+      if(entry.name.startsWith('.')&&entry.name!=='.github')continue;
+      if(entry.isSymbolicLink())continue;
+      const rel=relativeBase?relativeBase+'/'+entry.name:entry.name;
+      const abs=path.join(dir,entry.name);
+      if(entry.isDirectory()){
+        if(repositoryIgnoredDirs.has(entry.name))continue;
+        walk(abs,rel);
+      }else if(entry.isFile()){
+        files.push(rel.replace(/\\/g,'/'));
+      }
+    }
+  };
+  walk(root);
+  return files;
+}
+
+async function repositoryList(inputRoot){
+  const summary=await repositorySummary(inputRoot);
+  return {...summary,files:listRepositoryFiles(summary.root)};
+}
+
+async function repositoryRead(inputRoot,relativePath){
+  const root=await canonicalRepositoryRoot(inputRoot);
+  const target=safeRepositoryPath(root,relativePath);
+  const stat=fs.statSync(target.resolved);
+  if(!stat.isFile())throw new Error('Repository path is not a file.');
+  if(stat.size>350*1024)throw new Error('Repository file is too large to read in one agent step.');
+  const buffer=fs.readFileSync(target.resolved);
+  if(buffer.includes(0))throw new Error('Binary repository files are not read as text.');
+  return {path:target.relative,size:stat.size,content:buffer.toString('utf8')};
+}
+
+async function repositoryDiff(inputRoot,relativePath=''){
+  const root=await canonicalRepositoryRoot(inputRoot);
+  const args=['diff','--no-ext-diff','--'];
+  if(relativePath){
+    const target=safeRepositoryPath(root,relativePath);
+    args.push(target.relative);
+  }
+  const diff=await gitCommand(root,args,{maxBuffer:3*1024*1024}).catch(error=>{throw new Error('Could not read Git diff: '+error.message)});
+  return {path:String(relativePath||''),diff:String(diff||'').slice(0,180000)};
+}
+
+async function repositoryWrite(inputRoot,relativePath,content){
+  const root=await canonicalRepositoryRoot(inputRoot);
+  const target=safeRepositoryPath(root,relativePath,{allowMissing:true});
+  const text=String(content??'');
+  if(Buffer.byteLength(text,'utf8')>350*1024)throw new Error('Repository write is too large for one agent step.');
+  fs.mkdirSync(path.dirname(target.resolved),{recursive:true});
+  fs.writeFileSync(target.resolved,text,'utf8');
+  return {ok:true,path:target.relative,size:Buffer.byteLength(text,'utf8')};
+}
+
+async function chooseRepository(){
+  if(process.platform!=='win32')throw new Error('Local repository workspace is currently available on Windows.');
+  if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
+  const result=await dialog.showOpenDialog(win,{
+    title:'Choose Git repository',
+    properties:['openDirectory'],
+    buttonLabel:'Use repository'
+  });
+  if(result.canceled||!result.filePaths?.[0])return null;
+  return repositorySummary(result.filePaths[0]);
 }
 
 function displayPoint(displayId,nx,ny){
