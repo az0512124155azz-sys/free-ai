@@ -1629,9 +1629,15 @@ function workPlannerPrompt(task,browserContext,computerContext,previousResult=''
     'For computer coordinate actions, use screenshot pixels and the provided displayId/viewport. Never invent missing element IDs, coordinates, tabs or capabilities.',
     'If an action cannot be performed safely with the available context, finish with a truthful explanation instead of guessing.'
   ].join('\n');
+  const availableChannels=[
+    'built-in',
+    extensionSocket&&extensionSocket.readyState===WebSocket.OPEN?'extension':null,
+    task.modelFileUpload?'computer':null
+  ].filter(Boolean);
   const sections=[
     'You are the action planner for a local Free AI Work task on Windows.',
     'Task: '+task.userText,
+    'Available control channels: '+availableChannels.join(', ')+'. Preferred browser channel: '+task.browserPreference+'.',
     schemas,
     compactBrowserContext(browserContext)
   ];
@@ -1656,7 +1662,11 @@ async function executeWorkDecision(task,decision,browserContext,computerContext)
   if(kind==='browser'){
     const channel=decision.channel==='extension'?'extension':'built-in';
     const type=String(action.type||'').toLowerCase();
-    const targetUrl=(type==='navigate'||type==='new_tab')?String(action.url||''):'';
+    let targetUrl='';
+    if(type==='navigate'||type==='new_tab'){
+      const rawTarget=String(action.url||'').trim()||'https://www.google.com/';
+      targetUrl=channel==='built-in'?normalizeBrowserUrl(rawTarget):rawTarget;
+    }
     if(!(await ensureWorkWebsiteAccess(task,channel,targetUrl)))return {stopped:true,summary:'Website access was denied.'};
     const approval=workActionApproval(task,{...decision,channel});
     if(approval&&!(await askWorkApproval(task,approval)))return {stopped:true,summary:'Browser action was denied.'};
@@ -1690,11 +1700,23 @@ async function executeWorkDecision(task,decision,browserContext,computerContext)
           settleMs:220
         },20000);
       }
-      return {summary:JSON.stringify({channel,result}).slice(0,10000)};
+      let snapshot=result;
+      const resultTabId=result?.tab?.id??extensionBrowserState.activeTabId;
+      if(!result?.page&&resultTabId&&type!=='close_tab'){
+        await new Promise(resolve=>setTimeout(resolve,Math.max(100,Math.min(700,Number(decision.settleMs)||220))));
+        snapshot=await requestExtensionBrowser('snapshot',{tabId:resultTabId},20000);
+      }
+      return {
+        summary:JSON.stringify({channel,tab:snapshot?.tab,page:snapshot?.page,result:result?.result||null}).slice(0,10000),
+        browserContext:snapshot?.page?{channel:'extension',snapshot}:browserContext
+      };
     }
 
     const result=await performBuiltInBrowserAction({tabId:activeBrowserTabId,action,settleMs:220});
-    return {summary:JSON.stringify({channel,tab:result?.tab,page:result?.page}).slice(0,10000)};
+    return {
+      summary:JSON.stringify({channel,tab:result?.tab,page:result?.page}).slice(0,10000),
+      browserContext:result?.page?{channel:'built-in',snapshot:result}:browserContext
+    };
   }
 
   if(kind==='computer'){
