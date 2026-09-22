@@ -3777,6 +3777,20 @@ ipcMain.handle('shell:setTitleBarTheme',(_e,theme)=>setWindowChromeTheme(theme||
 ipcMain.handle('shell:getAppInfo',()=>windowsAppInfo());
 ipcMain.handle('shell:checkForUpdates',()=>checkForWindowsUpdates());
 ipcMain.handle('shell:openExternal',async(_e,url)=>{const value=String(url||'');if(!/^https:\/\//i.test(value))throw new Error('Only HTTPS links can be opened.');await shell.openExternal(value);return true;});
+ipcMain.handle('shell:saveTextFile',async(_e,payload={})=>{
+  const content=String(payload.content||'');
+  const rawName=String(payload.defaultName||'free-ai-chat.md').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').trim()||'free-ai-chat.md';
+  const defaultName=rawName.toLowerCase().endsWith('.md')?rawName:rawName+'.md';
+  const result=await dialog.showSaveDialog(win,{
+    title:'Export Free AI chat',
+    defaultPath:path.join(app.getPath('documents'),defaultName),
+    filters:[{name:'Markdown',extensions:['md']},{name:'Text',extensions:['txt']}],
+    properties:['showOverwriteConfirmation']
+  });
+  if(result.canceled||!result.filePath)return {saved:false};
+  await fs.promises.writeFile(result.filePath,content,'utf8');
+  return {saved:true,filePath:result.filePath};
+});
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',(_e,options={})=>{sendExtension({type:'scanProviders',probeModels:!!options.probeModels,probeTools:!!options.probeTools});return status()});
 ipcMain.handle('bridge:setProviderModel',async(_e,{id,modelName}={})=>{const provider=browserProviders.find(item=>item.id===String(id||''));if(!provider)throw new Error('That browser model is not currently connected.');const result=await requestExtensionBrowser('setProviderModel',{tabId:provider.tabId,providerId:provider.providerId||String(provider.id||'').split(':')[0],modelName:String(modelName||'')},20000);sendExtension({type:'scanProviders',probeModels:true});return result;});
