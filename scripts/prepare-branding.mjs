@@ -12,8 +12,8 @@ if(!fs.existsSync(source)){
 
 fs.mkdirSync(path.dirname(target),{recursive:true});
 await sharp(source)
-  .resize(512,512,{fit:'contain'})
+  .resize(1024,1024,{fit:'contain'})
   .png()
   .toFile(target);
 
-console.log('Prepared Free AI desktop icon from the canonical supplied SVG.');
+console.log('Prepared 1024px Free AI desktop fallback icon from the canonical supplied SVG.');
