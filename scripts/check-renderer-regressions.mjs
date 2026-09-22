@@ -62,6 +62,18 @@ for(const marker of ['className="messageBody" dir="auto"','ref={textareaRef}\n  
   if(!source.includes(marker))fail('Windows 7 RTL/LTR protection is missing "'+marker+'".');
 }
 
+const desktopMain=fs.readFileSync('electron/main.cjs','utf8').replace(/\r\n/g,'\n');
+const styles=fs.readFileSync('src/styles.css','utf8').replace(/\r\n/g,'\n');
+if(!desktopMain.includes("minWidth:process.platform==='win32'?500:980")){
+  fail('Windows 7 Snap/responsive minimum width regressed above 500 epx.');
+}
+if(!desktopMain.includes("minHeight:process.platform==='win32'?420:650")){
+  fail('Windows 7 compact-window minimum height regression detected.');
+}
+if(!styles.includes('@media(max-width:760px)')){
+  fail('The compact responsive layout required by the Windows 7 window minimum is missing.');
+}
+
 const packageJson=JSON.parse(fs.readFileSync('package.json','utf8'));
 for(const platform of ['win','mac','linux']){
   const icon=packageJson?.build?.[platform]?.icon;
