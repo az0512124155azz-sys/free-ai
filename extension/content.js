@@ -29,31 +29,37 @@
     chatgpt:{
       inputs:['#prompt-textarea','textarea[placeholder*="Message"]','div[contenteditable="true"][data-virtualkeyboard]','div[contenteditable="true"]'],
       send:['button[data-testid="send-button"]','button[aria-label*="Send"]'],
+      stop:['button[data-testid="stop-button"]','button[aria-label*="Stop"]'],
       answers:['[data-message-author-role="assistant"]']
     },
     claude:{
       inputs:['div[contenteditable="true"][role="textbox"]','div.ProseMirror[contenteditable="true"]','textarea'],
       send:['button[aria-label*="Send"]','button[type="submit"]'],
+      stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['[data-testid*="assistant"]','.font-claude-message']
     },
     gemini:{
       inputs:['rich-textarea div[contenteditable="true"]','div[contenteditable="true"][role="textbox"]','textarea'],
       send:['button[aria-label*="Send"]','button.send-button'],
+      stop:['button[aria-label*="Stop"]','button[aria-label*="stop"]'],
       answers:['model-response','.model-response-text']
     },
     deepseek:{
       inputs:['textarea','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
       send:['button[aria-label*="Send"]','button[type="submit"]'],
+      stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['.ds-markdown','[class*="markdown"]']
     },
     grok:{
       inputs:['textarea','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
       send:['button[aria-label*="Send"]','button[type="submit"]'],
+      stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['[data-testid*="message"]','article']
     },
     manus:{
       inputs:['textarea','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
       send:['button[aria-label*="Send"]','button[type="submit"]'],
+      stop:['button[aria-label*="Stop"]','button[data-testid*="stop"]'],
       answers:['[data-role="assistant"]','[data-testid*="assistant"]','article']
     }
   };
@@ -113,7 +119,7 @@
     el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
   }
 
-  async function waitForAnswer(c,before){
+  async function waitForAnswer(c,before,requestId){
     let stable='';
     let stableCount=0;
     for(let i=0;i<360;i++){
@@ -121,14 +127,17 @@
       const now=lastText(c.answers);
       if(now&&now!==before){
         if(now===stable) stableCount++;
-        else{stable=now;stableCount=0}
+        else{
+          stable=now;stableCount=0;
+          if(requestId)chrome.runtime.sendMessage({type:'freeai:stream',id:requestId,text:now}).catch(()=>{});
+        }
         if(stableCount>=8) return now;
       }
     }
     throw new Error('Timed out waiting for the AI response.');
   }
 
-  async function prompt(provider,text,toolRequest,effort){
+  async function prompt(provider,text,toolRequest,effort,requestId){
     const c=configs[provider];
     if(!c) throw new Error('Unsupported provider.');
     const input=first(c.inputs);
@@ -149,7 +158,7 @@
     if(!send) throw new Error('Could not find the send button for this provider.');
     send.click();
 
-    const answer=await waitForAnswer(c,before);
+    const answer=await waitForAnswer(c,before,requestId);
     return {text:answer,usedTool:toolRequest?.mcp||null};
   }
 
@@ -164,10 +173,18 @@
       return;
     }
 
+    if(m?.type==='freeai:cancel'){
+      const config=configs[m.provider];
+      const stop=config?first(config.stop||[]):null;
+      if(stop)stop.click();
+      sendResponse({ok:!!stop});
+      return;
+    }
+
     if(m?.type!=='freeai:prompt') return;
 
     (async()=>{
-      try{sendResponse(await prompt(m.provider,m.text,m.toolRequest,m.effort))}
+      try{sendResponse(await prompt(m.provider,m.text,m.toolRequest,m.effort,m.id))}
       catch(e){sendResponse({error:e?.message||String(e)})}
     })();
 

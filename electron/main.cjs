@@ -12,6 +12,7 @@ let relayReconnectTimer=null;
 let browserProviders=[];
 let apiConnections=[];
 const pending=new Map();
+const activePrompts=new Map();
 let relayConfig={relayUrl:'',pairKey:''};
 let pendingAuthUrl=null;
 const browserTabs=new Map();
@@ -580,7 +581,12 @@ function sendExtension(msg){
   return false;
 }
 
-function routeToBrowser(msg){
+function emitPromptStream(id,text){
+  if(!id||!win||win.isDestroyed())return;
+  win.webContents.send('prompt-stream',{id,text:String(text||'')});
+}
+
+function routeToBrowser(msg,onStream){
   return new Promise((resolve,reject)=>{
     if(!extensionSocket||extensionSocket.readyState!==WebSocket.OPEN){
       return reject(new Error('Chrome extension is not connected.'));
@@ -588,59 +594,127 @@ function routeToBrowser(msg){
     if(!browserProviders.some(p=>p.id===msg.provider)){
       return reject(new Error('That browser model is not currently connected.'));
     }
-    const id=msg.id||crypto.randomUUID();
+    const id=msg.requestId||msg.id||crypto.randomUUID();
     const timer=setTimeout(()=>{
       pending.delete(id);
       reject(new Error('AI response timed out.'));
     },180000);
-    pending.set(id,{resolve,reject,timer});
+    pending.set(id,{resolve,reject,timer,onStream,provider:msg.provider});
     sendExtension({...msg,id,type:'prompt'});
   });
 }
 
-async function openAICompatibleChat(cfg,text){
+function cancelPrompt(id){
+  const requestId=String(id||'');
+  if(!requestId)return false;
+  const active=activePrompts.get(requestId);
+  if(active){
+    active.cancelled=true;
+    active.controller.abort();
+    return true;
+  }
+  const browser=pending.get(requestId);
+  if(browser){
+    clearTimeout(browser.timer);
+    pending.delete(requestId);
+    sendExtension({type:'cancel',id:requestId,provider:browser.provider});
+    browser.reject(new Error('Generation stopped.'));
+    return true;
+  }
+  return false;
+}
+
+async function openAICompatibleChat(cfg,msg,onStream){
   const base=String(cfg.baseUrl||'').trim().replace(/\/$/,'');
   if(!/^https?:\/\//i.test(base)) throw new Error('API endpoint must start with http:// or https://');
   if(!cfg.model) throw new Error('API model is required.');
   const endpoint=base.endsWith('/chat/completions')?base:base+'/chat/completions';
   const headers={'Content-Type':'application/json'};
   if(cfg.apiKey) headers.Authorization='Bearer '+cfg.apiKey;
+  const requestId=String(msg.requestId||crypto.randomUUID());
+  const history=Array.isArray(msg.history)
+    ? msg.history.filter(item=>item&&['user','assistant'].includes(item.role)&&typeof item.content==='string').map(item=>({role:item.role,content:item.content}))
+    : [];
+  const messages=history.length?history:[{role:'user',content:String(msg.text||'')}];
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),120000);
+  const active={controller,cancelled:false};
+  activePrompts.set(requestId,active);
+  let timedOut=false;
+  const timeout=setTimeout(()=>{timedOut=true;controller.abort()},120000);
   try{
+    const useStream=!!msg.requestId;
     const response=await fetch(endpoint,{
       method:'POST',
       headers,
       signal:controller.signal,
-      body:JSON.stringify({model:cfg.model,messages:[{role:'user',content:text}],stream:false})
+      body:JSON.stringify({model:cfg.model,messages,stream:useStream})
     });
+    if(!response.ok){
+      const data=await response.json().catch(()=>({}));
+      throw new Error(data?.error?.message||data?.message||('API request failed: '+response.status));
+    }
+    const contentType=String(response.headers.get('content-type')||'').toLowerCase();
+    if(useStream&&contentType.includes('text/event-stream')&&response.body){
+      const reader=response.body.getReader();
+      const decoder=new TextDecoder();
+      let buffer='';
+      let full='';
+      while(true){
+        const {value,done}=await reader.read();
+        if(done)break;
+        buffer+=decoder.decode(value,{stream:true});
+        const lines=buffer.split(/\r?\n/);
+        buffer=lines.pop()||'';
+        for(const line of lines){
+          const trimmed=line.trim();
+          if(!trimmed.startsWith('data:'))continue;
+          const raw=trimmed.slice(5).trim();
+          if(!raw||raw==='[DONE]')continue;
+          let chunk;try{chunk=JSON.parse(raw)}catch{continue}
+          const delta=chunk?.choices?.[0]?.delta?.content;
+          if(typeof delta==='string'&&delta){
+            full+=delta;
+            onStream?.(full);
+          }
+        }
+      }
+      if(full)return {text:full,streamed:true};
+      throw new Error('The API stream ended without a text response.');
+    }
     const data=await response.json().catch(()=>({}));
-    if(!response.ok) throw new Error(data?.error?.message||data?.message||('API request failed: '+response.status));
     const out=data?.choices?.[0]?.message?.content;
     if(typeof out!=='string') throw new Error('The API returned an unsupported response format.');
-    return {text:out};
+    onStream?.(out);
+    return {text:out,streamed:false};
   }catch(e){
-    if(e?.name==='AbortError') throw new Error('API request timed out.');
+    if(e?.name==='AbortError'){
+      if(active.cancelled)throw new Error('Generation stopped.');
+      if(timedOut)throw new Error('API request timed out.');
+    }
     throw e;
-  }finally{clearTimeout(timeout)}
+  }finally{
+    clearTimeout(timeout);
+    if(activePrompts.get(requestId)===active)activePrompts.delete(requestId);
+  }
 }
 
-async function routeDirect(msg){
+async function routeDirect(msg,onStream){
   if(msg.source==='api'){
     const cfg=apiConnections.find(c=>c.id===msg.provider);
     if(!cfg) throw new Error('That API connection is not available on the desktop.');
-    return openAICompatibleChat(cfg,msg.text);
+    return openAICompatibleChat(cfg,msg,onStream);
   }
-  return routeToBrowser(msg);
+  return routeToBrowser(msg,onStream);
 }
 
-async function routePrompt(msg){
+async function routePrompt(msg,emitToRenderer=false){
+  const onStream=emitToRenderer&&msg.requestId?text=>emitPromptStream(msg.requestId,text):null;
   const tool=msg.toolRequest;
   if(tool?.mcp&&tool.ownerProviderId){
     const owner=browserProviders.find(p=>p.id===tool.ownerProviderId);
     if(!owner) throw new Error('The model that owns this MCP is not currently connected.');
     if(msg.source!=='api'&&msg.provider===tool.ownerProviderId){
-      return routeToBrowser({...msg,toolRequest:tool});
+      return routeToBrowser({...msg,toolRequest:tool},onStream);
     }
     const toolPrompt=[
       'Use the already-installed MCP/connector named "'+tool.mcp+'" for the following task.',
@@ -653,7 +727,7 @@ async function routePrompt(msg){
       source:'browser',
       text:toolPrompt,
       toolRequest:tool
-    });
+    },null);
     const augmented=[
       'Another connected model used the installed MCP/connector "'+tool.mcp+'".',
       'Tool result:',
@@ -664,9 +738,9 @@ async function routePrompt(msg){
       '',
       'Use the tool result above to answer the original request.'
     ].join('\n');
-    return routeDirect({...msg,text:augmented,toolRequest:null});
+    return routeDirect({...msg,text:augmented,toolRequest:null},onStream);
   }
-  return routeDirect(msg);
+  return routeDirect(msg,onStream);
 }
 
 function startLocalBridge(){
@@ -689,6 +763,10 @@ function startLocalBridge(){
       if(m.type==='providers'){
         browserProviders=Array.isArray(m.providers)?m.providers.map(p=>({...p,source:'browser'})):[];
         sendStatus();
+        return;
+      }
+      if(m.type==='stream'&&pending.has(m.id)){
+        pending.get(m.id)?.onStream?.(String(m.text||''));
         return;
       }
       if(m.type==='response'&&pending.has(m.id)){
@@ -861,6 +939,8 @@ app.on('before-quit',()=>{
   clearTimeout(relayReconnectTimer);
   for(const p of pending.values()){clearTimeout(p.timer);p.reject(new Error('Application is closing.'))}
   pending.clear();
+  for(const active of activePrompts.values())active.controller.abort();
+  activePrompts.clear();
 });
 
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
@@ -869,7 +949,8 @@ ipcMain.handle('shell:showMenu',(_e,label)=>showAppMenu(String(label||'')));
 ipcMain.handle('shell:setTitleBarTheme',(_e,theme)=>setWindowChromeTheme(theme||{}));
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',()=>{sendExtension({type:'scanProviders'});return status()});
-ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{}));
+ipcMain.handle('bridge:sendPrompt',(_e,msg)=>routePrompt(msg||{},true));
+ipcMain.handle('bridge:cancelPrompt',(_e,id)=>cancelPrompt(id));
 ipcMain.handle('bridge:configureRelay',(_e,cfg)=>{
   relayConfig={relayUrl:String(cfg?.relayUrl||'').trim(),pairKey:String(cfg?.pairKey||'').trim()};
   connectRelay();

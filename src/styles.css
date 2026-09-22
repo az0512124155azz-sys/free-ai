@@ -384,6 +384,8 @@ button:disabled{opacity:.42;cursor:default}
 .messageBubble{max-width:86%;font-size:15px;line-height:1.62;color:var(--text-secondary)}
 .chatMessage.user .messageBubble{background:var(--surface-secondary);color:var(--text);border-radius:18px;padding:10px 14px}
 .chatMessage.error .messageBubble{color:var(--danger)}
+.messageActions{margin-top:var(--r-sm)}
+.responseActionMenu{left:0;top:100%;width:max-content}
 .messageAuthor{font-size:11px;color:var(--text-tertiary);margin-bottom:5px;font-weight:600}
 .messageBody{white-space:pre-wrap;overflow-wrap:anywhere}
 .assistantMark{width:26px;height:26px;border:1px solid var(--border-soft);border-radius:var(--r-lg);display:grid;place-items:center;color:var(--text-tertiary);flex:none}

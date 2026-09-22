@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
   getStatus:()=>ipcRenderer.invoke('bridge:getStatus'),
   scanProviders:()=>ipcRenderer.invoke('bridge:scanProviders'),
   sendPrompt:(m)=>ipcRenderer.invoke('bridge:sendPrompt',m),
+  cancelPrompt:(id)=>ipcRenderer.invoke('bridge:cancelPrompt',id),
   configureRelay:(c)=>ipcRenderer.invoke('bridge:configureRelay',c),
   listApiConnections:()=>ipcRenderer.invoke('api:listConnections'),
   addApiConnection:(c)=>ipcRenderer.invoke('api:addConnection',c),
@@ -32,6 +33,11 @@ contextBridge.exposeInMainWorld('desktopApi',{
   browserReload:()=>ipcRenderer.invoke('browser:reload'),
   browserClose:()=>ipcRenderer.invoke('browser:close'),
   openAuthUrl:(url)=>ipcRenderer.invoke('auth:openExternal',url),
+  onPromptStream:(cb)=>{
+    const h=(_e,event)=>cb(event);
+    ipcRenderer.on('prompt-stream',h);
+    return()=>ipcRenderer.removeListener('prompt-stream',h);
+  },
   onBrowserState:(cb)=>{
     const h=(_e,state)=>cb(state);
     ipcRenderer.on('browser-state',h);
