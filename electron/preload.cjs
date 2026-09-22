@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('desktopApi',{
   startWorkTask:(payload)=>ipcRenderer.invoke('work:start',payload),
   stopWorkTask:(id)=>ipcRenderer.invoke('work:stop',id),
   resolveWorkApproval:(payload)=>ipcRenderer.invoke('work:resolveApproval',payload),
+  chooseRepository:()=>ipcRenderer.invoke('repository:choose'),
+  repositorySummary:(root)=>ipcRenderer.invoke('repository:summary',root),
   configureRelay:(c)=>ipcRenderer.invoke('bridge:configureRelay',c),
   listApiConnections:()=>ipcRenderer.invoke('api:listConnections'),
   addApiConnection:(c)=>ipcRenderer.invoke('api:addConnection',c),
