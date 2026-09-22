@@ -451,6 +451,9 @@ button:disabled{opacity:.42;cursor:default}
 .formLabel{display:block;padding:11px 13px;font-size:10px;color:var(--text-tertiary)}.formLabel>input,.keyLine input,.apiForm input{width:100%;margin-top:6px;background:var(--canvas);border:1px solid var(--border);border-radius:var(--r-lg);padding:8px;color:var(--text);font-size:11px}
 .keyLine{display:flex;gap:7px}.keyLine button{margin-top:6px;background:var(--surface-secondary);border-radius:var(--r-lg);padding:0 10px;font-size:10px}
 .primaryAction{background:var(--text);color:var(--canvas);border-radius:var(--r-lg);padding:8px 12px;font-size:11px}
+.primaryAction{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+.browserSettingsActions{display:flex;align-items:center;gap:8px;margin-top:14px;flex-wrap:wrap}
+.settingsFeedback{margin-top:10px;font-size:11px;color:var(--text-tertiary)}
 .profileField{display:flex;flex-direction:column;gap:6px;padding:13px;border-bottom:1px solid var(--border-soft);font-size:10.5px;color:var(--text-tertiary)}
 .profileField input{height:36px;background:var(--canvas);border:1px solid var(--border);border-radius:8px;padding:0 10px;color:var(--text);font-size:12px}
 .profileActions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding:12px 13px}.profileActions>span{font-size:10.5px;color:var(--muted);margin-right:auto}
