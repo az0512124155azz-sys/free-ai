@@ -2572,6 +2572,20 @@ function workApprovalFor(task,decision){
     }catch{}
     repositoryWrite=operation+'. Previous size: '+previousBytes+' bytes. New size: '+newBytes+' bytes.';
   }
+  let localFileWrite='';
+  if(tool==='files'&&type==='write'){
+    const newBytes=Buffer.byteLength(String(action.content??''),'utf8');
+    let operation='Create new file';
+    let previousBytes=0;
+    try{
+      const fileTargetPath=safeLocalFolderPath(task.localFolder?.root||'',action.path,{allowMissing:true});
+      if(fs.existsSync(fileTargetPath.resolved)){
+        operation='Replace existing file';
+        previousBytes=fs.statSync(fileTargetPath.resolved).size;
+      }
+    }catch{}
+    localFileWrite=operation+'. Previous size: '+previousBytes+' bytes. New size: '+newBytes+' bytes.';
+  }
   const detail=[
     scopeDetail,
     needsActionApproval?'Proposed action: '+label+'. Tool: '+tool+'. Type: '+type+'.':'',
@@ -2580,7 +2594,7 @@ function workApprovalFor(task,decision){
     repositoryTarget,
     repositoryWrite,
     fileTarget,
-    tool==='files'&&type==='write'?'Write size: '+Buffer.byteLength(String(action.content??''),'utf8')+' bytes.':'',
+    localFileWrite,
     mcpTarget,
     typedText?'Text to enter: "'+typedText+(String(action.text).length>160?'…':'')+'"':'',
     keys?'Keys: '+keys+'.':''
@@ -2808,6 +2822,9 @@ function workMcpDescription(task){
 
 function workToolDescription(task){
   const computerAvailable=process.platform==='win32'&&workCanSeeImages(task);
+  const localAttach=workCanReceiveFiles(task)
+    ? 'attach(path)'
+    : 'attach unavailable for this controller because it does not expose real file upload';
   const tools=[
     'browser_builtin: Free AI built-in browser. Actions: snapshot, navigate(url), back, forward, reload, wait(ms), new_tab(url), switch_tab(tabId), close_tab(tabId), click(x,y,button), double_click(x,y,button), move(x,y), scroll(x,y,deltaX,deltaY), type(x,y,text), keypress(keys).',
     extensionSocket&&extensionSocket.readyState===WebSocket.OPEN
@@ -2820,7 +2837,7 @@ function workToolDescription(task){
       ? 'repository: selected local Git repository "'+task.workspace.name+'". Actions: status, list, read(path,startLine optional,endLine optional), diff(path optional), write(path,content). Read all line ranges of an existing file before writing. Writes require user approval and cannot access .git or escape the selected repository.'
       : 'repository: unavailable because no local Git repository is attached to this task.',
     task.localFolder?.root
-      ? 'files: selected local folder "'+task.localFolder.name+'". Actions: list(path optional,recursive optional), stat(path), read(path,startLine optional,endLine optional), attach(path), write(path,content). read is text-only and bounded. attach sends the selected file to the controller only when its provider supports real file upload. Existing text files must be fully read before overwrite. Credential/private-key files are blocked.'
+      ? 'files: selected local folder "'+task.localFolder.name+'". Actions: list(path optional,recursive optional), stat(path), read(path,startLine optional,endLine optional), '+localAttach+', write(path,content). read is text-only and bounded. Existing text files must be fully read before overwrite. Credential/private-key files are blocked.'
       : 'files: unavailable because no local folder is open for this task.',
     workMcpDescription(task)
   ];
