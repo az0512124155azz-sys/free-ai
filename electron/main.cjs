@@ -1142,6 +1142,26 @@ function sendExtension(msg){
   return false;
 }
 
+function requestExtensionBrowser(command,payload={},timeoutMs=15000){
+  return new Promise((resolve,reject)=>{
+    if(!extensionSocket||extensionSocket.readyState!==WebSocket.OPEN){
+      reject(new Error('Browser extension is not connected.'));
+      return;
+    }
+    const id=crypto.randomUUID();
+    const timer=setTimeout(()=>{
+      extensionBrowserPending.delete(id);
+      reject(new Error('Browser extension request timed out.'));
+    },Math.max(1000,Math.min(30000,Number(timeoutMs)||15000)));
+    extensionBrowserPending.set(id,{resolve,reject,timer});
+    if(!sendExtension({type:'browserRequest',id,command,payload})){
+      clearTimeout(timer);
+      extensionBrowserPending.delete(id);
+      reject(new Error('Browser extension is not connected.'));
+    }
+  });
+}
+
 function emitPromptStream(id,text){
   if(!id||!win||win.isDestroyed())return;
   win.webContents.send('prompt-stream',{id,text:String(text||'')});
