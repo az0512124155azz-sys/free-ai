@@ -1763,8 +1763,17 @@ async function runWorkTask(task){
       const prompt=workPlannerPrompt(task,browserContext,computerContext,previousResult);
       const requestId=task.id+':'+task.step;
       task.activeRequestId=requestId;
+      const browserScreenshot=task.modelFileUpload&&browserContext?.snapshot?.screenshot
+        ? [{
+            name:'free-ai-browser-screenshot.png',
+            type:'image/png',
+            size:0,
+            dataUrl:browserContext.snapshot.screenshot
+          }]
+        : [];
       const attachments=[
         ...(task.step===1&&Array.isArray(task.initialAttachments)?task.initialAttachments:[]),
+        ...browserScreenshot,
         ...(computerContext?[computerContext.attachment]:[])
       ];
       const result=await routePrompt({
