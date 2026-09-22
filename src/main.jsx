@@ -541,9 +541,14 @@ function App(){
       const routedEffort=isWindowsDesktop
         ? (model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default')
         : effort;
+      const outboundAttachments=isWindowsDesktop&&canUploadFiles&&!retryContext
+        ? await Promise.all(activeAttachments.map(async item=>({
+            name:item.name,type:item.type,size:item.size,dataUrl:await readFileDataUrl(item.file)
+          })))
+        : [];
       const payload={
         requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
-        attachments:isWindowsDesktop&&canUploadFiles&&!retryContext?activeAttachments.map(item=>({name:item.name,type:item.type,size:item.size,dataUrl:item.dataUrl})):[],
+        attachments:outboundAttachments,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
@@ -551,7 +556,10 @@ function App(){
       const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
       const next=[...withUser,{role:'assistant',text:finalText,provider:model.id}];
       setMessages(next);saveCurrentChat(next,model);
-      if(isWindowsDesktop&&!retryContext){setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current)}
+      if(isWindowsDesktop&&!retryContext){
+        for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
+        setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current)
+      }
     }catch(e){
       if(requestId&&cancelledRequestRef.current===requestId)return;
       const next=[...withUser,{role:'error',text:e?.message||String(e)}];
@@ -679,15 +687,16 @@ function App(){
     const next=[];
     for(const file of list){
       const textLike=file.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
-      const item={id:crypto.randomUUID(),name:file.name,type:file.type,size:file.size,kind:'binary',content:'',dataUrl:'',url:''};
-      if(file.type.startsWith('image/'))item.kind='image';
+      const item={id:crypto.randomUUID(),name:file.name,type:file.type,size:file.size,kind:'binary',content:'',url:'',file};
+      if(file.type.startsWith('image/')){item.kind='image';item.url=URL.createObjectURL(file)}
       else if(textLike&&file.size<=2*1024*1024)item.kind='text';
       else if(/\.(zip|rar|7z|tar|gz)$/i.test(file.name))item.kind='archive';
       try{
-        item.dataUrl=await readFileDataUrl(file);
-        if(item.kind==='image')item.url=item.dataUrl;
         if(item.kind==='text')item.content=await file.text();
-      }catch(e){setAttachmentError(e?.message||('Could not read '+file.name));return}
+      }catch(e){
+        if(item.url)URL.revokeObjectURL(item.url);
+        setAttachmentError(e?.message||('Could not read '+file.name));return
+      }
       next.push(item);
     }
     setAttachments(current=>[...current,...next]);
@@ -713,7 +722,11 @@ function App(){
     event.target.value='';
   }
   function removeAttachment(id){
-    setAttachments(current=>current.filter(item=>item.id!==id));
+    setAttachments(current=>{
+      const removed=current.find(item=>item.id===id);
+      if(String(removed?.url||'').startsWith('blob:'))URL.revokeObjectURL(removed.url);
+      return current.filter(item=>item.id!==id);
+    });
     if(selectedFile?.id===id){setSelectedFile(null);setSidePanel(current=>current==='file'?null:current)}
     setAttachmentError('');
   }
