@@ -2,6 +2,8 @@ import fs from 'node:fs';
 
 const main=fs.readFileSync('electron/main.cjs','utf8');
 const source=fs.readFileSync('src/main.jsx','utf8');
+const background=fs.readFileSync('extension/background.js','utf8');
+const contentScript=fs.readFileSync('extension/content.js','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
@@ -70,7 +72,7 @@ has(installerSmoke,'/S _?=$installDir','Installer smoke must silently uninstall 
 ok(/extensionSocket=null;\s*browserProviders=\[\];\s*extensionBrowserState=\{tabs:\[\],activeTabId:null,activeWindowId:null\};/.test(main),'Extension disconnect must clear stale browser provider and tab state.');
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
 has(main,"for(const [id,request] of pending)",'Extension disconnect must drain pending browser prompts.');
-has(source,"if(!fresh){setSelected(null);setSelectedTool(null);setParallelCount(1)}",'Renderer must clear a selected provider after disconnect.');
+has(source,"if(!fresh||fresh.connected===false){setSelected(null);setSelectedTool(null);setParallelCount(1)}",'Renderer must clear a selected provider after disconnect or adapter failure.');
 
 has(contentScript,'function providerAdapterHealth(provider)','Provider DOM health detection is missing.');
 has(contentScript,"adapterReady:false",'Provider capability scan must expose an unavailable adapter state.');
