@@ -397,6 +397,23 @@ button:disabled{opacity:.42;cursor:default}
 .browserToolbar input:focus{border-color:var(--border);color:var(--text);text-align:left}
 .downloadStatus{height:28px;min-width:28px;padding:0 7px;border-radius:var(--r-lg);display:flex;align-items:center;justify-content:center;gap:3px;color:var(--accent);background:color-mix(in srgb,var(--accent) 10%,transparent)}
 .downloadStatus small{font-size:9px;font-weight:650}
+.browserToolButton{position:relative}.browserToolButton small{position:absolute;right:2px;top:1px;min-width:12px;height:12px;padding:0 3px;border-radius:999px;background:var(--accent);color:var(--accent-contrast);font-size:8px;line-height:12px;font-weight:700}
+.browserToolButton.active{background:var(--selected)!important;color:var(--text)!important}
+.siteToolsPanel{flex:none;max-height:310px;overflow:hidden;border-bottom:1px solid var(--border-soft);background:var(--surface-primary);display:flex;flex-direction:column}
+.siteToolsHeader{height:46px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 13px;border-bottom:1px solid var(--border-soft)}
+.siteToolsHeader>span{display:flex;min-width:0;flex-direction:column}.siteToolsHeader b{font-size:11.5px}.siteToolsHeader small{font-size:9.5px;color:var(--muted);margin-top:2px}
+.siteToolsHeader button{display:flex;align-items:center;gap:5px;background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:8px;padding:6px 8px;color:var(--text-secondary);font-size:9.5px}
+.siteToolsBody{display:grid;grid-template-columns:minmax(145px,.82fr) minmax(190px,1.18fr);min-height:0;max-height:263px}
+.siteToolsList{min-width:0;overflow:auto;border-right:1px solid var(--border-soft);padding:6px}
+.siteToolsList>button{width:100%;display:grid;grid-template-columns:18px minmax(0,1fr);align-items:start;gap:7px;text-align:left;background:transparent;border-radius:9px;padding:8px;color:var(--text-secondary)}
+.siteToolsList>button:hover,.siteToolsList>button.active{background:var(--hover);color:var(--text)}
+.siteToolsList>button>span{display:flex;min-width:0;flex-direction:column}.siteToolsList b{font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.siteToolsList small{font-size:9px;color:var(--muted);line-height:1.35;margin-top:2px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.siteToolRunner{min-width:0;overflow:auto;padding:10px;display:flex;flex-direction:column;gap:6px}.siteToolTitle{display:flex;align-items:center;gap:7px;justify-content:space-between}.siteToolTitle b{font-size:11px}.siteToolRunner>small{font-size:9.5px;line-height:1.4;color:var(--muted)}
+.consequentialBadge{font-size:8px;padding:3px 6px;border-radius:999px;color:#ffc46b;background:rgba(152,90,20,.24);border:1px solid rgba(255,181,76,.2);white-space:nowrap}
+.siteToolRunner textarea{height:62px;resize:vertical;background:var(--canvas);border:1px solid var(--border);border-radius:8px;padding:7px;color:var(--text-secondary);font:9.5px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}
+.siteToolRun{align-self:flex-end;border-radius:8px;background:var(--text);color:var(--canvas);padding:6px 9px;font-size:9.5px;font-weight:650}.siteToolRun.consequential{background:#d78b27;color:#16110a}
+.siteToolStatus{margin:1px 0 0;max-height:70px;overflow:auto;white-space:pre-wrap;word-break:break-word;background:var(--canvas);border:1px solid var(--border-soft);border-radius:7px;padding:6px;color:var(--text-tertiary);font:9px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}
+.siteToolStatus.empty{margin:8px 10px 10px}
 .nativeBrowserSurface{flex:1;min-height:0;background:var(--canvas);position:relative}
 .fileMeta{padding:10px 14px;border-bottom:1px solid var(--border-soft);display:flex;flex-direction:column}
 .fileMeta span{font-size:12px}.fileMeta small{font-size:10px;color:var(--muted);margin-top:3px}
