@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('desktopApi',{
   startSystemDictation:()=>ipcRenderer.invoke('dictation:start'),
   recognizeSystemDictation:()=>ipcRenderer.invoke('dictation:recognize'),
   speakText:(text)=>ipcRenderer.invoke('voice:speak',text),
+  setQuickChatEnabled:(value)=>ipcRenderer.invoke('quick-chat:setEnabled',value),
+  hideQuickChat:()=>ipcRenderer.invoke('quick-chat:hide'),
   captureAppshot:()=>ipcRenderer.invoke('appshot:capture'),
   onAppshot:(cb)=>listen('appshot-captured',cb),
   computerClick:(payload)=>ipcRenderer.invoke('computer:click',payload),
