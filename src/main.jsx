@@ -256,8 +256,12 @@ function App(){
     setBusy(true);setPrompt('');
     const withUser=[...messages,{role:'user',text}];setMessages(withUser);saveCurrentChat(withUser,selected);
     try{
+      const instructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      const routedText=instructions
+        ? ['Free AI user preferences for this request:',instructions,'','User request:',text].join('\n')
+        : text;
       const payload={
-        provider:selected.id,source:selected.source||'browser',text,effort,
+        provider:selected.id,source:selected.source||'browser',text:routedText,effort,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
@@ -279,6 +283,32 @@ function App(){
     catch(e){setApiError(e?.message||String(e))}
   }
   async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
+
+  function clearLocalHistory(){
+    localStorage.removeItem('freeai.chats');
+    localStorage.removeItem('freeai.chats.free');
+    localStorage.removeItem('freeai.chats.super');
+    setChats([]);setMessages([]);setCurrentChatId(null);
+  }
+
+  async function exportLocalData(){
+    const payload={
+      product:'Free AI',
+      exportedAt:new Date().toISOString(),
+      account:session?.user?.email||null,
+      chats:{free:readJSON('freeai.chats.free',[]),super:readJSON('freeai.chats.super',[])},
+      preferences:appPrefs
+    };
+    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const file=new File([blob],'free-ai-export.json',{type:'application/json'});
+    if(isNative&&navigator.share){
+      try{await navigator.share({files:[file],title:'Free AI data export'});return}catch(e){if(e?.name==='AbortError')return}
+    }
+    const href=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=href;a.download='free-ai-export.json';document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(href),1500);
+  }
 
   async function openBrowser(){
     setPlusMenu(false);
