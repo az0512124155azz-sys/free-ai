@@ -78,6 +78,9 @@ function randomKey(){
 function modelLabel(model){
   return model?.modelName||model?.name||providerNames[model?.id]||model?.model||'Select model';
 }
+function modelKey(model){
+  return model?(String(model.source||'browser')+'::'+String(model.id||'')):'';
+}
 function initials(session){
   const value=session?.user?.user_metadata?.full_name||session?.user?.email||'Free AI';
   return value.split(/\s+/).map(x=>x[0]).join('').slice(0,2).toUpperCase();
@@ -199,6 +202,8 @@ function App(){
   const [dragActive,setDragActive]=useState(false);
   const [screens,setScreens]=useState([]);
   const [workTask,setWorkTask]=useState(null);
+  const [repositoryWorkspace,setRepositoryWorkspace]=useState(null);
+  const [superTeamKeys,setSuperTeamKeys]=useState(()=>readJSON('freeai.super.team',[]));
   const handledWorkTerminalRef=useRef(null);
   const [chats,setChats]=useState(()=>readJSON('freeai.chats.free',readJSON('freeai.chats',[])));
   const [currentChatId,setCurrentChatId]=useState(null);
@@ -287,6 +292,15 @@ function App(){
     if(!fresh){setSelected(null);setSelectedTool(null)}
     else if(fresh!==selected)setSelected(fresh);
   },[connected]);
+
+  useEffect(()=>{
+    setSuperTeamKeys(current=>{
+      const primary=modelKey(selected);
+      const next=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&connected.some(model=>modelKey(model)===key)).slice(0,3);
+      localStorage.setItem('freeai.super.team',JSON.stringify(next));
+      return next;
+    });
+  },[connected,selected?.id,selected?.source]);
 
   useEffect(()=>{
     if(!isWindowsDesktop)return;
@@ -451,6 +465,21 @@ function App(){
       setWorkTask(null);
     }
   }
+  async function chooseRepositoryWorkspace(){
+    if(!isWindowsDesktop)return;
+    stopActiveWorkTask();
+    setAttachmentError('');
+    try{
+      const workspace=await window.desktopApi.chooseRepository();
+      if(workspace)setRepositoryWorkspace(workspace);
+    }catch(error){
+      setAttachmentError(error?.message||'Could not open repository workspace.');
+    }
+  }
+  function clearRepositoryWorkspace(){
+    if(workBusy)return;
+    setRepositoryWorkspace(null);
+  }
   function persistProjects(next){setProjects(next);localStorage.setItem('freeai.projects',JSON.stringify(next))}
   function createProject(){
     stopActiveWorkTask();
@@ -486,7 +515,10 @@ function App(){
       const chat={
         id,title,providerId:model.id,source:model.source,modelName:modelLabel(model),messages:nextMessages,
         mode:product==='super'?'work':mode,pinned:!!existing?.pinned,
-        projectId:existing?.projectId||activeProjectId||null,updatedAt:Date.now()
+        projectId:existing?.projectId||activeProjectId||null,
+        workspace:product==='super'&&repositoryWorkspace?repositoryWorkspace:null,
+        superTeamKeys:product==='super'?superTeamKeys:[],
+        updatedAt:Date.now()
       };
       const next=[chat,...prev.filter(c=>c.id!==id)].slice(0,60);
       localStorage.setItem('freeai.chats.'+product,JSON.stringify(next));return next;
@@ -526,6 +558,10 @@ function App(){
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
     setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
     if(product==='free')setMode(chat.mode||'chat');
+    if(product==='super'){
+      setRepositoryWorkspace(chat.workspace||null);
+      setSuperTeamKeys(Array.isArray(chat.superTeamKeys)?chat.superTeamKeys:[]);
+    }
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setPage('chat');setChatMenuId(null);
   }
   const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
@@ -567,10 +603,20 @@ function App(){
     handledWorkTerminalRef.current=null;
     activeWorkTaskIdRef.current=taskId;
     workTaskModelRef.current=selected;
-    setWorkTask({id:taskId,status:'running',step:0,maxSteps:18,detail:'Starting Work task…',approval:null,progress:[],finalMessage:'',error:''});
+    setWorkTask({id:taskId,status:'running',step:0,maxSteps:product==='super'?24:18,detail:product==='super'?'Starting Super AI task…':'Starting Work task…',approval:null,progress:[],agents:[],workspace:product==='super'?repositoryWorkspace:null,finalMessage:'',error:''});
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
+      let workspace=repositoryWorkspace;
+      if(product==='super'&&workspace?.root){
+        workspace=await window.desktopApi.repositorySummary(workspace.root);
+        setRepositoryWorkspace(workspace);
+      }
+      const team=product==='super'
+        ? superTeamKeys.map(key=>connected.find(model=>modelKey(model)===key)).filter(Boolean).filter(model=>modelKey(model)!==modelKey(selected)).slice(0,3).map(model=>({
+            id:model.id,source:model.source||'browser',name:modelLabel(model)
+          }))
+        : [];
       const state=await window.desktopApi.startWorkTask({
         id:taskId,
         provider:selected.id,
@@ -580,6 +626,8 @@ function App(){
         effort,
         approvalMode:normalizeApprovalMode(appPrefs.approvalMode),
         attachments:outbound,
+        workspace:product==='super'?workspace:null,
+        team,
         instructions:projectInstructions||globalInstructions,
         history:messages.slice(-12).filter(message=>message?.role==='user'||message?.role==='assistant').map(message=>({
           role:message.role,
