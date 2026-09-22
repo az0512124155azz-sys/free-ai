@@ -379,7 +379,7 @@ function App(){
 
   const sidebarName=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'Free AI';
   const heading=product==='super'
-    ? 'What should we build?'
+    ? (isNative?'Continue on your desktop':'What should we build?')
     : mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
   return <div className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')}>
@@ -408,7 +408,7 @@ function App(){
       {sidebarSearchOpen&&<div className="sidebarSearch"><Search size={14}/><input autoFocus value={sidebarSearch} onChange={e=>setSidebarSearch(e.target.value)} placeholder="Search chats"/></div>}
 
       <div className="mobileQuickStart">
-        <button className="mobileNewChat" onClick={newChat}><SquarePen size={17}/><span>New chat</span></button>
+        <button className="mobileNewChat" onClick={()=>{setProduct('free');setMode('chat');newChat()}}><SquarePen size={17}/><span>New chat</span></button>
         <div className="mobileExperienceRail" aria-label="Experiences">
           <button className={product==='super'&&page==='chat'?'active':''} onClick={()=>{setProduct('super');setMode('work');setPage('chat');setMobileNavOpen(false)}}><Monitor size={18}/><span>Remote</span></button>
           <button className={page==='plugins'?'active':''} onClick={()=>{setProduct('free');setPage('plugins');setMobileNavOpen(false)}}><Plug size={18}/><span>Apps</span></button>
@@ -671,7 +671,7 @@ function Composer(props){
       ref={textareaRef}
       value={prompt} onChange={e=>setPrompt(e.target.value)}
       onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}}}
-      placeholder={product==='super'?'Ask Super AI to build or debug':mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
+      placeholder={product==='super'?(isNative?'Message your desktop task':'Ask Super AI to build or debug'):mode==='work'?'Work with Free AI':selected?'Message '+modelLabel(selected):'Ask Free AI'}
     />
     <div className="composerBottom">
       <div className="composerLeft">
