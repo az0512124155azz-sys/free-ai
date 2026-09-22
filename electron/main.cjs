@@ -2812,6 +2812,40 @@ async function executeWorkTool(task,decision){
       settleMs:action.settleMs
     },20000);
   }
+  if(decision.tool==='mcp'){
+    if(type==='list'){
+      const apps=(Array.isArray(task.mcpConnections)?task.mcpConnections:[]).map(connection=>{
+        const session=mcpSessions.get(connection.id);
+        return {
+          connectionId:connection.id,
+          name:connection.name,
+          protocolVersion:MCP_PROTOCOL_VERSION,
+          tools:(Array.isArray(session?.tools)?session.tools:[]).map(tool=>({
+            name:tool.name,
+            title:tool.title||'',
+            description:tool.description||'',
+            annotations:tool.annotations||{}
+          }))
+        };
+      });
+      return {apps};
+    }
+    if(type==='describe'){
+      const resolved=workMcpTool(task,action);
+      if(!resolved)throw new Error('The requested MCP tool is not available in the apps selected for this task.');
+      return {
+        connectionId:resolved.connection.id,
+        app:resolved.connection.name,
+        tool:publicMcpTool(resolved.tool)
+      };
+    }
+    if(type==='call'){
+      const resolved=workMcpTool(task,action);
+      if(!resolved)throw new Error('The requested MCP tool is not available in the apps selected for this task.');
+      return callMcpTool(resolved.connection.id,resolved.tool.name,action.arguments);
+    }
+    throw new Error('Unsupported MCP action: '+String(action.type||'unknown'));
+  }
   if(decision.tool==='repository'){
     if(task.product!=='super'||!task.workspace?.root)throw new Error('No local repository is attached to this Super AI task.');
     if(type==='status')return repositorySummary(task.workspace.root);
@@ -3053,8 +3087,21 @@ async function startWorkTask(input={}){
       role:item?.role==='assistant'?'assistant':'user',
       text:String(item?.text||'').slice(0,5000)
     })):[],
+    mcpConnections:[],
     initialAttachments:Array.isArray(input.attachments)?input.attachments.slice(0,5):[]
   };
+  const requestedMcpIds=[...new Set((Array.isArray(input.mcpConnectionIds)?input.mcpConnectionIds:[]).map(value=>String(value||'')).filter(Boolean))].slice(0,4);
+  for(const connectionId of requestedMcpIds){
+    const connection=mcpConnections.find(item=>item.id===connectionId);
+    if(!connection)throw new Error('A selected MCP app is no longer configured.');
+    let session=mcpSessions.get(connection.id);
+    if(!session?.connected){
+      await listMcpTools(connection,{forceSession:true});
+      session=mcpSessions.get(connection.id);
+    }
+    if(!session?.connected)throw new Error('Could not connect to MCP app "'+connection.name+'".');
+    task.mcpConnections.push(connection);
+  }
   if(!task.userText&&!task.initialAttachments.length)throw new Error('Describe the Work task first.');
   workTasks.set(id,task);
   addWorkProgress(task,product==='super'?'Super AI task started':'Task started');
