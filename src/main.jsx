@@ -952,7 +952,7 @@ function BrowserPane({siteToolsEnabled=true,onClose}){
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
       {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
-      <button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={!siteToolsEnabled?'Site tools are disabled in Settings':siteTools.length?siteTools.length+' site tool'+(siteTools.length===1?'':'s'):'Scan for site tools'}><Blocks size={15}/>{siteTools.length>0&&<small>{siteTools.length}</small>}</button>
+      {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
 
