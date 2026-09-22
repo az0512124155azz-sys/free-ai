@@ -560,14 +560,14 @@
   function unwrapSourceUrl(raw){
     try{
       const parsed=new URL(String(raw||''),location.href);
-      if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')return '';
+      if(parsed.protocol!=='https:')return '';
       if(parsed.hostname===location.hostname){
         for(const key of ['url','u','target','dest','destination']){
           const value=parsed.searchParams.get(key);
           if(!value)continue;
           try{
             const nested=new URL(decodeURIComponent(value));
-            if(nested.protocol==='http:'||nested.protocol==='https:')return nested.toString();
+            if(nested.protocol==='https:')return nested.toString();
           }catch{}
         }
       }
