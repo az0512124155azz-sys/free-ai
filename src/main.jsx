@@ -100,8 +100,8 @@ function App(){
   const [currentChatId,setCurrentChatId]=useState(null);
   const [appPrefs,setAppPrefs]=useState(()=>({
     appearance:'dark',contrast:'medium',accent:'blue',textSize:100,suggestedPrompts:true,approvalMode:'ask',voiceLanguage:'auto',
-    autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',
-    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',language:'English',showBottomPanel:true})
+    autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,
+    ...readJSON('freeai.prefs',{approvalMode:'ask',defaultPermissions:true,autoReviewEnabled:false,fullAccessEnabled:false,customizationEnabled:true,customInstructions:'',siteToolsEnabled:true,language:'English',showBottomPanel:true})
   }));
   const [settings,setSettings]=useState(()=>({relayUrl:localStorage.getItem('relayUrl')||'',pairKey:localStorage.getItem('pairKey')||''}));
   const [apiDraft,setApiDraft]=useState({name:'',baseUrl:'',model:'',apiKey:''});
@@ -225,6 +225,10 @@ function App(){
     setSidePanel(null);
     if(product==='super')setMode('work');
   },[product]);
+
+  useEffect(()=>{
+    if(isDesktop)window.desktopApi?.browserSetSiteToolsEnabled?.(appPrefs.siteToolsEnabled!==false).catch(()=>{});
+  },[appPrefs.siteToolsEnabled]);
 
   useEffect(()=>{
     if(appPrefs.approvalMode==='auto'&&!appPrefs.autoReviewEnabled){
@@ -524,7 +528,7 @@ function App(){
       {page==='explore'&&<ExplorePage tools={mcpTools} chats={chats} onBack={()=>setPage('chat')}/>}
     </main>
 
-    {sidePanel==='browser'&&<BrowserPane onClose={()=>setSidePanel(null)}/>}
+    {sidePanel==='browser'&&<BrowserPane siteToolsEnabled={appPrefs.siteToolsEnabled!==false} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
     {sidePanel==='computer'&&<ComputerPane
       screens={screens} setScreens={setScreens} approvalMode={appPrefs.approvalMode||'ask'}
@@ -857,7 +861,7 @@ function PlaceholderPage({title,subtitle,icon:Icon}){
   return <div className="placeholderPage"><Icon size={38}/><h1>{title}</h1><p>{subtitle}</p></div>
 }
 
-function BrowserPane({onClose}){
+function BrowserPane({siteToolsEnabled=true,onClose}){
   const [url,setUrl]=useState('https://www.google.com/');
   const [state,setState]=useState({url:'',title:'New tab',canGoBack:false,canGoForward:false,loading:false,tabs:[],activeTabId:null,downloads:[],siteTools:[]});
   const [siteToolsOpen,setSiteToolsOpen]=useState(false);
@@ -948,16 +952,16 @@ function BrowserPane({onClose}){
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL"/></form>
       {activeDownloads>0&&<span className="downloadStatus" title={activeDownloads+' active download'+(activeDownloads===1?'':'s')}><Download size={14}/><small>{activeDownloads}</small></span>}
-      <button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={siteTools.length?siteTools.length+' site tool'+(siteTools.length===1?'':'s'):'Scan for site tools'}><Blocks size={15}/>{siteTools.length>0&&<small>{siteTools.length}</small>}</button>
+      <button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>setSiteToolsOpen(v=>!v)} title={!siteToolsEnabled?'Site tools are disabled in Settings':siteTools.length?siteTools.length+' site tool'+(siteTools.length===1?'':'s'):'Scan for site tools'}><Blocks size={15}/>{siteTools.length>0&&<small>{siteTools.length}</small>}</button>
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
 
     {siteToolsOpen&&<div className="siteToolsPanel">
       <div className="siteToolsHeader">
-        <span><b>Site tools</b><small>{siteTools.length?'WebMCP tools exposed by this page':'No site tools detected on this page'}</small></span>
-        <button onClick={refreshSiteTools}><RefreshCw size={14}/>Scan</button>
+        <span><b>Site tools</b><small>{!siteToolsEnabled?'Disabled in Browser settings':siteTools.length?'WebMCP tools exposed by this page':'No site tools detected on this page'}</small></span>
+        <button disabled={!siteToolsEnabled} onClick={refreshSiteTools}><RefreshCw size={14}/>Scan</button>
       </div>
-      {siteTools.length>0&&<div className="siteToolsBody">
+      {siteToolsEnabled&&siteTools.length>0&&<div className="siteToolsBody">
         <div className="siteToolsList">
           {siteTools.map(tool=><button key={tool.name} className={selectedSiteTool?.name===tool.name?'active':''} onClick={()=>chooseSiteTool(tool)}>
             <Target size={14}/><span><b>{tool.title||tool.name}</b><small>{tool.description||tool.origin}</small></span>
@@ -971,7 +975,8 @@ function BrowserPane({onClose}){
           {siteToolStatus&&<pre className="siteToolStatus">{siteToolStatus}</pre>}
         </div>}
       </div>}
-      {!siteTools.length&&siteToolStatus&&<pre className="siteToolStatus empty">{siteToolStatus}</pre>}
+      {!siteToolsEnabled&&<div className="siteToolsDisabled">Enable site tools in Settings → Browser to discover WebMCP tools on supported pages.</div>}
+      {siteToolsEnabled&&!siteTools.length&&siteToolStatus&&<pre className="siteToolStatus empty">{siteToolStatus}</pre>}
     </div>}
 
     <div className="nativeBrowserSurface" ref={surfaceRef}>{!isDesktop&&<div className="paneEmpty"><Globe2/><b>Browser is available on desktop.</b></div>}</div>
@@ -1087,7 +1092,7 @@ function SettingsView(props){
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text="Preview and control your desktop from Work or Super AI." status={prefs.approvalMode==='full'?'Full access':prefs.approvalMode==='auto'?'Approve for me':'Ask for approval'} action={onComputer}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text="Use MCP/connectors already installed in connected AI services." status={(connected.filter(p=>p.mcps?.length).length)+' providers'} action={onPlugins}/>}
-      {section==='Browser'&&<IntegrationSettings icon={Globe2} title="Browser" text={isNative?'Open the managed Free AI browser.':'Open the real browser panel beside your chat.'} status="Available" action={onBrowser}/>}
+      {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
       {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Git integration','Available through installed plugins'],['Repository context','Super AI / Work']]}/>}
       {section==='Environments'&&!isNative&&<SimpleSettings title="Environments" rows={[['Desktop runtime','Electron desktop'],['Browser bridge',status.extension?'Connected':'Disconnected']]}/>}
@@ -1194,6 +1199,29 @@ function ConfigurationSettings({prefs,setPrefs}){
 function SimpleSettings({title,rows}){return <div className="settingsPane"><h3>{title}</h3><div className="settingBlock">{rows.map(([a,b])=><SettingRow key={a} title={a} desc={b} control={<span className="valuePill">{b}</span>}/>)}</div></div>}
 function IntegrationSettings({icon:Icon,title,text,status,action}){return <div className="settingsPane"><div className="integrationHero"><Icon size={34}/><h2>{title}</h2><p>{text}</p><span className="valuePill">{status}</span><button className="primaryAction" onClick={action}>Open</button></div></div>}
 
+function BrowserSettings({prefs,setPrefs,onBrowser}){
+  const [clearState,setClearState]=useState('');
+  const [confirmClear,setConfirmClear]=useState(false);
+  async function clearData(){
+    setClearState('Clearing…');
+    try{
+      await window.desktopApi?.browserClearData?.();
+      setClearState('Browsing data cleared');
+    }catch(e){setClearState(e?.message||'Could not clear browsing data')}
+    setConfirmClear(false);
+  }
+  return <div className="settingsPane">
+    <h3>Browser</h3>
+    <div className="settingBlock">
+      <SettingRow title="Enable site tools" desc="Discover WebMCP tools exposed by supported websites in Free AI's built-in browser." control={<Toggle value={prefs.siteToolsEnabled!==false} onChange={v=>setPrefs({...prefs,siteToolsEnabled:v})}/>}/>
+      <SettingRow title="Open built-in browser" desc="Use Free AI's separate browser profile, tabs, sign-ins and downloads." control={<button className="settingsInlineButton" onClick={onBrowser}>Open</button>}/>
+      <SettingRow title="Clear browsing data" desc="Clear cookies, signed-in website state, local storage and browser cache for the Free AI browser profile." control={confirmClear
+        ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={clearData}>Clear</button></span>
+        : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
+    </div>
+    {clearState&&<div className="settingsStatus">{clearState}</div>}
+  </div>
+}
 function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
   return <div className="settingsPane">
     <h3>Desktop bridge</h3>
