@@ -748,13 +748,14 @@ function ProfileMenu({session,onSettings}){
 
 function PluginsPage({tools,connected,onBack,onRefresh}){
   const [query,setQuery]=useState('');
+  const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
   const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
   const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
   return <div className="contentPage">
-    <PageTop onBack={onBack} title="Plugins" action={isDesktop?'Refresh':null} onAction={onRefresh}/>
+    <PageTop onBack={onBack} title={pageName} action={isDesktop?'Refresh':null} onAction={onRefresh}/>
     <div className="contentInner">
-      <h1>Plugins</h1>
+      <h1>{pageName}</h1>
       <p className="pageLead">Use MCP/connectors that are already installed and authorized in a connected AI provider.</p>
       <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search detected plugins"/></div>
 
@@ -797,9 +798,8 @@ function ExplorePage({tools,chats,onBack}){
     <PageTop onBack={onBack} title="Explore"/>
     <div className="contentInner exploreInner">
       <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
-      <h3>Apps</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/>
-      <MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/>
-      <h3>Plugins</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName}/>)}
+      {!isNative&&<><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>}
+      <h3>{isNative?'Apps':'Plugins'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName}/>)}
       <h3>Conversations</h3>{chats.slice(0,8).map(c=><MenuRow key={c.id} icon={Bot} label={c.title} sub={c.modelName}/>)}
     </div>
   </div>
