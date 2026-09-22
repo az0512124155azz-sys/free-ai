@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
   browserOpenDownload:(id)=>ipcRenderer.invoke('browser:openDownload',id),
   browserShowDownload:(id)=>ipcRenderer.invoke('browser:showDownload',id),
   browserResolvePermission:(payload)=>ipcRenderer.invoke('browser:resolvePermission',payload),
+  browserDismissError:()=>ipcRenderer.invoke('browser:dismissError'),
   browserOpenExternalProtocol:(url)=>ipcRenderer.invoke('browser:openExternalProtocol',url),
   browserStartAnnotation:()=>ipcRenderer.invoke('browser:startAnnotation'),
   browserCancelAnnotation:()=>ipcRenderer.invoke('browser:cancelAnnotation'),
