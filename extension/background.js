@@ -4,6 +4,7 @@ let scanTimer=null;
 let browserStateTimer=null;
 let heartbeatTimer=null;
 let lastProviders=[];
+const providerIconCache=new Map();
 
 const HEARTBEAT_MS=20000;
 
@@ -39,6 +40,41 @@ function safeTab(tab){
     favIconUrl:String(tab?.favIconUrl||''),
     controlled:isWebUrl(tab?.url)
   };
+}
+
+async function imageUrlToDataUrl(url){
+  const value=String(url||'');
+  if(!value)return '';
+  if(value.startsWith('data:image/'))return value;
+  if(providerIconCache.has(value))return providerIconCache.get(value);
+  if(!/^https?:\/\//i.test(value))return '';
+  try{
+    const response=await fetch(value,{cache:'force-cache'});
+    if(!response.ok)return '';
+    const type=String(response.headers.get('content-type')||'image/x-icon').split(';')[0]||'image/x-icon';
+    const bytes=new Uint8Array(await response.arrayBuffer());
+    if(!bytes.length||bytes.length>192*1024)return '';
+    let binary='';
+    const chunk=0x8000;
+    for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));
+    const data='data:'+type+';base64,'+btoa(binary);
+    providerIconCache.set(value,data);
+    return data;
+  }catch{return ''}
+}
+
+async function providerIconDataUrl(tab){
+  const urls=[];
+  if(tab?.favIconUrl)urls.push(String(tab.favIconUrl));
+  try{
+    const parsed=new URL(String(tab?.url||''));
+    if(parsed.protocol==='http:'||parsed.protocol==='https:')urls.push(parsed.origin+'/favicon.ico');
+  }catch{}
+  for(const url of urls){
+    const data=await imageUrlToDataUrl(url);
+    if(data)return data;
+  }
+  return '';
 }
 
 async function sendToTab(tabId,message){
@@ -77,6 +113,7 @@ async function scanProviders(options={}){
         const modelOptions=Array.isArray(capabilities?.modelOptions)&&capabilities.modelOptions.length?capabilities.modelOptions:(Array.isArray(previous?.modelOptions)?previous.modelOptions:[]);
         const mcps=Array.isArray(capabilities?.mcps)&&capabilities.mcps.length?capabilities.mcps:(Array.isArray(previous?.mcps)?previous.mcps:[]);
         const effortLevels=Array.isArray(capabilities?.effortLevels)&&capabilities.effortLevels.length?capabilities.effortLevels:(Array.isArray(previous?.effortLevels)?previous.effortLevels:[]);
+        const iconDataUrl=await providerIconDataUrl(tab)||previous?.iconDataUrl||'';
         connected.push({
           id:instanceId,
           providerId,
@@ -86,6 +123,7 @@ async function scanProviders(options={}){
           title:tab.title||p.name,
           url:tab.url||'',
           favIconUrl:tab.favIconUrl||'',
+          iconDataUrl,
           source:'browser',
           modelName:typeof capabilities?.modelName==='string'&&capabilities.modelName.trim()?capabilities.modelName.trim():(previous?.modelName||p.name),
           modelOptions,
@@ -232,7 +270,7 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
   if(m?.type==='freeai:getStatus'){
     sendResponse({
       bridgeConnected:!!(ws&&ws.readyState===WebSocket.OPEN),
-      providers:lastProviders.map(p=>({id:p.id,providerId:p.providerId,name:p.name,modelName:p.modelName,title:p.title,tabId:p.tabId,favIconUrl:p.favIconUrl})),
+      providers:lastProviders.map(p=>({id:p.id,providerId:p.providerId,name:p.name,modelName:p.modelName,title:p.title,tabId:p.tabId,favIconUrl:p.favIconUrl,iconDataUrl:p.iconDataUrl})),
       providerCount:lastProviders.length
     });
     return;
