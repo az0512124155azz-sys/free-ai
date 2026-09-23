@@ -202,6 +202,11 @@ if [[ "$FORM_FACTOR" == "phone" ]]; then
 
   adb shell pm clear-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null 2>&1 || true
   adb shell pm grant "$PACKAGE" "$permission"
+  adb shell am force-stop "$PACKAGE" || true
+  adb shell am start -W -n "$ACTIVITY" >/dev/null
+  dictation_ready="$(audit_until_ready)"
+  require_token "$dictation_ready" "dictationMic=true"
+  require_token "$dictation_ready" "dictationPermission=unknown"
 
   qa_line startDictation >/dev/null
   dictation_started=""
