@@ -737,7 +737,13 @@ function App(){
         'explorePage='+!!document.querySelector('.mobileExplorePage'),
         'exploreApps='+!!document.querySelector('.mobileExploreApps'),
         'exploreSearch='+!!document.querySelector('.mobileExploreSearch input'),
-        'desktopAppControls='+!!document.querySelector('.mobileAppsPage .mcpAddCard,.mobileAppsPage .directMcpGrid,.mobileExplorePage .directMcpGrid')
+        'desktopAppControls='+!!document.querySelector('.mobileAppsPage .mcpAddCard,.mobileAppsPage .directMcpGrid,.mobileExplorePage .directMcpGrid'),
+        'remoteDesktopSettings='+!!document.querySelector('.remoteDesktopSettings'),
+        'remoteDesktopOnline='+!!document.querySelector('.remoteDesktopSettings .connectionStatus.good'),
+        'remoteBrowserLabel='+!![...document.querySelectorAll('.remoteDesktopSettings .settingRow')].find(row=>row.textContent?.includes('Remote Browser')),
+        'remoteComputerLabel='+!![...document.querySelectorAll('.remoteDesktopSettings .settingRow')].find(row=>row.textContent?.includes('Remote Computer')),
+        'remoteDesktopApiForm='+!!document.querySelector('.remoteDesktopSettings .apiForm'),
+        'remotePairingKey='+!!document.querySelector('.remoteDesktopSettings input[type="password"]')
       ].join(';');
     };
     window.__FREEAI_ANDROID_QA__=(command='audit')=>{
@@ -769,6 +775,12 @@ function App(){
         setSettingsOpen(false);
         setMobileNavOpen(false);
         setPage('explore');
+      }
+      if(command==='openRemoteDesktop'){
+        setPage('chat');
+        setSettingsSection('Connections');
+        setMobileSettingsList(false);
+        setSettingsOpen(true);
       }
       return audit();
     };
