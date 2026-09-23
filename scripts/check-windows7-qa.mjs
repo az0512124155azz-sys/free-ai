@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 const main=fs.readFileSync('electron/main.cjs','utf8');
 const research=fs.readFileSync('electron/research.cjs','utf8');
+const preload=fs.readFileSync('electron/preload.cjs','utf8');
 const source=fs.readFileSync('src/main.jsx','utf8');
 const background=fs.readFileSync('extension/background.js','utf8');
 const contentScript=fs.readFileSync('extension/content.js','utf8');
@@ -50,6 +51,19 @@ has(source,'function SettingsView','Settings UI is missing.');
 has(source,'function ModelMenu','Model picker is missing.');
 has(source,'function ResearchSetupDialog','Deep Research setup is missing.');
 has(source,'function ChatContextMenu','Chat management menu is missing.');
+
+// Windows 7.12 update/offline coverage.
+has(main,'async function checkForWindowsUpdates()','Windows update-check runtime is missing.');
+has(main,'if(!net.isOnline())','Update check must fail fast when Electron reports the device offline.');
+has(main,'const WINDOWS_UPDATE_TIMEOUT_MS=15000;','Update check timeout guard is missing.');
+has(main,'const controller=new AbortController();','Update check cancellation controller is missing.');
+has(main,'signal:controller.signal','GitHub Releases fetch is not cancellable.');
+has(main,'Update check timed out. Check your internet connection and try again.','Update timeout must surface an actionable error.');
+has(main,"parsed.protocol!=='https:'||parsed.hostname!=='github.com'",'Update release link must require HTTPS GitHub.');
+has(main,"parsed.pathname.startsWith('/az0512124155azz-sys/free-ai/releases/')",'Update release link must stay inside the Free AI releases path.');
+has(preload,"checkForUpdates:()=>ipcRenderer.invoke('shell:checkForUpdates')",'Preload update-check bridge is missing.');
+has(source,'window.desktopApi.checkForUpdates()','Windows Settings update-check action is missing.');
+has(source,"Open release",'Windows Settings must expose the verified release link when an update is available.');
 
 has(main,"function encodeSecret(value,{requireEncryption=false}={})",'Secret persistence must support an encryption-required mode.');
 has(main,"throw new Error('Secure credential storage is unavailable. Free AI will not save API keys in plaintext.')",'API-key persistence must refuse plaintext fallback.');
