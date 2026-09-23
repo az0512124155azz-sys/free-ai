@@ -366,6 +366,9 @@ jobs:
     needs: android
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
     env:
       ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}
       ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}
@@ -420,6 +423,55 @@ jobs:
           fs.appendFileSync(outputPath,
             `disable_signup=${disableSignup}\nmailer_autoconfirm=${autoConfirm}\ngoogle_enabled=${googleEnabled}\n`);
           console.log(`Supabase Auth: signup=${disableSignup ? 'disabled' : 'enabled'}, email_autoconfirm=${autoConfirm ? 'enabled' : 'disabled'}, google=${googleEnabled ? 'enabled' : 'disabled'}`);
+          NODE
+
+      - id: github_oidc
+        name: Verify GitHub OIDC trust with Supabase
+        shell: bash
+        run: |
+          oidc_response="$RUNNER_TEMP/free-ai-github-oidc.json"
+          oidc_token_file="$RUNNER_TEMP/free-ai-github-oidc-token"
+          broker_response="$RUNNER_TEMP/free-ai-oidc-broker-response.json"
+
+          curl --silent --show-error --fail \
+            --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=free-ai-android-auth-qa" \
+            --output "$oidc_response"
+
+          node - "$oidc_response" "$oidc_token_file" <<'NODE'
+          const fs = require('node:fs');
+          const [responsePath, tokenPath] = process.argv.slice(2);
+          const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+          if (!response.value || typeof response.value !== 'string') {
+            console.error('GitHub OIDC token response did not contain a token.');
+            process.exit(1);
+          }
+          fs.writeFileSync(tokenPath, response.value, { mode: 0o600 });
+          NODE
+
+          http_code="$(curl --silent --show-error \
+            --output "$broker_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $(cat "$oidc_token_file")" \
+            "https://xquntkgjlmrxkwkrwsjl.supabase.co/functions/v1/free-ai-ci-oidc-check")"
+
+          rm -f "$oidc_response" "$oidc_token_file"
+
+          if [[ "$http_code" != "200" ]]; then
+            echo "::error::Supabase GitHub OIDC verifier returned HTTP $http_code."
+            cat "$broker_response"
+            exit 1
+          fi
+
+          node - "$broker_response" <<'NODE'
+          const fs = require('node:fs');
+          const response = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (response.ok !== true) {
+            console.error('Supabase GitHub OIDC verifier rejected the workflow identity.');
+            process.exit(1);
+          }
+          console.log('GitHub OIDC trust verified by Supabase Edge Function.');
           NODE
 
       - id: auth_credentials
