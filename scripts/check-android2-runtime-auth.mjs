@@ -123,7 +123,10 @@ has(googleRuntime,'authStartGoogle','Google runtime QA must launch the real prod
 has(googleRuntime,'googleRequested=true','Google runtime QA must prove the native Google request path was reached.');
 has(googleRuntime,'system_ui_seen=1','Google runtime QA must wait for Google/system account UI before attempting cancellation.');
 has(googleRuntime,'dismiss_google_system_ui','Google runtime QA must unwind nested Google system UI before judging cancellation.');
-has(googleRuntime,'for back_attempt in $(seq 1 3)','Google runtime QA must bound nested Credential Manager / Google cancellation attempts.');\nhas(googleRuntime,'is_terminal_google_outcome','Google runtime QA must detect terminal Credential Manager outcomes before sending another Back.');\nhas(googleRuntime,'for _ in $(seq 1 10)','Google runtime QA must wait for the cancellation callback and activity transition before another Back.');\nhas(googleRuntime,'if (( terminal_seen == 1 )); then','Google runtime QA must stop injecting Back once Credential Manager reaches a terminal outcome.');
+has(googleRuntime,'for back_attempt in $(seq 1 3)','Google runtime QA must bound nested Credential Manager / Google cancellation attempts.');
+has(googleRuntime,'is_terminal_google_outcome','Google runtime QA must detect terminal Credential Manager outcomes before sending another Back.');
+has(googleRuntime,'for _ in $(seq 1 10)','Google runtime QA must wait for the cancellation callback and activity transition before another Back.');
+has(googleRuntime,'if (( terminal_seen == 1 )); then','Google runtime QA must stop injecting Back once Credential Manager reaches a terminal outcome.');
 has(googleRuntime,'$PACKAGE/.MainActivity','Google runtime QA must confirm Free AI returns to the foreground after cancellation.');
 has(googleRuntime,'post-cancel-activities.txt','Google runtime QA must preserve post-cancel activity evidence.');
 has(googleRuntime,'adb shell input keyevent 4','Google runtime QA must exercise native Back/cancel behavior after system UI is observed.');
