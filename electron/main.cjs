@@ -2297,8 +2297,10 @@ async function routeDirect(msg,onStream){
   return routeToBrowser(msg,onStream);
 }
 
-async function routePrompt(msg,emitToRenderer=false){
-  const onStream=emitToRenderer&&msg.requestId?text=>emitPromptStream(msg.requestId,text):null;
+async function routePrompt(msg,emitToRenderer=false,externalStream=null){
+  const onStream=typeof externalStream==='function'
+    ? externalStream
+    : emitToRenderer&&msg.requestId?text=>emitPromptStream(msg.requestId,text):null;
   const tool=msg.toolRequest;
   if(tool?.mcp&&tool.ownerProviderId){
     const owner=browserProviders.find(p=>p.id===tool.ownerProviderId);
@@ -2437,9 +2439,18 @@ function connectRelay(){
   relaySocket.on('message',async raw=>{
     let m;try{m=JSON.parse(raw)}catch{return}
     if(m.type==='getProviderStatus'){sendStatus();return}
+    if(m.type==='cancel'){
+      cancelPrompt(m.requestId||m.id);
+      return;
+    }
     if(m.type==='prompt'){
+      const requestId=String(m.requestId||m.id||crypto.randomUUID());
       try{
-        const r=await routePrompt(m);
+        const r=await routePrompt(
+          {...m,requestId},
+          false,
+          text=>relaySocket?.send(JSON.stringify({type:'stream',id:m.id,text:String(text||'')}))
+        );
         relaySocket?.send(JSON.stringify({type:'response',id:m.id,text:r.text||'',requestedTool:r.requestedTool||null}));
       }catch(e){
         relaySocket?.send(JSON.stringify({type:'response',id:m.id,error:e.message||String(e)}));
