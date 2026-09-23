@@ -6,7 +6,8 @@
   "permissions": [
     "tabs",
     "scripting",
-    "storage"
+    "storage",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -42,5 +43,5 @@
       "128": "icons/icon128.png"
     }
   },
-  "minimum_chrome_version": "116"
+  "minimum_chrome_version": "120"
 }

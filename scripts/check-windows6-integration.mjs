@@ -71,8 +71,8 @@ has(contentScript,'freeai:setProviderEffort','Extension effort handler is missin
 has(source,'mcpConnections','Direct MCP state is missing.');
 has(source,'selectedMcpIds','Direct MCP task selection is missing.');
 has(source,'Provider hints','Provider-managed connector labeling is missing.');
-has(source,'superTeamKeys','Super AI team selection is missing.');
-has(source,'Lead model','Super AI lead selection is missing.');
+has(source,'Automatic AI team','Super AI automatic-team UI is missing.');
+has(source,'Every available AI participates automatically. No model selection is required in Super AI.','Super AI must use the connected AI team without manual lead selection.');
 has(source,'isMasterThread','Master-thread persistence is missing.');
 has(source,'isAgentThread','Child-agent chat persistence is missing.');
 has(source,'parentChatId','Agent parent linkage is missing.');
@@ -105,7 +105,8 @@ has(research,'reportDocx','DOCX report export is missing.');
 has(source,"readJSON('freeai.chats.free'",'Free AI chat restart persistence is missing.');
 has(source,"readJSON('freeai.prefs'",'Preferences restart persistence is missing.');
 has(source,'function openChat','Old chat loading path is missing.');
-ok(source.includes('if(!fresh){setSelected(null)')||source.includes('if(!fresh||fresh.connected===false){setSelected(null)'),'Disconnected/stale selected-provider cleanup is missing.');
+has(source,'const fresh=selected?connected.find','Selected-provider refresh reconciliation is missing.');
+has(source,'if(selected){setSelected(null);setSelectedTool(null);setParallelCount(1)}','Truly stale selected providers must still be cleared when no refreshed provider entry exists.');
 has(source,"onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey)",'Composer keyboard submit behavior is missing.');
 
 has(main,'contextIsolation:true','Electron context isolation must stay enabled.');

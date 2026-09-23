@@ -10,6 +10,7 @@
   <main>
     <header><img src="icons/icon48.png" alt=""><div><strong>Free AI</strong><span>Browser Bridge</span></div></header>
     <section class="status"><span id="dot"></span><div><b id="bridge">Checking desktop bridge…</b><small id="summary">Free AI must be open on this computer.</small></div></section>
+    <section class="currentAi"><h2>Add the AI in this tab</h2><div id="currentPreview" class="currentPreview"><span class="empty">Open an AI chat tab to add it.</span></div><label>AI name<input id="customName" placeholder="Example: Kimi"></label><label>Model name<input id="customModel" placeholder="Example: K2.5"></label><button id="addCurrent" class="primary">Add current AI</button><small id="addStatus"></small></section>
     <section><h2>Connected AI tabs</h2><div id="providers" class="providers"></div></section>
     <div class="actions"><button id="rescan">Rescan tabs</button><button id="reconnect">Reconnect</button></div>
     <p class="note">The extension connects only to the local Free AI bridge at 127.0.0.1:17341. It does not upload browser data to a separate extension service.</p>

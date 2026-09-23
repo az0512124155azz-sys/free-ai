@@ -1,47 +1,11 @@
-const bridge=document.getElementById('bridge');
-const summary=document.getElementById('summary');
-const dot=document.getElementById('dot');
-const providers=document.getElementById('providers');
-
-function render(status){
-  const connected=!!status?.bridgeConnected;
-  dot.classList.toggle('good',connected);
-  bridge.textContent=connected?'Connected to Free AI':'Free AI desktop is not connected';
-  summary.textContent=connected?'Local bridge is ready.':'Open Free AI on this computer, then reconnect.';
-  const items=Array.isArray(status?.providers)?status.providers:[];
-  providers.innerHTML='';
-  if(!items.length){
-    const empty=document.createElement('div');
-    empty.className='empty';
-    empty.textContent='No supported AI tabs detected yet.';
-    providers.appendChild(empty);
-  }else{
-    for(const item of items){
-      const row=document.createElement('div');
-      row.className='provider';
-      const name=document.createElement('span');
-      const title=document.createElement('span');
-      name.textContent=item.modelName||item.name||item.id||'AI tab';
-      title.textContent=(item.name||item.providerId||'Browser')+(item.tabId?' · Tab '+item.tabId:'');
-      row.append(name,title);
-      providers.appendChild(row);
-    }
-  }
-}
-
-function refresh(){
-  chrome.runtime.sendMessage({type:'freeai:getStatus'},status=>{
-    if(chrome.runtime.lastError){render(null);return}
-    render(status);
-  });
-}
-
-document.getElementById('rescan').addEventListener('click',()=>{
-  chrome.runtime.sendMessage({type:'freeai:rescan'},()=>setTimeout(refresh,120));
-});
-document.getElementById('reconnect').addEventListener('click',()=>{
-  chrome.runtime.sendMessage({type:'freeai:reconnect'},()=>setTimeout(refresh,250));
-});
-
-refresh();
-setInterval(refresh,1500);
+const bridge=document.getElementById('bridge'),summary=document.getElementById('summary'),dot=document.getElementById('dot'),providers=document.getElementById('providers'),currentPreview=document.getElementById('currentPreview'),customName=document.getElementById('customName'),customModel=document.getElementById('customModel'),addCurrent=document.getElementById('addCurrent'),addStatus=document.getElementById('addStatus');let currentTab=null;
+function hostnameLabel(url){try{const host=new URL(String(url||'')).hostname.replace(/^www\./,'');return host.split('.')[0].replace(/[-_]+/g,' ').replace(/\b\w/g,m=>m.toUpperCase())}catch{return ''}}
+function iconNode(src){const wrap=document.createElement('span');wrap.className='providerIcon';if(src){const img=document.createElement('img');img.src=src;img.alt='';wrap.appendChild(img)}else wrap.textContent='AI';return wrap}
+function renderCurrent(){currentPreview.innerHTML='';if(!currentTab||!/^https?:\/\//i.test(String(currentTab.url||''))){const empty=document.createElement('span');empty.className='empty';empty.textContent='Open an AI chat tab to add it.';currentPreview.appendChild(empty);addCurrent.disabled=true;return}addCurrent.disabled=false;const row=document.createElement('div');row.className='provider current';row.appendChild(iconNode(currentTab.favIconUrl||''));const copy=document.createElement('span');copy.className='providerCopy';const b=document.createElement('b');b.textContent=currentTab.title||hostnameLabel(currentTab.url)||'Current AI';const small=document.createElement('small');small.textContent=new URL(currentTab.url).hostname;copy.append(b,small);row.appendChild(copy);currentPreview.appendChild(row);if(!customName.value)customName.value=hostnameLabel(currentTab.url)}
+function render(status){const connected=!!status?.bridgeConnected;dot.classList.toggle('good',connected);bridge.textContent=connected?'Connected to Free AI':'Free AI desktop is not connected';summary.textContent=connected?'Local bridge is ready.':'Open Free AI on this computer, then reconnect.';const items=Array.isArray(status?.providers)?status.providers:[];providers.innerHTML='';if(!items.length){const empty=document.createElement('div');empty.className='empty';empty.textContent='No AI tabs detected yet.';providers.appendChild(empty);return}for(const item of items){const row=document.createElement('div');row.className='provider';row.appendChild(iconNode(item.iconDataUrl||item.favIconUrl||''));const copy=document.createElement('span');copy.className='providerCopy';const b=document.createElement('b');b.textContent=item.modelName||item.name||item.id||'AI tab';const small=document.createElement('small');small.textContent=(item.name||item.providerId||'Browser')+(item.tabId?' · Tab '+item.tabId:'');copy.append(b,small);row.appendChild(copy);if(item.custom){const remove=document.createElement('button');remove.className='removeProvider';remove.textContent='Remove';remove.addEventListener('click',()=>chrome.runtime.sendMessage({type:'freeai:removeCustomProvider',id:item.providerId},()=>setTimeout(refresh,120)));row.appendChild(remove)}providers.appendChild(row)}}
+function refresh(){chrome.runtime.sendMessage({type:'freeai:getStatus'},status=>{if(chrome.runtime.lastError){render(null);return}render(status)})}
+async function loadCurrentTab(){const tabs=await chrome.tabs.query({active:true,currentWindow:true});currentTab=tabs[0]||null;renderCurrent()}
+document.getElementById('rescan').addEventListener('click',()=>chrome.runtime.sendMessage({type:'freeai:rescan'},()=>setTimeout(refresh,120)));
+document.getElementById('reconnect').addEventListener('click',()=>chrome.runtime.sendMessage({type:'freeai:reconnect'},()=>setTimeout(refresh,250)));
+addCurrent.addEventListener('click',()=>{addStatus.textContent='';if(!currentTab)return;chrome.runtime.sendMessage({type:'freeai:addCustomProvider',provider:{url:currentTab.url||'',name:customName.value.trim(),modelName:customModel.value.trim()||customName.value.trim()}},result=>{if(chrome.runtime.lastError){addStatus.textContent='Could not add this AI.';return}if(!result?.ok){addStatus.textContent=result?.error||'Could not add this AI.';return}addStatus.textContent='Added. This AI can now appear in Free AI.';setTimeout(refresh,120)})});
+loadCurrentTab();refresh();setInterval(refresh,1500);

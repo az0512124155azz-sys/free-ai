@@ -4,9 +4,12 @@ let scanTimer=null;
 let browserStateTimer=null;
 let heartbeatTimer=null;
 let lastProviders=[];
+let customProviders=[];
 const providerIconCache=new Map();
 
 const HEARTBEAT_MS=20000;
+const BRIDGE_WAKE_ALARM='freeai-bridge-wake';
+const BRIDGE_WAKE_MINUTES=0.5;
 
 const PROVIDERS={
   chatgpt:{name:'ChatGPT',matches:['https://chatgpt.com/*']},
@@ -16,6 +19,23 @@ const PROVIDERS={
   grok:{name:'Grok',matches:['https://grok.com/*']},
   manus:{name:'Manus',matches:['https://manus.im/*','https://www.manus.im/*']}
 };
+
+function providerDefinition(providerId){
+  return PROVIDERS[providerId]||customProviders.find(item=>item.id===providerId)||null;
+}
+function providerEntries(){return [...Object.entries(PROVIDERS),...customProviders.map(item=>[item.id,item])]}
+function normalizedCustomProvider(input={}){
+  const rawUrl=String(input.url||'').trim();
+  let parsed;try{parsed=new URL(rawUrl)}catch{throw new Error('Open the AI chat page before adding it.')}
+  if(parsed.protocol!=='http:'&&parsed.protocol!=='https:')throw new Error('Only http/https AI chat pages can be added.');
+  const origin=parsed.origin;
+  const name=String(input.name||parsed.hostname.replace(/^www\./,'')).trim().slice(0,60);
+  if(!name)throw new Error('Enter a name for this AI.');
+  const modelName=String(input.modelName||name).trim().slice(0,80)||name;
+  const existing=customProviders.find(item=>item.origin===origin);
+  return {id:existing?.id||('custom-'+crypto.randomUUID().slice(0,8)),name,modelName,origin,matches:[origin+'/*'],custom:true};
+}
+async function saveCustomProviders(){await chrome.storage.local.set({freeAiCustomProviders:customProviders})}
 
 function safeSend(message){
   if(ws&&ws.readyState===WebSocket.OPEN){
@@ -109,7 +129,7 @@ async function scanProviders(options={}){
   const probeModels=!!options.probeModels;
   const probeTools=!!options.probeTools;
   const connected=[];
-  for(const [providerId,p] of Object.entries(PROVIDERS)){
+  for(const [providerId,p] of providerEntries()){
     const tabs=await chrome.tabs.query({url:p.matches});
     for(const tab of tabs){
       if(!tab.id)continue;
@@ -141,7 +161,7 @@ async function scanProviders(options={}){
           source:'browser',
           adapterReady:capabilities?.adapterReady===true,
           adapterIssue:String(capabilities?.adapterIssue||''),
-          modelName:typeof capabilities?.modelName==='string'&&capabilities.modelName.trim()?capabilities.modelName.trim():(previous?.modelName||p.name),
+          modelName:typeof capabilities?.modelName==='string'&&capabilities.modelName.trim()?capabilities.modelName.trim():(previous?.modelName||p.modelName||p.name),
           modelOptions,
           effortLevels,
           effortControl:capabilities?.effortControl||(effortLevels.length>1?'native':previous?.effortControl||null),
@@ -290,7 +310,8 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
   if(m?.type==='freeai:getStatus'){
     sendResponse({
       bridgeConnected:!!(ws&&ws.readyState===WebSocket.OPEN),
-      providers:lastProviders.map(p=>({id:p.id,providerId:p.providerId,name:p.name,modelName:p.modelName,title:p.title,tabId:p.tabId,favIconUrl:p.favIconUrl,iconDataUrl:p.iconDataUrl})),
+      providers:lastProviders.map(p=>({id:p.id,providerId:p.providerId,name:p.name,modelName:p.modelName,title:p.title,tabId:p.tabId,favIconUrl:p.favIconUrl,iconDataUrl:p.iconDataUrl,custom:!!providerDefinition(p.providerId)?.custom})),
+      customProviders:customProviders.map(p=>({id:p.id,name:p.name,modelName:p.modelName,origin:p.origin})),
       providerCount:lastProviders.length
     });
     return;
@@ -304,12 +325,35 @@ chrome.runtime.onMessage.addListener((m,_sender,sendResponse)=>{
     scanProviders({probeModels:true,probeTools:true}).then(providers=>sendResponse({ok:true,providerCount:providers.length})).catch(err=>sendResponse({ok:false,error:err?.message||String(err)}));
     return true;
   }
+  if(m?.type==='freeai:addCustomProvider'){
+    (async()=>{
+      try{
+        const next=normalizedCustomProvider(m.provider||{});
+        const index=customProviders.findIndex(item=>item.origin===next.origin);
+        if(index>=0)customProviders[index]=next;else customProviders.push(next);
+        await saveCustomProviders();
+        const providers=await scanProviders({probeModels:true,probeTools:true});
+        sendResponse({ok:true,provider:next,providerCount:providers.length});
+      }catch(err){sendResponse({ok:false,error:err?.message||String(err)})}
+    })();
+    return true;
+  }
+  if(m?.type==='freeai:removeCustomProvider'){
+    (async()=>{
+      const id=String(m.id||'');
+      customProviders=customProviders.filter(item=>item.id!==id);
+      await saveCustomProviders().catch(()=>{});
+      const providers=await scanProviders();
+      sendResponse({ok:true,providerCount:providers.length});
+    })();
+    return true;
+  }
 });
 
 async function cancelPrompt(m){
   const entry=lastProviders.find(item=>item.id===m.provider);
   const providerId=String(m.providerId||entry?.providerId||String(m.provider||'').split(':')[0]);
-  const provider=PROVIDERS[providerId];
+  const provider=providerDefinition(providerId);
   if(!provider)return false;
   const targetTabId=Number(m.tabId||entry?.tabId);
   const preferred=Number.isFinite(targetTabId)?await chrome.tabs.get(targetTabId).catch(()=>null):null;
@@ -330,7 +374,7 @@ async function cancelPrompt(m){
 async function handlePrompt(m){
   const entry=lastProviders.find(item=>item.id===m.provider);
   const providerId=String(m.providerId||entry?.providerId||String(m.provider||'').split(':')[0]);
-  const provider=PROVIDERS[providerId];
+  const provider=providerDefinition(providerId);
   if(!provider)throw new Error('Unsupported provider: '+providerId);
 
   const preferredTabId=Number(m.tabId||entry?.tabId);
@@ -377,6 +421,13 @@ function startHeartbeat(){
       scanProviders().catch(()=>{});
     }
   },HEARTBEAT_MS);
+}
+async function ensureWakeAlarm(){
+  try{const existing=await chrome.alarms.get(BRIDGE_WAKE_ALARM);if(!existing)await chrome.alarms.create(BRIDGE_WAKE_ALARM,{periodInMinutes:BRIDGE_WAKE_MINUTES})}catch{}
+}
+function ensureConnected(){
+  if(ws&&ws.readyState===WebSocket.OPEN){safeSend({type:'keepalive',at:Date.now()});return}
+  connect();
 }
 
 function scheduleReconnect(){
@@ -459,6 +510,8 @@ function scheduleScan(delay=500){
   scanTimer=setTimeout(()=>scanProviders().catch(()=>{}),delay);
 }
 
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm?.name!==BRIDGE_WAKE_ALARM)return;ensureConnected();scanProviders().catch(()=>{})});
+
 chrome.tabs.onCreated.addListener(()=>{scheduleScan();scheduleBrowserState()});
 chrome.tabs.onRemoved.addListener(()=>{scheduleScan(250);scheduleBrowserState(80)});
 chrome.tabs.onActivated.addListener(()=>scheduleBrowserState(50));
@@ -471,7 +524,10 @@ chrome.tabs.onUpdated.addListener((_id,info)=>{
 chrome.windows.onFocusChanged.addListener(()=>scheduleBrowserState(50));
 chrome.runtime.onStartup.addListener(connect);
 chrome.runtime.onInstalled.addListener(connect);
+chrome.runtime.onStartup.addListener(()=>{ensureWakeAlarm()});
+chrome.runtime.onInstalled.addListener(()=>{ensureWakeAlarm()});
 
-chrome.storage.local.get(['freeAiProviders']).then(state=>{
+chrome.storage.local.get(['freeAiProviders','freeAiCustomProviders']).then(state=>{
   if(Array.isArray(state?.freeAiProviders))lastProviders=state.freeAiProviders;
-}).catch(()=>{}).finally(connect);
+  if(Array.isArray(state?.freeAiCustomProviders))customProviders=state.freeAiCustomProviders.filter(item=>item&&item.id&&item.origin&&Array.isArray(item.matches));
+}).catch(()=>{}).finally(()=>{ensureWakeAlarm();ensureConnected()});
