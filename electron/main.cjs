@@ -41,13 +41,26 @@ let browserPermissionsConfigured=false;
 let siteToolsEnabled=true;
 
 const AUTH_SCHEME='freeai';
-const AUTH_CALLBACK_PREFIX='freeai://auth';
+const AUTH_CALLBACK_URL='freeai://auth/callback';
 const BROWSER_PARTITION='persist:freeai-browser';
 const BROWSER_RENDERABLE_PROTOCOLS=new Set(['http:','https:','about:','data:','blob:']);
 const BROWSER_EXTERNAL_PROTOCOLS=new Set(['mailto:','tel:','sms:','webcal:']);
 
+function isAuthCallbackUrl(value){
+  try{
+    const parsed=new URL(String(value||''));
+    const expected=new URL(AUTH_CALLBACK_URL);
+    return parsed.protocol===expected.protocol
+      && parsed.hostname===expected.hostname
+      && parsed.port===expected.port
+      && parsed.pathname===expected.pathname
+      && !parsed.username
+      && !parsed.password;
+  }catch{return false}
+}
+
 function handleAuthCallback(url){
-  if(typeof url!=='string'||!url.startsWith(AUTH_CALLBACK_PREFIX))return false;
+  if(!isAuthCallbackUrl(url))return false;
   if(!win||win.isDestroyed()){
     pendingAuthUrl=url;
     return true;
@@ -59,7 +72,7 @@ function handleAuthCallback(url){
 }
 
 function findAuthUrl(argv){
-  return (Array.isArray(argv)?argv:[]).find(arg=>typeof arg==='string'&&arg.startsWith(AUTH_CALLBACK_PREFIX))||null;
+  return (Array.isArray(argv)?argv:[]).find(arg=>isAuthCallbackUrl(arg))||null;
 }
 
 function registerAuthProtocol(){
