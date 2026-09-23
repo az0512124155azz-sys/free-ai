@@ -369,9 +369,42 @@ jobs:
     env:
       ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}
       ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
     steps:
       - uses: actions/checkout@v4
+
+      - id: auth_config
+        name: Inspect public Supabase auth configuration
+        shell: bash
+        run: |
+          if [[ -z "$VITE_SUPABASE_URL" || -z "$VITE_SUPABASE_ANON_KEY" ]]; then
+            echo "::error::Supabase public project configuration is unavailable to Android auth QA."
+            exit 1
+          fi
+
+          settings_file="$RUNNER_TEMP/free-ai-auth-settings.json"
+          http_code="$(curl --silent --show-error --output "$settings_file" --write-out '%{http_code}' \
+            --header "apikey: $VITE_SUPABASE_ANON_KEY" \
+            "$VITE_SUPABASE_URL/auth/v1/settings")"
+
+          if [[ "$http_code" != "200" ]]; then
+            echo "::error::Supabase /auth/v1/settings returned HTTP $http_code."
+            exit 1
+          fi
+
+          node - "$settings_file" "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require('node:fs');
+          const [settingsPath, outputPath] = process.argv.slice(2);
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+          const disableSignup = settings.disable_signup === true;
+          const autoConfirm = settings.mailer_autoconfirm === true || settings.autoconfirm === true;
+          const googleEnabled = settings.external?.google === true;
+          fs.appendFileSync(outputPath,
+            `disable_signup=${disableSignup}\nmailer_autoconfirm=${autoConfirm}\ngoogle_enabled=${googleEnabled}\n`);
+          console.log(`Supabase Auth: signup=${disableSignup ? 'disabled' : 'enabled'}, email_autoconfirm=${autoConfirm ? 'enabled' : 'disabled'}, google=${googleEnabled ? 'enabled' : 'disabled'}`);
+          NODE
 
       - id: auth_credentials
         name: Check Android auth test credentials
