@@ -26,6 +26,7 @@ has(bridge,'ApplicationInfo.FLAG_DEBUGGABLE','Runtime QA bridge must stay debug-
 has(bridge,'Context.RECEIVER_EXPORTED','ADB runtime QA receiver must be callable on modern Android.');
 has(bridge,'window.__FREEAI_ANDROID_QA__','Native QA bridge must invoke the renderer audit hook.');
 has(bridge,'InputMethodManager.SHOW_IMPLICIT','Runtime QA must explicitly exercise the soft keyboard.');
+has(bridge,'WindowInsets.Type.ime()','Runtime QA must measure the IME with Android WindowInsets.');
 
 has(smoke,'adb install -r "$APK"','Runtime QA must install the generated APK.');
 has(smoke,'require_token "$initial" "shell=true"','Runtime QA must prove the Android shell rendered.');
@@ -33,7 +34,9 @@ has(smoke,'require_token "$initial" "desktopNav=false"','Runtime QA must reject 
 has(smoke,'require_token "$drawer" "drawer=true"','Runtime QA must open the drawer.');
 has(smoke,'adb shell input keyevent 4','Runtime QA must exercise Android back.');
 has(smoke,'require_token "$model" "modelOpen=true"','Runtime QA must open the model picker.');
-has(smoke,'keyboard_offset','Runtime QA must validate IME viewport movement.');
+has(smoke,'native_ime="$(qa_line nativeIme)"','Runtime QA must query native IME visibility.');
+has(smoke,'viewport_shrink','Runtime QA must accept modern WebView visual-viewport resizing.');
+has(smoke,'IME did not become visible according to Android WindowInsets.','Runtime QA must fail when the native IME is not actually visible.');
 has(smoke,'user_rotation','Runtime QA must exercise runtime rotation.');
 has(smoke,'adb exec-out screencap -p','Runtime QA must capture emulator evidence.');
 
