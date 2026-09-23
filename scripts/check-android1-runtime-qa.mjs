@@ -43,6 +43,9 @@ has(workflow,'profile: pixel_7_pro','Runtime QA must cover a phone profile.');
 has(workflow,'profile: pixel_tablet','Runtime QA must cover a large-screen tablet profile.');
 has(workflow,'reactivecircus/android-emulator-runner@v2','CI must boot real Android emulators.');
 has(workflow,'free-ai-runtime-qa.apk','CI must preserve a dedicated auth-independent runtime QA APK.');
+has(workflow,'name: free-ai-android-runtime-qa','Runtime QA APK must use a CI-only artifact.');
+has(workflow,'Download Android runtime QA build','Runtime emulator jobs must consume the CI-only QA artifact.');
+ok(!/name: free-ai-android\n[\s\S]{0,300}free-ai-runtime-qa\.apk/.test(workflow),'Runtime QA APK must never be bundled into the release Android artifact.');
 has(workflow,'needs: [desktop, windows_visual, android, android_runtime, extension]','Release publishing must depend on runtime Android QA.');
 
 ok(pkg?.scripts?.['android:configure-runtime-qa']==='node scripts/configure-android-runtime-qa.mjs','Android runtime QA bridge script is not wired.');
