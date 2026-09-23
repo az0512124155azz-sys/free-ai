@@ -134,15 +134,33 @@ async function scanProviders(options={}){
     for(const tab of tabs){
       if(!tab.id)continue;
       try{
-        const ok=await ensureContentScript(tab.id);
-        if(!ok)continue;
         const instanceId=providerId+':'+tab.id;
         const previous=lastProviders.find(item=>item.id===instanceId)||null;
+        const ok=await ensureContentScript(tab.id).catch(()=>false);
+        if(!ok){
+          if(previous){
+            connected.push({
+              ...previous,
+              tabId:tab.id,
+              windowId:tab.windowId,
+              title:tab.title||previous.title||p.name,
+              url:tab.url||previous.url||'',
+              favIconUrl:tab.favIconUrl||previous.favIconUrl||'',
+              source:'browser'
+            });
+          }
+          continue;
+        }
         const capabilities=await sendToTab(tab.id,{type:'freeai:scanCapabilities',provider:providerId,probeModels,probeTools}).catch(()=>({
-          mcps:[],
-          modelOptions:[],
-          adapterReady:false,
-          adapterIssue:'Free AI could not inspect the provider UI.'
+          mcps:Array.isArray(previous?.mcps)?previous.mcps:[],
+          modelOptions:Array.isArray(previous?.modelOptions)?previous.modelOptions:[],
+          effortLevels:Array.isArray(previous?.effortLevels)?previous.effortLevels:[],
+          activeEffort:previous?.activeEffort||'default',
+          effortControl:previous?.effortControl||null,
+          fileUpload:previous?.fileUpload===true,
+          modelName:previous?.modelName||p.modelName||p.name,
+          adapterReady:previous?previous.adapterReady!==false:false,
+          adapterIssue:previous?.adapterIssue||'Free AI could not inspect the provider UI.'
         }));
         const modelOptions=Array.isArray(capabilities?.modelOptions)&&capabilities.modelOptions.length?capabilities.modelOptions:(Array.isArray(previous?.modelOptions)?previous.modelOptions:[]);
         const mcps=Array.isArray(capabilities?.mcps)&&capabilities.mcps.length?capabilities.mcps:(Array.isArray(previous?.mcps)?previous.mcps:[]);
@@ -418,7 +436,6 @@ function startHeartbeat(){
   heartbeatTimer=setInterval(()=>{
     if(ws&&ws.readyState===WebSocket.OPEN){
       safeSend({type:'keepalive',at:Date.now()});
-      scanProviders().catch(()=>{});
     }
   },HEARTBEAT_MS);
 }
@@ -510,7 +527,7 @@ function scheduleScan(delay=500){
   scanTimer=setTimeout(()=>scanProviders().catch(()=>{}),delay);
 }
 
-chrome.alarms.onAlarm.addListener(alarm=>{if(alarm?.name!==BRIDGE_WAKE_ALARM)return;ensureConnected();scanProviders().catch(()=>{})});
+chrome.alarms.onAlarm.addListener(alarm=>{if(alarm?.name!==BRIDGE_WAKE_ALARM)return;ensureConnected()});
 
 chrome.tabs.onCreated.addListener(()=>{scheduleScan();scheduleBrowserState()});
 chrome.tabs.onRemoved.addListener(()=>{scheduleScan(250);scheduleBrowserState(80)});

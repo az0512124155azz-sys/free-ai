@@ -2360,7 +2360,7 @@ function Composer(props){
           <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>{if(busy)return;const next=!modelMenu;setModelMenu(next);if(next)onRefreshModels?.()}}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
-          {modelMenu&&<MenuErrorBoundary onClose={()=>setModelMenu(false)}><ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onRefreshModels={onRefreshModels} onSelectProviderModel={onSelectProviderModel} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/></MenuErrorBoundary>}
+          {modelMenu&&<MenuErrorBoundary onClose={()=>setModelMenu(false)}><ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onRefreshModels={onRefreshModels} onSelectProviderModel={onSelectProviderModel} choose={m=>{setSelected(m);setParallelCount?.(1)}}/></MenuErrorBoundary>}
         </div>}
         {!isNative&&product!=='super'&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
@@ -2456,11 +2456,13 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,o
           {active&&<Check size={16}/>}
         </button>;
       })}
-    {selected?.source==='browser'&&Array.isArray(selected.modelOptions)&&selected.modelOptions.length>1&&<div className="providerModelPicker">
+    {selected?.source==='browser'&&<div className="providerModelPicker">
       <span><b>Provider model</b><small>Switch the actual model inside Tab {selected.tabId||'?'}, not only the Free AI routing target.</small></span>
-      <select value={selected.modelName||selected.modelOptions[0]} onChange={e=>onSelectProviderModel?.(e.target.value)} aria-label="Provider model">
-        {selected.modelOptions.map(option=><option value={option} key={option}>{option}</option>)}
-      </select>
+      {Array.isArray(selected.modelOptions)&&selected.modelOptions.length>1
+        ? <select value={selected.modelName||selected.modelOptions[0]} onChange={e=>onSelectProviderModel?.(e.target.value)} aria-label="Provider model">
+            {selected.modelOptions.map(option=><option value={option} key={option}>{option}</option>)}
+          </select>
+        : <button type="button" onClick={onRefreshModels}><RefreshCw size={12}/>Detect models</button>}
     </div>}
     {selected?.source==='browser'&&maxParallel>1&&<div className="parallelPicker">
       <span><b>Parallel instances</b><small>Send this prompt to multiple open tabs of the same model.</small></span>
