@@ -11,6 +11,7 @@ const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
 const installerNsis=fs.readFileSync('build/installer.nsh','utf8');
+const windowsSigningGuide=fs.readFileSync('docs/windows-signing.md','utf8');
 
 function fail(message){
   console.error('Windows 7 QA regression failed: '+message);
@@ -27,6 +28,8 @@ ok(Array.isArray(pkg?.build?.win?.target)&&pkg.build.win.target.includes('nsis')
 ok(pkg?.build?.win?.artifactName==='Free-AI-Windows-${version}.${ext}','Windows installer artifact name changed unexpectedly.');
 ok(pkg?.build?.win?.icon==='build/free-ai-symbol.svg','Windows application icon must use the canonical Free AI symbol.');
 ok(pkg?.build?.asar===true,'Packaged Windows application must keep ASAR enabled.');
+ok(!pkg?.build?.win?.signtoolOptions?.certificateFile,'Windows signing certificate paths must not be committed to package.json.');
+ok(!pkg?.build?.win?.signtoolOptions?.certificatePassword,'Windows signing certificate passwords must not be committed to package.json.');
 
 const electronVersion=String(pkg?.devDependencies?.electron||'').replace(/^[^0-9]*/,'');
 const electronMajor=Number.parseInt(electronVersion.split('.')[0],10);
@@ -119,6 +122,22 @@ ok(/ipcMain\.handle\('mcp:removeConnection'[\s\S]*?const previous=mcpConnections
 
 has(workflow,'Windows clean install and first-launch smoke','Windows CI is not running the packaged installer smoke.');
 has(workflow,"matrix.artifact == 'windows'",'Installer smoke must remain Windows-only.');
+
+// Windows 7.15 code-signing readiness coverage.
+has(workflow,'- id: windows_signing','Windows CI must preflight signing configuration before packaging.');
+has(workflow,'WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}','Windows certificate material must come from GitHub Actions secrets.');
+has(workflow,'WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}','Windows certificate password must come from GitHub Actions secrets.');
+has(workflow,'Windows signing is only partially configured. Set both WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD','Partial Windows signing configuration must fail closed.');
+has(workflow,'Release publishing requires Windows Authenticode signing.','Release publishing must be blocked when Windows signing credentials are absent.');
+has(workflow,'FREEAI_EXPECT_SIGNED: ${{ steps.windows_signing.outputs.enabled }}','Installer smoke must know whether signing was expected for this build.');
+has(installerSmoke,'function Assert-ValidAuthenticodeSignature','Windows installer smoke must include Authenticode verification.');
+has(installerSmoke,'Get-AuthenticodeSignature -LiteralPath $Path','Windows signing verification must use the platform Authenticode status.');
+has(installerSmoke,"[string]$signature.Status -ne 'Valid'",'Windows signing verification must reject non-valid signatures.');
+has(installerSmoke,"Assert-ValidAuthenticodeSignature $installer.FullName 'Windows installer'",'Signed CI must verify the NSIS installer signature.');
+has(installerSmoke,"Assert-ValidAuthenticodeSignature $appExe 'Installed Free AI.exe'",'Signed CI must verify the installed executable signature.');
+has(windowsSigningGuide,'WIN_CSC_LINK','Windows signing guide must document the certificate secret.');
+has(windowsSigningGuide,'publish_release=true','Windows signing guide must document the signed-release gate.');
+has(windowsSigningGuide,'Microsoft Artifact Signing','Windows signing guide must document the cloud-signing alternative without fake credentials.');
 has(installerSmoke,"@('/S', \"/D=$installDir\")",'Installer smoke must perform a silent NSIS clean install to an isolated directory.');
 has(installerSmoke,"Join-Path $installDir 'Free AI.exe'",'Installer smoke must verify the installed Free AI executable.');
 has(installerSmoke,"Join-Path $installDir 'resources\\app.asar'",'Installer smoke must verify the packaged ASAR.');

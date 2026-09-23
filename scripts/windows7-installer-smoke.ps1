@@ -6,6 +6,22 @@ function Fail([string]$Message) {
   exit 1
 }
 
+function Assert-ValidAuthenticodeSignature([string]$Path, [string]$Label) {
+  if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+    Fail ($Label + ' is missing before signature verification: ' + $Path)
+  }
+
+  $signature = Get-AuthenticodeSignature -LiteralPath $Path
+  if ([string]$signature.Status -ne 'Valid') {
+    Fail ($Label + ' Authenticode signature is not valid. Status=' + [string]$signature.Status + '; StatusMessage=' + [string]$signature.StatusMessage)
+  }
+  if (-not $signature.SignerCertificate) {
+    Fail ($Label + ' has a Valid status but no signer certificate was reported.')
+  }
+
+  Write-Host ($Label + ' Authenticode signer: ' + $signature.SignerCertificate.Subject)
+}
+
 function Wait-Until([scriptblock]$Condition, [int]$Seconds, [string]$Failure) {
   $deadline = (Get-Date).AddSeconds($Seconds)
   while ((Get-Date) -lt $deadline) {
@@ -25,6 +41,13 @@ if ($installers.Count -ne 1) {
 $installer = $installers[0]
 if ($installer.Length -lt 40MB) {
   Fail ("Installer is unexpectedly small: " + $installer.Length + ' bytes.')
+}
+
+$expectSigned = $env:FREEAI_EXPECT_SIGNED -eq 'true'
+if ($expectSigned) {
+  Assert-ValidAuthenticodeSignature $installer.FullName 'Windows installer'
+} else {
+  Write-Host 'Windows signing verification: SKIPPED (signing credentials were not configured for this development/CI build).'
 }
 
 $runKey = if ($env:GITHUB_RUN_ID) { $env:GITHUB_RUN_ID } else { [Guid]::NewGuid().ToString('N') }
@@ -58,6 +81,9 @@ $exeInfo = (Get-Item -LiteralPath $appExe).VersionInfo
 Write-Host ("Installed executable: " + $appExe)
 Write-Host ("File version: " + [string]$exeInfo.FileVersion)
 Write-Host ("Product version: " + [string]$exeInfo.ProductVersion)
+if ($expectSigned) {
+  Assert-ValidAuthenticodeSignature $appExe 'Installed Free AI.exe'
+}
 
 New-Item -ItemType Directory -Path $userDataDir -Force | Out-Null
 
@@ -129,9 +155,12 @@ if (Test-Path -LiteralPath $protocolCommandPath) {
 Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $userDataDir -Recurse -Force -ErrorAction SilentlyContinue
 
+$signingSummary = if ($expectSigned) { '- Authenticode installer + installed executable: PASS' } else { '- Authenticode verification: SKIPPED (unsigned development/CI build)' }
+
 $summary = @(
   '### Windows 7 installer smoke',
   '',
+  $signingSummary,
   '- NSIS silent clean install: PASS',
   '- Installed executable + ASAR: PASS',
   '- First launch process survival: PASS',
