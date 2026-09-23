@@ -21,6 +21,7 @@ import './styles.css';
 const supabaseUrl=import.meta.env.VITE_SUPABASE_URL||'https://xquntkgjlmrxkwkrwsjl.supabase.co';
 const supabaseKey=import.meta.env.VITE_SUPABASE_ANON_KEY||'sb_publishable_5jLA64uA5h7NICd9sQLwUg_aQquD67t';
 const isVisualTestBuild=import.meta.env.VITE_VISUAL_TEST==='1';
+const isAndroidAuthQaBuild=import.meta.env.VITE_ANDROID_AUTH_QA==='1';
 const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey
   ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}})
   : null;
@@ -423,6 +424,7 @@ function App(){
   const workTaskModelRef=useRef(null);
   const workTaskProjectIdRef=useRef(null);
   const workTaskMasterChatIdRef=useRef(null);
+  const androidAuthQaStateRef=useRef({status:'idle',code:''});
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -472,6 +474,51 @@ function App(){
     }
     if(error)throw error;
   }
+
+  useEffect(()=>{
+    if(!isAndroidNative||!isAndroidAuthQaBuild||!supabase)return;
+    const qa=androidAuthQaStateRef.current;
+    const snapshot=()=>[
+      'ready='+authReady,
+      'session='+!!session,
+      'authScreen='+!!document.querySelector('.authScreen'),
+      'status='+(qa.status||'idle'),
+      'code='+(qa.code||'')
+    ].join(';');
+    const run=(label,task)=>{
+      qa.status=label+':running';
+      qa.code='';
+      Promise.resolve()
+        .then(task)
+        .then(()=>{qa.status=label+':success';qa.code=''})
+        .catch(error=>{qa.status=label+':error';qa.code=String(error?.code||error?.name||'auth_error').replace(/[^a-z0-9_.-]/gi,'_')});
+    };
+    window.__FREEAI_ANDROID_AUTH_QA__=(payload={})=>{
+      const command=String(payload?.command||'authAudit');
+      if(command==='authSignInPassword'){
+        const email=String(payload?.email||'').trim().toLowerCase();
+        const password=String(payload?.password||'');
+        run('signInPassword',async()=>{
+          if(!email||!password)throw Object.assign(new Error('Missing auth QA credentials.'),{code:'missing_credentials'});
+          const {error}=await supabase.auth.signInWithPassword({email,password});
+          if(error)throw error;
+        });
+      }else if(command==='authRefreshSession'){
+        run('refreshSession',async()=>{
+          const {error}=await supabase.auth.refreshSession();
+          if(error)throw error;
+        });
+      }else if(command==='authSignOut'){
+        run('signOut',()=>signOutAccount());
+      }else if(command==='authStartGoogle'){
+        const button=document.querySelector('.googleButton');
+        if(button){qa.status='startGoogle:started';qa.code='';button.click()}
+        else{qa.status='startGoogle:error';qa.code='google_button_missing'}
+      }
+      return snapshot();
+    };
+    return()=>{delete window.__FREEAI_ANDROID_AUTH_QA__};
+  },[authReady,session]);
 
   useEffect(()=>{
     if(!isAndroidNative)return;
