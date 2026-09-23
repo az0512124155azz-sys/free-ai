@@ -71,8 +71,8 @@ has(contentScript,'freeai:setProviderEffort','Extension effort handler is missin
 has(source,'mcpConnections','Direct MCP state is missing.');
 has(source,'selectedMcpIds','Direct MCP task selection is missing.');
 has(source,'Provider hints','Provider-managed connector labeling is missing.');
-has(source,'superTeamKeys','Super AI team selection is missing.');
-has(source,'Lead model','Super AI lead selection is missing.');
+has(source,'Automatic AI team','Super AI automatic-team UI is missing.');
+has(source,'Every available AI participates automatically. No model selection is required in Super AI.','Super AI must use the connected AI team without manual lead selection.');
 has(source,'isMasterThread','Master-thread persistence is missing.');
 has(source,'isAgentThread','Child-agent chat persistence is missing.');
 has(source,'parentChatId','Agent parent linkage is missing.');
