@@ -426,10 +426,52 @@ function App(){
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
-    supabase.auth.getSession().then(({data})=>{setSession(data.session);setAuthReady(true)}).catch(()=>{setSession(null);setAuthReady(true)});
-    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true)});
-    return()=>subscription.unsubscribe();
+    let cancelled=false,appStateHandle=null;
+    const applySession=next=>{
+      if(cancelled)return;
+      setSession(next||null);
+      setAuthReady(true);
+    };
+    const syncStoredSession=async()=>{
+      try{
+        const {data,error}=await supabase.auth.getSession();
+        if(error)throw error;
+        applySession(data.session);
+      }catch{
+        applySession(null);
+      }
+    };
+    const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>applySession(next));
+    syncStoredSession();
+
+    if(isAndroidNative){
+      supabase.auth.startAutoRefresh().catch(()=>{});
+      CapacitorApp.addListener('appStateChange',({isActive})=>{
+        if(isActive){
+          supabase.auth.startAutoRefresh().catch(()=>{});
+          syncStoredSession();
+        }else{
+          supabase.auth.stopAutoRefresh().catch(()=>{});
+        }
+      }).then(handle=>{appStateHandle=handle}).catch(()=>{});
+    }
+
+    return()=>{
+      cancelled=true;
+      subscription.unsubscribe();
+      appStateHandle?.remove?.();
+      if(isAndroidNative)supabase.auth.stopAutoRefresh().catch(()=>{});
+    };
   },[]);
+
+  async function signOutAccount(){
+    if(!supabase)return;
+    const {error}=await supabase.auth.signOut();
+    if(isAndroidNative){
+      await SocialLogin.logout({provider:'google'}).catch(()=>{});
+    }
+    if(error)throw error;
+  }
 
   useEffect(()=>{
     if(!isAndroidNative)return;
@@ -1913,7 +1955,7 @@ function App(){
         </button>
         {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
-        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setSettingsOpen(true)}}/>}
+        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
       </div>
     </aside>}
     {mobileNavOpen&&<button className="mobileNavScrim" aria-label="Close navigation" onClick={()=>setMobileNavOpen(false)}/>}
@@ -2709,13 +2751,13 @@ function MenuRow({icon:Icon,label,sub,onClick,active=false}){
   return <button className={'menuRow '+(active?'active':'')} role="menuitem" aria-checked={active||undefined} onClick={onClick}>{body}</button>
 }
 
-function ProfileMenu({session,onSettings}){
+function ProfileMenu({session,onSettings,onLogout}){
   const name=session?.user?.user_metadata?.full_name||session?.user?.email?.split('@')[0]||'User';
   return <div className="profileMenu" role="menu" aria-label="Account">
     <div className="profileMenuUser"><span className="avatar large">{initials(session)}</span><span><b>{name}</b><small>{session?.user?.email||'Free AI account'}</small></span></div>
     <MenuRow icon={Briefcase} label="Workspace settings" onClick={onSettings}/>
     <MenuRow icon={Settings} label="Settings" onClick={onSettings}/>
-    <MenuRow icon={LogOut} label="Log out" onClick={()=>supabase?.auth.signOut()}/>
+    <MenuRow icon={LogOut} label="Log out" onClick={onLogout}/>
   </div>
 }
 
@@ -3766,7 +3808,14 @@ function Auth(){
       if(isNative){
         await assertAuthProvider('google');
         await initNativeGoogle();
-        const login=await SocialLogin.login({provider:'google',options:{}});
+        const login=await SocialLogin.login({
+          provider:'google',
+          options:{
+            style:'bottom',
+            filterByAuthorizedAccounts:false,
+            scopes:['email','profile']
+          }
+        });
         const idToken=login?.result?.idToken;
         if(!idToken)throw new Error('Google did not return an ID token.');
         const {error}=await supabase.auth.signInWithIdToken({provider:'google',token:idToken});
