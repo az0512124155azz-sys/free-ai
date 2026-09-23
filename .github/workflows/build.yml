@@ -49,6 +49,40 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Validate real-account Google QA PowerShell
+        if: matrix.artifact == 'windows'
+        shell: powershell
+        run: |
+          $scriptPath = (Resolve-Path 'scripts/android-google-real-account-qa.ps1').Path
+          $tokens = $null
+          $errors = $null
+          $ast = [System.Management.Automation.Language.Parser]::ParseFile(
+            $scriptPath,
+            [ref]$tokens,
+            [ref]$errors
+          )
+
+          if ($errors.Count -gt 0) {
+            $errors | ForEach-Object {
+              Write-Error ("PowerShell parse error at line {0}, column {1}: {2}" -f $_.Extent.StartLineNumber, $_.Extent.StartColumnNumber, $_.Message)
+            }
+            throw 'Real-account Google QA PowerShell failed parser validation.'
+          }
+
+          $parameterNames = @(
+            $ast.ParamBlock.Parameters | ForEach-Object {
+              $_.Name.VariablePath.UserPath
+            }
+          )
+
+          foreach ($required in @('Apk', 'Serial', 'OutputDir')) {
+            if ($parameterNames -notcontains $required) {
+              throw "Real-account Google QA PowerShell is missing required parameter: $required"
+            }
+          }
+
+          Write-Host 'Real-account Google QA PowerShell parser validation passed.'
+
       - id: windows_signing
         name: Check Windows signing readiness
         if: matrix.artifact == 'windows'
