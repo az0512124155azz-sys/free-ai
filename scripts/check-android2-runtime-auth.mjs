@@ -4,6 +4,7 @@ const source=fs.readFileSync('src/main.jsx','utf8');
 const bridge=fs.readFileSync('scripts/configure-android-runtime-qa.mjs','utf8');
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const liveAuth=fs.readFileSync('scripts/android-auth-runtime-qa.sh','utf8');
+const googleRuntime=fs.readFileSync('scripts/android-google-runtime-qa.sh','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 
 function fail(message){
@@ -29,6 +30,15 @@ has(source,'setSession(null);','Terminal refresh failures must immediately clear
 has(source,"command==='authSignOut'",'Runtime auth QA must support logout.');
 has(source,'run(\'signOut\',()=>signOutAccount())','Runtime logout QA must use the same product logout path.');
 has(source,"command==='authStartGoogle'",'Runtime auth QA must be able to start the real native Google flow.');
+has(source,"setAndroidGoogleQaState('credential_manager_requested','',true)",'Google runtime QA must record that the native Credential Manager request was issued.');
+has(source,"'googleStatus='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.status||'idle')",'Runtime auth audit must expose sanitized Google flow state.');
+has(source,"'googleRequested='+!!window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.requested",'Runtime auth audit must retain proof that the native Google request was reached.');
+has(source,"nativeError.kind==='cancelled'",'Native Google cancellation must be handled as a non-fatal outcome.');
+has(source,"setMessage('');",'Native Google cancellation must not surface an unknown fatal error to the user.');
+has(source,"kind:'no_credential',code:'no_credential'",'Native Google no-account behavior must be classified separately from configuration errors.');
+has(source,"kind:'config',code:'google_config'",'Native Google configuration errors must remain distinguishable from user cancellation.');
+has(source,"style:'standard'",'Google runtime must use the explicit-button GetSignInWithGoogleOption path.');
+has(source,'filterByAuthorizedAccounts:false','Google runtime must allow account selection beyond previously authorized accounts.');
 has(source,"'session='+!!session",'Runtime auth audit must expose session presence without exposing tokens.');
 has(source,"'code='+(qa.code||'')",'Runtime auth audit must expose sanitized error codes.');
 ok(!source.includes("password='+password"),'Runtime QA must never log password material.');
@@ -67,6 +77,10 @@ has(workflow,"if: steps.provision_qa_account.outputs.configured == 'true'",'Live
 
 has(workflow,'bash scripts/android-auth-runtime-qa.sh','CI must execute the live Android auth runtime driver.');
 has(workflow,'free-ai-android-auth-runtime-email-session','CI must upload live auth runtime evidence separately.');
+has(workflow,'android_google_runtime:','CI must define a separate Android Google Credential Manager runtime job.');
+has(workflow,'Run Android 16 Google Credential Manager QA','CI must execute native Google runtime QA on Android 16.');
+has(workflow,'bash scripts/android-google-runtime-qa.sh','CI must execute the Google Credential Manager runtime driver.');
+has(workflow,'free-ai-android-google-runtime','CI must upload Google Credential Manager runtime evidence separately.');
 
 has(workflow,'VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}','Auth QA build must use configured Supabase project settings.');
 has(workflow,'VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}','Auth QA build must use the configured Google web client ID.');
@@ -94,6 +108,18 @@ ok(!liveAuth.includes('echo "access_token='),'Live auth QA must never write acce
 ok(!liveAuth.includes('refresh_token='),'Live auth QA must never write refresh tokens to reports.');
 ok(!source.includes('sb_secret_'),'Renderer source must never contain Supabase secret keys.');
 ok(!liveAuth.includes('SUPABASE_SERVICE_ROLE_KEY'),'Android runtime QA must never receive the Supabase service-role key.');
+
+has(googleRuntime,'authStartGoogle','Google runtime QA must launch the real product Google button flow.');
+has(googleRuntime,'googleRequested=true','Google runtime QA must prove the native Google request path was reached.');
+has(googleRuntime,'system_ui_seen=1','Google runtime QA must wait for Google/system account UI before attempting cancellation.');
+has(googleRuntime,'adb shell input keyevent 4','Google runtime QA must exercise native Back/cancel behavior after system UI is observed.');
+has(googleRuntime,'googleCode=user_cancelled','Google runtime QA must recognize benign user cancellation.');
+has(googleRuntime,'googleCode=no_credential','Accountless CI must recognize the documented no-credential outcome.');
+has(googleRuntime,'googleCode=google_config','Google runtime QA must fail on OAuth package/SHA/client-ID configuration errors.');
+has(googleRuntime,'browserFallback=false','Google runtime evidence must explicitly record that no browser fallback occurred.');
+has(googleRuntime,'com\\.android\\.chrome','Google runtime QA must detect unexpected Chrome/browser fallback.');
+ok(!googleRuntime.includes('GOOGLE_PASSWORD'),'Google runtime QA must not embed Google account credentials.');
+ok(!googleRuntime.includes('GOOGLE_TEST_PASSWORD'),'Google runtime QA must not embed Google account credentials.');
 
 ok(String(pkg?.scripts?.validate||'').includes('check-android2-runtime-auth.mjs'),'Android 2A2 runtime auth regression guard is not part of validation.');
 

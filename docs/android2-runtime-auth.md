@@ -176,3 +176,66 @@ The Android auth runtime suite now verifies the deterministic equivalent of reac
 8. The suite captures `05-revoked-session-recovered.png` and verifies a fresh password sign-in works afterward.
 
 The access token is never written to `runtime-report.txt`, GitHub artifacts, repository files, or application release builds. No Supabase secret/service-role credential is exposed to the Android app or GitHub Actions.
+
+
+## Android 2A2-W — Google Credential Manager runtime QA infrastructure
+
+The Android Google sign-in path remains on `@capgo/capacitor-social-login` and its Android Credential Manager implementation. No legacy `GoogleSignInClient` flow is added.
+
+Current Android OAuth runtime identity:
+
+- package: `com.freeai.mobile`
+- stable debug signing SHA-1: `1F:F0:59:1B:C8:69:C4:89:01:01:2F:79:E1:2D:0B:2E:7D:FC:C9:4B`
+- the native plugin is initialized with the Web OAuth client ID, while the Android OAuth client remains configured in Google Cloud by package + signing SHA-1.
+
+The dedicated auth QA renderer now records sanitized Google state without exposing an ID token:
+
+- `provider_check`
+- `initializing`
+- `credential_manager_requested`
+- `credential_received`
+- `signed_in`
+- `cancelled / user_cancelled`
+- classified non-fatal `no_credential` / `account_reauth_failed`
+- explicit `google_config` for package/SHA/client-ID setup failures
+
+User cancellation is deliberately not rendered as an unknown authentication failure.
+
+The new `Android Google Credential Manager runtime` CI job runs the real Android product button path on an Android 16 Google APIs emulator. The CI emulator does not contain a personal Google account, so this checkpoint verifies the native entry path and error/cancel behavior rather than claiming a successful Google identity login.
+
+The runtime driver:
+
+1. starts from the signed-out Auth screen;
+2. invokes the real `Continue with Google` product path;
+3. requires proof that the native Google request path was reached;
+4. captures native-system evidence;
+5. rejects an unexpected Chrome/browser activity;
+6. sends Android Back to exercise cancellation when a native chooser is present;
+7. accepts only a benign user-cancel, an accountless `no_credential` outcome, or the documented account reauthentication outcome;
+8. fails on `google_config`;
+9. requires `session=false` and the Auth screen after a non-authenticated outcome.
+
+Evidence is uploaded separately as `free-ai-android-google-runtime`.
+
+This does **not** yet mark the credentialed Google scenarios complete. A later checkpoint still needs real-account evidence for account selection, successful Google ID-token → Supabase sign-in, logout → different Google account, and user cancellation on a device/emulator that actually has Google accounts.
+
+
+## Android 2A2-Y — Fix explicit Google button flow in CI
+
+Run #315 proved that the previous `style:'bottom'` choice could leave the Google request pending indefinitely on an accountless CI emulator. The request reached Credential Manager (`googleRequested=true`) and did not open a browser, but it never returned a terminal result.
+
+The product has an explicit **Continue with Google** button. The native plugin maps:
+
+- `style:'bottom'` → `GetGoogleIdOption` (bottom-sheet credential option)
+- `style:'standard'` → `GetSignInWithGoogleOption` (explicit Sign in with Google button flow)
+
+The explicit product button now uses `style:'standard'`, which matches Google's recommended button-flow API. `filterByAuthorizedAccounts:false` remains set for account-selection compatibility.
+
+The runtime driver also no longer sends Android Back immediately after the JavaScript request flag changes. It waits for either:
+
+- a recognized Credential Manager terminal outcome; or
+- Google/system account UI to actually become the resumed activity.
+
+Only after native system UI is observed does the driver send Back to exercise user cancellation. Chrome/browser activity still fails the job immediately.
+
+This checkpoint does not weaken the requirement for later real-account Google evidence.

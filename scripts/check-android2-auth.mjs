@@ -19,7 +19,7 @@ has(source,'supabase.auth.stopAutoRefresh()','Android background auth refresh st
 has(source,'const {data,error}=await supabase.auth.getSession();','Cold/warm session restore must read the stored Supabase session.');
 has(source,'const login=await SocialLogin.login({','Native Google sign-in must use the maintained social-login plugin.');
 has(source,"provider:'google'",'Native Google sign-in must target the Google provider.');
-has(source,"style:'bottom'",'Android Google sign-in must use Credential Manager bottom-sheet UX.');
+has(source,"style:'standard'",'The explicit Android Google button must use Credential Manager GetSignInWithGoogleOption standard button flow.');
 has(source,'filterByAuthorizedAccounts:false','Google sign-in must allow account selection beyond previously authorized accounts.');
 has(source,"scopes:['email','profile']",'Google sign-in must request only profile/email scopes.');
 has(source,"supabase.auth.signInWithIdToken({provider:'google',token:idToken})",'Google ID token must be handed directly to Supabase Auth.');
