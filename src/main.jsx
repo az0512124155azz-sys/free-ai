@@ -424,7 +424,7 @@ function App(){
   const workTaskModelRef=useRef(null);
   const workTaskProjectIdRef=useRef(null);
   const workTaskMasterChatIdRef=useRef(null);
-  const androidAuthQaStateRef=useRef({status:'idle',code:''});
+  const androidAuthQaStateRef=useRef({status:'idle',code:'',accessToken:''});
 
   useEffect(()=>{
     if(!supabase){setSession({user:{email:'Local workspace'}});setAuthReady(true);return}
@@ -503,10 +503,36 @@ function App(){
           const {error}=await supabase.auth.signInWithPassword({email,password});
           if(error)throw error;
         });
+      }else if(command==='authCaptureAccessToken'){
+        run('captureAccessToken',async()=>{
+          const {data,error}=await supabase.auth.getSession();
+          if(error)throw error;
+          const accessToken=String(data.session?.access_token||'');
+          if(!accessToken)throw Object.assign(new Error('Missing auth QA access token.'),{code:'session_not_found'});
+          qa.accessToken=accessToken;
+        });
+      }else if(command==='authReadAccessToken'){
+        const accessToken=String(qa.accessToken||'');
+        qa.accessToken='';
+        return snapshot()+';accessToken='+accessToken;
       }else if(command==='authRefreshSession'){
         run('refreshSession',async()=>{
           const {error}=await supabase.auth.refreshSession();
-          if(error)throw error;
+          if(error){
+            const code=String(error?.code||'');
+            const terminalSessionError=
+              code==='refresh_token_not_found'||
+              code==='refresh_token_already_used'||
+              code==='session_not_found'||
+              code==='session_expired';
+            if(terminalSessionError){
+              await supabase.auth.signOut({scope:'local'}).catch(()=>{});
+              qa.accessToken='';
+              setSession(null);
+              setAuthReady(true);
+            }
+            throw error;
+          }
         });
       }else if(command==='authSignOut'){
         run('signOut',()=>signOutAccount());
