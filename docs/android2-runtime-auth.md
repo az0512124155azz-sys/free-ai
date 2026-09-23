@@ -90,7 +90,7 @@ When both secrets are configured, the live QA driver verifies:
 
 Evidence is uploaded separately as `free-ai-android-auth-runtime-email-session`.
 
-If either repository secret is missing, the workflow emits a notice and does not boot the credentialed auth emulator. A green build in that state proves only that the infrastructure is intact; it does **not** count as live authentication verification.
+If either repository secret is missing, the credential check fails the Android auth runtime job. The workflow must not produce a green result for this checkpoint unless the live emulator flow actually runs.
 
 The test account should be dedicated to CI because the current product logout uses Supabase's default global sign-out behavior.
 
@@ -105,3 +105,17 @@ Android 2A2 is not complete after this checkpoint. Remaining runtime coverage st
 - Google account switching
 - wrong/missing Google configuration runtime evidence
 - proof that Android Google auth never falls back to a Supabase-hosted browser OAuth screen
+
+
+### Configuring the dedicated CI test account
+
+Create one dedicated confirmed Email/Password user in the Supabase Dashboard under Authentication → Users. Do not reuse a personal account.
+
+Store that account only as GitHub repository Actions secrets:
+
+- Settings → Secrets and variables → Actions → New repository secret → `ANDROID_AUTH_TEST_EMAIL`
+- Settings → Secrets and variables → Actions → New repository secret → `ANDROID_AUTH_TEST_PASSWORD`
+
+Do not place either value in repository variables, workflow YAML, documentation, issue/PR comments, or source code.
+
+Supabase's Admin API is also valid for provisioning a test user from a trusted server, but it requires a secret/service-role key and must never be exposed to the renderer or Android APK.
