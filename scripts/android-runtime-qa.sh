@@ -104,11 +104,17 @@ after_model_back="$(qa_line audit)"
 require_token "$after_model_back" "modelOpen=false"
 require_token "$after_model_back" "shell=true"
 
+initial_height="$(metric "$initial" height)"
+
 qa_line focusComposer >/dev/null
 sleep 2
 keyboard="$(qa_line audit)"
+native_ime="$(qa_line nativeIme)"
 keyboard_offset="$(metric "$keyboard" keyboard)"
-if [[ -z "$keyboard_offset" || "$keyboard_offset" -le 0 ]]; then
+keyboard_height="$(metric "$keyboard" height)"
+ime_height="$(metric "$native_ime" height)"
+
+if [[ "$native_ime" != *"visible=true"* || -z "$ime_height" || "$ime_height" -le 0 ]]; then
   size="$(adb shell wm size | tr -d '\r' | awk -F': ' '/Physical size|Override size/{v=$2} END{print v}')"
   width="${size%x*}"
   height="${size#*x}"
@@ -116,19 +122,38 @@ if [[ -z "$keyboard_offset" || "$keyboard_offset" -le 0 ]]; then
     adb shell input tap "$((width/2))" "$((height*86/100))"
     sleep 2
     keyboard="$(qa_line audit)"
+    native_ime="$(qa_line nativeIme)"
     keyboard_offset="$(metric "$keyboard" keyboard)"
+    keyboard_height="$(metric "$keyboard" height)"
+    ime_height="$(metric "$native_ime" height)"
   fi
 fi
-if [[ -z "$keyboard_offset" || "$keyboard_offset" -le 0 ]]; then
-  echo "IME opened without a measurable visualViewport keyboard offset."
+
+if [[ "$native_ime" != *"visible=true"* || -z "$ime_height" || "$ime_height" -le 0 ]]; then
+  echo "IME did not become visible according to Android WindowInsets."
+  echo "$native_ime"
   echo "$keyboard"
   adb shell dumpsys input_method | tail -n 160 || true
   exit 1
 fi
+
+viewport_shrink=0
+if [[ "$initial_height" =~ ^[0-9]+$ && "$keyboard_height" =~ ^[0-9]+$ && "$initial_height" -gt "$keyboard_height" ]]; then
+  viewport_shrink="$((initial_height-keyboard_height))"
+fi
+
+keyboard_offset_value="${keyboard_offset:-0}"
+if [[ "$keyboard_offset_value" -le 0 && "$viewport_shrink" -le 80 ]]; then
+  echo "IME is visible, but neither the WebView viewport nor the keyboard offset adapted enough."
+  echo "native_ime=$native_ime"
+  echo "initial=$initial"
+  echo "keyboard=$keyboard"
+  exit 1
+fi
+
 capture "04-keyboard"
 adb shell input keyevent 4
 sleep 1
-
 base="$(qa_line audit)"
 w1="$(metric "$base" width)"
 h1="$(metric "$base" height)"
@@ -177,6 +202,8 @@ adb shell pidof "$PACKAGE" >/dev/null
   echo "after_drawer_back=$after_drawer_back"
   echo "after_model_back=$after_model_back"
   echo "keyboard=$keyboard"
+  echo "native_ime=$native_ime"
+  echo "viewport_shrink=$viewport_shrink"
   echo "rotated=$rotated"
   echo "final=$final"
 } > "$OUT/runtime-report.txt"
