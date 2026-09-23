@@ -37,7 +37,7 @@ has(source,"nativeError.kind==='cancelled'",'Native Google cancellation must be 
 has(source,"setMessage('');",'Native Google cancellation must not surface an unknown fatal error to the user.');
 has(source,"kind:'no_credential',code:'no_credential'",'Native Google no-account behavior must be classified separately from configuration errors.');
 has(source,"kind:'config',code:'google_config'",'Native Google configuration errors must remain distinguishable from user cancellation.');
-has(source,"style:'bottom'",'Google runtime must keep the Credential Manager bottom-sheet UX.');
+has(source,"style:'standard'",'Google runtime must use the explicit-button GetSignInWithGoogleOption path.');
 has(source,'filterByAuthorizedAccounts:false','Google runtime must allow account selection beyond previously authorized accounts.');
 has(source,"'session='+!!session",'Runtime auth audit must expose session presence without exposing tokens.');
 has(source,"'code='+(qa.code||'')",'Runtime auth audit must expose sanitized error codes.');
@@ -111,7 +111,8 @@ ok(!liveAuth.includes('SUPABASE_SERVICE_ROLE_KEY'),'Android runtime QA must neve
 
 has(googleRuntime,'authStartGoogle','Google runtime QA must launch the real product Google button flow.');
 has(googleRuntime,'googleRequested=true','Google runtime QA must prove the native Google request path was reached.');
-has(googleRuntime,'adb shell input keyevent 4','Google runtime QA must exercise native Back/cancel behavior when system UI is shown.');
+has(googleRuntime,'system_ui_seen=1','Google runtime QA must wait for Google/system account UI before attempting cancellation.');
+has(googleRuntime,'adb shell input keyevent 4','Google runtime QA must exercise native Back/cancel behavior after system UI is observed.');
 has(googleRuntime,'googleCode=user_cancelled','Google runtime QA must recognize benign user cancellation.');
 has(googleRuntime,'googleCode=no_credential','Accountless CI must recognize the documented no-credential outcome.');
 has(googleRuntime,'googleCode=google_config','Google runtime QA must fail on OAuth package/SHA/client-ID configuration errors.');
