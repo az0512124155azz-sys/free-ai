@@ -138,7 +138,7 @@ has(workflow,"VITE_VISUAL_TEST: '1'",'Windows visual build must use the explicit
 has(source,"const isVisualTestBuild=import.meta.env.VITE_VISUAL_TEST==='1';",'Visual auth bypass must be an explicit build-time test flag.');
 has(source,'const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey','Visual auth bypass must not change normal production auth.');
 has(workflow,'free-ai-windows-visual','Windows visual evidence must be uploaded for review.');
-has(workflow,'needs: [desktop, windows_visual, android, extension]','Release publishing must depend on the Windows visual gate.');
+has(workflow,'needs: [desktop, windows_visual, android, android_runtime, extension]','Release publishing must depend on the Windows visual gate and Android runtime QA.');
 has(windowsVisualConfig,"snapshotPathTemplate:'{testDir}/baselines/{arg}{ext}'",'Windows visual snapshots must use the committed baseline directory.');
 has(windowsVisualSpec,"_electron as electron",'Visual regression must launch the real Electron app through Playwright.');
 has(windowsVisualSpec,"--user-data-dir=",'Visual regression must isolate its Electron profile.');
