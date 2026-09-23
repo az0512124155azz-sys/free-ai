@@ -155,6 +155,13 @@ ok(Array.isArray(extensionManifest.permissions)&&extensionManifest.permissions.i
 ok(Number(extensionManifest.minimum_chrome_version)>=120,'Browser Bridge wake-alarm recovery requires Chrome 120+ timing support.');
 has(background,"const BRIDGE_WAKE_ALARM='freeai-bridge-wake';",'Browser Bridge wake alarm is missing.');
 has(background,'chrome.alarms.onAlarm.addListener','Browser Bridge must wake and reconnect after service-worker suspension.');
+has(background,"safeSend({type:'keepalive',at:Date.now()});",'Browser Bridge heartbeat must keep the extension service worker alive.');
+ok(!/function startHeartbeat\(\)\{[\s\S]*?scanProviders\(\)\.catch/.test(background),'20-second keepalive must not force a full provider rescan.');
+ok(!/chrome\.alarms\.onAlarm\.addListener\([\s\S]*?scanProviders\(\)\.catch/.test(background),'Wake alarm must reconnect the bridge without forcing provider churn.');
+has(background,'if(previous){','Transient provider scans must retain the previous provider snapshot.');
+has(background,'adapterReady:previous?previous.adapterReady!==false:false','Transient capability probe failures must preserve known adapter health.');
+has(source,'<RefreshCw size={12}/>Detect models','Free AI must expose an explicit provider-model detection action.');
+has(source,'choose={m=>{setSelected(m);setParallelCount?.(1)}}','Selecting a provider must keep the picker open so its native model can be chosen.');
 has(background,'freeai:addCustomProvider','Browser Bridge must allow registering the current AI tab as a custom provider.');
 has(background,'freeAiCustomProviders','Custom AI providers must persist across extension service-worker restarts.');
 has(contentScript,'const genericConfig={','Unknown AI chats need a generic adapter fallback.');
