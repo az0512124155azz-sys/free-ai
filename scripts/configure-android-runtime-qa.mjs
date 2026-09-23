@@ -43,7 +43,9 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
             @Override
             public void onReceive(Context context, Intent intent) {
                 String command = intent == null ? "audit" : intent.getStringExtra("command");
-                runQaCommand(command == null ? "audit" : command);
+                String email = intent == null ? null : intent.getStringExtra("email");
+                String password = intent == null ? null : intent.getStringExtra("password");
+                runQaCommand(command == null ? "audit" : command, email, password);
             }
         };
 
@@ -71,7 +73,7 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
         return (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
     }
 
-    private void runQaCommand(String command) {
+    private void runQaCommand(String command, String email, String password) {
         if (!isQaDebuggable() || getBridge() == null || getBridge().getWebView() == null) {
             Log.i(QA_TAG, command + ":bridge=missing");
             return;
@@ -91,8 +93,14 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
             return;
         }
 
-        String script = "window.__FREEAI_ANDROID_QA__ ? window.__FREEAI_ANDROID_QA__("
-                + JSONObject.quote(command) + ") : 'qa=missing'";
+        boolean authCommand = command.startsWith("auth");
+        String hook = authCommand ? "window.__FREEAI_ANDROID_AUTH_QA__" : "window.__FREEAI_ANDROID_QA__";
+        String payload = authCommand
+                ? "({command:" + JSONObject.quote(command)
+                    + ",email:" + JSONObject.quote(email == null ? "" : email)
+                    + ",password:" + JSONObject.quote(password == null ? "" : password) + "})"
+                : JSONObject.quote(command);
+        String script = hook + " ? " + hook + "(" + payload + ") : 'qa=missing'";
 
         webView.post(() -> webView.evaluateJavascript(script, value -> {
             Log.i(QA_TAG, command + ":" + value);
