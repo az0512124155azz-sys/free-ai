@@ -141,3 +141,22 @@ The job requests a GitHub Actions OIDC token with the dedicated audience `free-a
 The Edge Function has Supabase platform JWT verification disabled because GitHub issues the token, not Supabase. The function performs its own verification against GitHub's OIDC issuer/JWKS and accepts only the intended repository/workflow identity and allowed PR/main events.
 
 This checkpoint does not create, modify, or delete any Supabase Auth user and does not use an Auth admin/service-role credential in GitHub Actions.
+
+
+## Android 2A2-O — OIDC-gated ephemeral QA account provisioning
+
+The live email/password runtime test no longer requires long-lived GitHub repository secrets for the QA account.
+
+Flow:
+
+1. GitHub Actions requests a short-lived OIDC token with the audience `free-ai-android-auth-qa`.
+2. The workflow generates a fresh random password locally for that run and masks it before any later workflow command.
+3. The password is sent over HTTPS to the Supabase Edge Function `free-ai-ci-auth-provision` together with the OIDC token.
+4. The Edge Function verifies the GitHub OIDC issuer, audience, repository, workflow and allowed PR/main event claims.
+5. Only after that verification, the function uses Supabase's server-side admin client with the Edge Function's built-in secret key to create or update the dedicated confirmed QA account.
+6. The function returns only the QA email and success metadata. It never returns the password.
+7. The workflow stores the generated email/password only in the current job's environment for the Android emulator steps.
+
+The dedicated account is marked in `app_metadata.purpose` as `free-ai-android-auth-runtime-qa`.
+
+No service-role or `sb_secret_` key leaves Supabase. No long-lived QA password is stored in GitHub, the repository, the APK, artifacts, or logs.
