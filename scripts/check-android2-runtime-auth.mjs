@@ -37,6 +37,11 @@ has(workflow,'free-ai-auth-runtime-qa.apk','CI must produce a dedicated auth run
 has(workflow,'name: free-ai-android-auth-runtime-qa','CI must upload the auth runtime APK separately.');
 has(workflow,'name: free-ai-android-runtime-qa','Existing auth-independent shell runtime artifact must remain intact.');
 has(workflow,'android_auth_runtime:','CI must define a live Android email/session auth runtime job.');
+has(workflow,'id-token: write','Android auth runtime job must request GitHub OIDC permission.');
+has(workflow,'Verify GitHub OIDC trust with Supabase','CI must verify GitHub workflow identity with the Supabase OIDC verifier.');
+has(workflow,'audience=free-ai-android-auth-qa','GitHub OIDC token must use the dedicated Android auth QA audience.');
+has(workflow,'free-ai-ci-oidc-check','CI must call the dedicated Supabase GitHub OIDC verifier.');
+
 has(workflow,'Inspect public Supabase auth configuration','Live auth CI must inspect Supabase public auth settings before credential-gated runtime testing.');
 has(workflow,"fs.readFileSync('src/main.jsx', 'utf8')",'Live auth CI must derive fallback Supabase public config from the same app source.');
 has(workflow,"key.startsWith('sb_publishable_')",'Live auth CI fallback must be a publishable key, never a secret key.');
