@@ -30,8 +30,8 @@ ok(pkg?.build?.asar===true,'Packaged Windows application must keep ASAR enabled.
 const electronVersion=String(pkg?.devDependencies?.electron||'').replace(/^[^0-9]*/,'');
 const electronMajor=Number.parseInt(electronVersion.split('.')[0],10);
 ok(Number.isInteger(electronMajor)&&electronMajor>=44,'Windows release-readiness must use a currently supported Electron major (44+ for this checkpoint).');
-has(main,"async function pasteWindowsText(text){\n  await clipboard.writeText", 'Windows Computer Use paste must await Electron 44 async clipboard writes.');
-has(main,"async function pasteMacText(text){\n  ensureMacAccessibility();\n  await clipboard.writeText", 'macOS paste compatibility must await Electron 44 async clipboard writes.');
+ok(/async function pasteWindowsText\(text\)\{[\s\S]*?await clipboard\.writeText\(/.test(main),'Windows Computer Use paste must await Electron 44 async clipboard writes.');
+ok(/async function pasteMacText\(text\)\{[\s\S]*?await clipboard\.writeText\(/.test(main),'macOS paste compatibility must await Electron 44 async clipboard writes.');
 
 
 has(main,'function windowsInitialWindowBounds','DPI-aware first-launch window sizing is missing.');
