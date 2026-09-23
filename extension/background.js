@@ -522,8 +522,10 @@ chrome.tabs.onUpdated.addListener((_id,info)=>{
   }
 });
 chrome.windows.onFocusChanged.addListener(()=>scheduleBrowserState(50));
-chrome.runtime.onStartup.addListener(()=>{ensureWakeAlarm();ensureConnected()});
-chrome.runtime.onInstalled.addListener(()=>{ensureWakeAlarm();ensureConnected()});
+chrome.runtime.onStartup.addListener(connect);
+chrome.runtime.onInstalled.addListener(connect);
+chrome.runtime.onStartup.addListener(()=>{ensureWakeAlarm()});
+chrome.runtime.onInstalled.addListener(()=>{ensureWakeAlarm()});
 
 chrome.storage.local.get(['freeAiProviders','freeAiCustomProviders']).then(state=>{
   if(Array.isArray(state?.freeAiProviders))lastProviders=state.freeAiProviders;
