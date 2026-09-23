@@ -1,6 +1,8 @@
 import fs from 'node:fs';
 
-const workflow=fs.readFileSync('.github/workflows/build.yml','utf8').replace(/\\r\\n?/g,'\\n');
+const workflow=fs.readFileSync('.github/workflows/build.yml','utf8')
+  .replaceAll('\r\n','\n')
+  .replaceAll('\r','\n');
 
 function fail(message){
   console.error('Android 6A3 large-phone QA guard failed: '+message);
@@ -18,9 +20,6 @@ if(runtimeStart<0||authStart<0||authStart<=runtimeStart){
 const runtime=workflow.slice(runtimeStart,authStart);
 
 for(const [marker,label] of [
-  ['- form_factor: phone\\n            profile: pixel_5','compact phone AVD'],
-  ['- form_factor: large-phone\\n            profile: pixel_7_pro','large phone AVD'],
-  ['- form_factor: tablet\\n            profile: pixel_tablet','tablet AVD'],
   ['name: Android runtime (${{ matrix.form_factor }})','matrix job naming'],
   ['profile: ${{ matrix.profile }}','matrix hardware profile routing'],
   ['script: bash scripts/android-runtime-qa.sh ${{ matrix.form_factor }}','form-factor runtime routing'],
@@ -28,14 +27,26 @@ for(const [marker,label] of [
   ['path: artifacts/android-runtime/${{ matrix.form_factor }}','per-form-factor evidence path']
 ]) has(runtime,marker,label);
 
-const formFactors=[...runtime.matchAll(/- form_factor:\\s*([^\\n]+)/g)].map(match=>match[1].trim());
-if(JSON.stringify(formFactors)!==JSON.stringify(['phone','large-phone','tablet'])){
-  fail('Android runtime matrix must contain exactly phone, large-phone, tablet in that order.');
+const lines=runtime.split('\n').map(line=>line.trim()).filter(Boolean);
+const entries=[];
+for(let i=0;i<lines.length;i+=1){
+  if(!lines[i].startsWith('- form_factor:'))continue;
+  const formFactor=lines[i].slice('- form_factor:'.length).trim();
+  const profileLine=lines[i+1]||'';
+  if(!profileLine.startsWith('profile:')){
+    fail('Missing profile directly after form factor '+formFactor+'.');
+  }
+  const profile=profileLine.slice('profile:'.length).trim();
+  entries.push({formFactor,profile});
 }
 
-const profiles=[...runtime.matchAll(/\\n\\s+profile:\\s*([^\\n]+)/g)].map(match=>match[1].trim());
-for(const expected of ['pixel_5','pixel_7_pro','pixel_tablet']){
-  if(!profiles.includes(expected))fail('Missing expected AVD profile: '+expected);
+const expected=[
+  {formFactor:'phone',profile:'pixel_5'},
+  {formFactor:'large-phone',profile:'pixel_7_pro'},
+  {formFactor:'tablet',profile:'pixel_tablet'}
+];
+if(JSON.stringify(entries)!==JSON.stringify(expected)){
+  fail('Android runtime matrix must contain exactly phone/pixel_5, large-phone/pixel_7_pro, tablet/pixel_tablet in that order.');
 }
 
 console.log('Android 6A3 large-phone runtime matrix guard passed.');
