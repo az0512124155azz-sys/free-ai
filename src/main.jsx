@@ -463,6 +463,7 @@ function App(){
   const cameraRef=useRef(null);
   const messageEndRef=useRef(null);
   const activeRequestRef=useRef(null);
+  const activeRemoteRequestRef=useRef(null);
   const activeParallelRequestIdsRef=useRef([]);
   const parallelCancelledRef=useRef(false);
   const streamedTextRef=useRef('');
@@ -893,7 +894,7 @@ function App(){
   },[appPrefs.siteToolsEnabled]);
 
   useEffect(()=>{
-    if(!isWindowsDesktop||!messages.length)return;
+    if(!messages.length)return;
     requestAnimationFrame(()=>messageEndRef.current?.scrollIntoView({block:'end'}));
   },[messages.length,busy,currentChatId]);
 
@@ -1535,7 +1536,8 @@ function App(){
 
   async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null,researchConfigOverride=null){
     const userText=String(text||'').trim();
-    const hasAttachmentIntent=isWindowsDesktop&&(
+    const chatAttachmentPlatform=isWindowsDesktop||isAndroidNative;
+    const hasAttachmentIntent=chatAttachmentPlatform&&(
       (!retryContext&&attachments.length>0)||
       (retryContext&&(Array.isArray(retryContext.attachments)&&retryContext.attachments.length>0||String(retryContext.attachmentContext||'').trim()))
     );
@@ -1552,12 +1554,12 @@ function App(){
       setAttachmentError('Independent Deep Research for API models requires a reviewed research plan and a configured SearXNG Search API.');
       return;
     }
-    const activeAttachments=isWindowsDesktop&&!retryContext?attachments:[];
+    const activeAttachments=chatAttachmentPlatform&&!retryContext?attachments:[];
     const retryAttachmentContext=String(retryContext?.attachmentContext||'');
     const retryAttachmentMeta=Array.isArray(retryContext?.attachments)?retryContext.attachments:[];
-    const canUploadFiles=isWindowsDesktop&&model.source==='browser'&&model.fileUpload===true;
+    const canUploadFiles=chatAttachmentPlatform&&model.source==='browser'&&model.fileUpload===true;
     const inlineTextParts=[];
-    if(isWindowsDesktop){
+    if(chatAttachmentPlatform){
       if(retryAttachmentContext)inlineTextParts.push(retryAttachmentContext);
       if(!retryContext&&!canUploadFiles){
         for(const item of activeAttachments){
@@ -1577,7 +1579,7 @@ function App(){
     const userAttachmentMeta=retryContext?retryAttachmentMeta:activeAttachments.map(attachmentMeta);
     const attachmentContext=inlineTextParts.join('\n\n');
     const withUser=[...baseMessages,{role:'user',text:userText,attachments:userAttachmentMeta,attachmentContext}];
-    const requestId=isWindowsDesktop&&isDesktop?crypto.randomUUID():null;
+    const requestId=((isWindowsDesktop&&isDesktop)||isAndroidNative)?crypto.randomUUID():null;
     streamedTextRef.current='';
     cancelledRequestRef.current=null;
     activeRequestRef.current=requestId;
@@ -1608,20 +1610,31 @@ function App(){
       const routedEffort=isWindowsDesktop
         ? (model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default')
         : effort;
-      const outboundAttachments=isWindowsDesktop&&canUploadFiles&&!retryContext
+      const outboundAttachments=chatAttachmentPlatform&&canUploadFiles&&!retryContext
         ? await Promise.all(activeAttachments.map(async item=>({
             name:item.name,type:item.type,size:item.size,dataUrl:await readFileDataUrl(item.file)
           })))
         : [];
       const payload={
-        requestId,provider:model.id,source:model.source||'browser',text:routedText,history:isWindowsDesktop?history:undefined,effort:routedEffort,
+        requestId,provider:model.id,source:model.source||'browser',text:routedText,history:chatAttachmentPlatform?history:undefined,effort:routedEffort,
         attachments:outboundAttachments,
         mode,product,approvalMode:mode==='work'?appPrefs.approvalMode:'ask',
         nativeTool:nativeDeepResearch&&model.source==='browser'?'deep-research':nativeSearch?'search':null,
         researchConfig:ownedResearch?researchConfigOverride:undefined,
         toolRequest:selectedTool?{mcp:selectedTool.mcp,ownerProviderId:selectedTool.ownerProviderId}:null
       };
-      const result=isDesktop?await window.desktopApi.sendPrompt(payload):await sendRemote(settings.relayUrl,settings.pairKey,payload);
+      const result=isDesktop
+        ? await window.desktopApi.sendPrompt(payload)
+        : await sendRemote(settings.relayUrl,settings.pairKey,payload,{
+            onStream:text=>{
+              if(!requestId||requestId!==activeRequestRef.current)return;
+              streamedTextRef.current=String(text||'');
+              setMessages(prev=>prev.map(message=>message.requestId===requestId?{...message,text:streamedTextRef.current,streaming:true}:message));
+            },
+            onControl:control=>{
+              if(requestId&&requestId===activeRequestRef.current)activeRemoteRequestRef.current=control;
+            }
+          });
       const finalText=String(result?.text??streamedTextRef.current??(typeof result==='string'?result:''));
       const resultSources=Array.isArray(result?.sources)?result.sources.filter(item=>item?.url).slice(0,12).map(item=>({
         title:String(item.title||''),url:String(item.url||''),domain:String(item.domain||''),
@@ -1632,7 +1645,7 @@ function App(){
         : null;
       const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch,research:researchMeta}];
       setMessages(next);saveCurrentChat(next,model);
-      if(isWindowsDesktop&&!retryContext){
+      if(chatAttachmentPlatform&&!retryContext){
         for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
         setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current)
       }
@@ -1642,6 +1655,7 @@ function App(){
       setMessages(next);saveCurrentChat(next,model);
     }finally{
       if(activeRequestRef.current===requestId)activeRequestRef.current=null;
+      if(activeRemoteRequestRef.current?.id===requestId)activeRemoteRequestRef.current=null;
       setBusy(false);
     }
   }
@@ -1682,9 +1696,14 @@ function App(){
       return;
     }
     const requestId=activeRequestRef.current;
-    if(!requestId||!isWindowsDesktop||!isDesktop)return;
+    if(!requestId)return;
     cancelledRequestRef.current=requestId;
-    try{await window.desktopApi.cancelPrompt(requestId)}catch{}
+    if(isAndroidNative){
+      try{activeRemoteRequestRef.current?.cancel?.()}catch{}
+    }else{
+      if(!isWindowsDesktop||!isDesktop)return;
+      try{await window.desktopApi.cancelPrompt(requestId)}catch{}
+    }
     setMessages(prev=>{
       const next=prev.flatMap(message=>{
         if(message.requestId!==requestId)return [message];
@@ -1694,6 +1713,7 @@ function App(){
       queueMicrotask(()=>saveCurrentChat(next,selected));
       return next;
     });
+    activeRemoteRequestRef.current=null;
     activeRequestRef.current=null;
     setBusy(false);
   }
@@ -1894,7 +1914,7 @@ function App(){
     }catch{}
   }
 
-  async function addWindowsAttachments(files){
+  async function addChatAttachments(files){
     const list=[...files].filter(Boolean);if(!list.length)return;
     setAttachmentError('');
     const next=[];
@@ -1917,7 +1937,7 @@ function App(){
   }
   async function attachFiles(event){
     const files=[...(event.target.files||[])];if(!files.length)return;
-    if(isWindowsDesktop){await addWindowsAttachments(files);event.target.value='';return}
+    if(isWindowsDesktop||isAndroidNative){await addChatAttachments(files);event.target.value='';return}
     const file=files[0];
     const preview={name:file.name,type:file.type,size:file.size,kind:'binary',content:'',url:''};
     const textLike=file.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
@@ -1957,7 +1977,7 @@ function App(){
     onDragEnter={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();setDragActive(true)}}:undefined}
     onDragOver={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';setDragActive(true)}}:undefined}
     onDragLeave={isWindowsDesktop?e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragActive(false)}:undefined}
-    onDrop={isWindowsDesktop?async e=>{e.preventDefault();setDragActive(false);await addWindowsAttachments(e.dataTransfer.files)}:undefined}
+    onDrop={isWindowsDesktop?async e=>{e.preventDefault();setDragActive(false);await addChatAttachments(e.dataTransfer.files)}:undefined}
   >
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
     <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={attachFiles}/>
@@ -2174,7 +2194,7 @@ function App(){
                       </div>}
                     </div>}
                     {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<MessageSources sources={m.sources} onOpen={openWebSource}/>} 
-                    {isWindowsDesktop&&m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
+                    {m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
                       {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
                     </div>}
                     {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<div className="messageActions headerLeft">
@@ -2599,7 +2619,7 @@ function Composer(props){
     {webSearchEnabled&&<div className="attachedTool searchModeChip"><Globe2 size={13}/><span>Search</span><small>Live web sources via the selected browser AI</small><button onClick={()=>onToggleWebSearch?.()} aria-label="Turn off web search"><X size={12}/></button></div>}
     {deepResearchEnabled&&<div className="attachedTool deepResearchModeChip"><Sparkles size={13}/><span>Deep research</span><small>{selected?.source==='api'?'Free AI-owned research with reviewed plan and retrieved sources':'Provider-native research with a reviewed Free AI plan'}</small><button onClick={()=>onToggleDeepResearch?.()} aria-label="Turn off deep research"><X size={12}/></button></div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
-    {windowsDesktop&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
+    {(windowsDesktop||isAndroidNative)&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
         <button className="attachmentOpen" type="button" onClick={()=>onOpenAttachment?.(item)}><File size={13}/><span>{item.name}</span><small>{humanSize(item.size)}</small></button>
         <button type="button" aria-label={'Remove '+item.name} onClick={()=>onRemoveAttachment?.(item.id)}><X size={12}/></button>
@@ -2653,16 +2673,16 @@ function Composer(props){
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{onSelectProviderEffort?.(v);setEffortMenu(false)}}/>}
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'} aria-label={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
-        {(busy||prompt.trim()||(windowsDesktop&&attachments.length>0))&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||windowsDesktop&&attachments.length>0)&&selected?'sendReady':'')}
-          onClick={busy?(windowsDesktop?stopGeneration:undefined):send}
-          disabled={busy?!windowsDesktop:!selected}
-          aria-label={busy?(windowsDesktop?'Stop generating':'Generating response'):'Send message'}
-          title={busy?(windowsDesktop?'Stop generating':'Generating response'):'Send'}>
-          {busy?(windowsDesktop?<Square size={15}/>:<RefreshCw className="spin" size={17}/>):<ArrowUp size={18}/>} 
+        {(busy||prompt.trim()||attachments.length>0)&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||attachments.length>0)&&selected?'sendReady':'')}
+          onClick={busy?(windowsDesktop||isAndroidNative?stopGeneration:undefined):send}
+          disabled={busy?!(windowsDesktop||isAndroidNative):!selected}
+          aria-label={busy?(windowsDesktop||isAndroidNative?'Stop generating':'Generating response'):'Send message'}
+          title={busy?(windowsDesktop||isAndroidNative?'Stop generating':'Generating response'):'Send'}>
+          {busy?(windowsDesktop||isAndroidNative?<Square size={15}/>:<RefreshCw className="spin" size={17}/>):<ArrowUp size={18}/>} 
         </button>}
       </div>
     </div>
-    {attachmentError&&windowsDesktop&&<div className="dictationError" role="alert">{attachmentError}</div>}
+    {attachmentError&&<div className="dictationError" role="alert">{attachmentError}</div>}
     {dictationError&&<div className="dictationError">{dictationError}</div>}
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
@@ -4019,17 +4039,42 @@ function Auth(){
   </div></div>
 }
 
-function sendRemote(url,key,payload){
+function sendRemote(url,key,payload,options={}){
   return new Promise((resolve,reject)=>{
     if(!url||!key)return reject(new Error('Set the relay URL and pairing key in Settings first.'));
-    let ws;try{ws=new WebSocket(url)}catch{return reject(new Error('The relay URL is invalid.'))}
-    const id=crypto.randomUUID(),timer=setTimeout(()=>{try{ws.close()}catch{};reject(new Error('Desktop did not answer in time.'))},180000);
+    let ws,settled=false;
+    const id=String(payload?.requestId||crypto.randomUUID());
+    const closeSoon=()=>setTimeout(()=>{try{ws?.close()}catch{}},80);
+    const finish=(fn,value)=>{
+      if(settled)return;
+      settled=true;
+      clearTimeout(timer);
+      closeSoon();
+      fn(value);
+    };
+    try{ws=new WebSocket(url)}catch{return reject(new Error('The relay URL is invalid.'))}
+    const timer=setTimeout(()=>finish(reject,new Error('Desktop did not answer in time.')),180000);
+    const cancel=()=>{
+      if(settled)return false;
+      try{
+        if(ws?.readyState===WebSocket.OPEN)ws.send(JSON.stringify({type:'cancel',id,requestId:id}));
+      }catch{}
+      finish(reject,Object.assign(new Error('Generation stopped.'),{code:'generation_stopped'}));
+      return true;
+    };
+    options.onControl?.({id,cancel});
     ws.onopen=()=>ws.send(JSON.stringify({type:'hello',role:'mobile',key}));
     ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch{return}
-      if(m.type==='ready'){if(!m.desktopOnline){clearTimeout(timer);ws.close();reject(new Error('Paired desktop is offline.'));return}ws.send(JSON.stringify({type:'prompt',id,...payload}))}
-      if(m.type==='response'&&m.id===id){clearTimeout(timer);ws.close();m.error?reject(new Error(m.error)):resolve(m)}
+      if(m.type==='ready'){
+        if(!m.desktopOnline){finish(reject,new Error('Paired desktop is offline.'));return}
+        ws.send(JSON.stringify({type:'prompt',id,...payload,requestId:id}));
+      }
+      if(m.type==='stream'&&m.id===id)options.onStream?.(String(m.text||''));
+      if(m.type==='response'&&m.id===id){
+        m.error?finish(reject,new Error(m.error)):finish(resolve,m);
+      }
     };
-    ws.onerror=()=>{clearTimeout(timer);reject(new Error('Cannot connect to relay.'))};
+    ws.onerror=()=>finish(reject,new Error('Cannot connect to relay.'));
   });
 }
 
