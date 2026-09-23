@@ -382,8 +382,8 @@ jobs:
             echo "::add-mask::$ANDROID_AUTH_TEST_PASSWORD"
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Android email/session runtime QA is not configured. Set ANDROID_AUTH_TEST_EMAIL and ANDROID_AUTH_TEST_PASSWORD repository secrets to run the live auth test."
+            echo "::error::Android email/session runtime QA is required for this checkpoint. Set ANDROID_AUTH_TEST_EMAIL and ANDROID_AUTH_TEST_PASSWORD repository secrets before rerunning CI."
+            exit 1
           fi
 
       - name: Download Android auth runtime QA build
