@@ -130,3 +130,14 @@ If GitHub Actions does not define `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY
 This is intentional: Supabase publishable keys are designed for public clients such as browser, mobile, desktop applications, scripts, source code, and CI. They do not grant server/admin privileges.
 
 This fallback applies only to public project configuration. It does not provide the credentialed test account required for the live email/password lifecycle test.
+
+
+## Android 2A2-M — GitHub OIDC trust verification
+
+Before adding any server-side CI user provisioning, the Android auth runtime job now proves the GitHub→Supabase trust channel independently.
+
+The job requests a GitHub Actions OIDC token with the dedicated audience `free-ai-android-auth-qa` using `permissions: id-token: write`. It sends that short-lived token to the Supabase Edge Function `free-ai-ci-oidc-check`.
+
+The Edge Function has Supabase platform JWT verification disabled because GitHub issues the token, not Supabase. The function performs its own verification against GitHub's OIDC issuer/JWKS and accepts only the intended repository/workflow identity and allowed PR/main events.
+
+This checkpoint does not create, modify, or delete any Supabase Auth user and does not use an Auth admin/service-role credential in GitHub Actions.
