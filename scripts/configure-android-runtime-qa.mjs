@@ -12,6 +12,7 @@ const importAnchor="import android.util.Log;\n";
 const extraImports=`import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.IntentFilter;
+import android.content.pm.ApplicationInfo;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
@@ -35,7 +36,7 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        if (!BuildConfig.DEBUG) return;
+        if (!isQaDebuggable()) return;
 
         qaReceiver = new BroadcastReceiver() {
             @Override
@@ -54,7 +55,7 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
     }
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         if (qaReceiver != null) {
             try {
                 unregisterReceiver(qaReceiver);
@@ -65,8 +66,12 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
         super.onDestroy();
     }
 
+    private boolean isQaDebuggable() {
+        return (getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0;
+    }
+
     private void runQaCommand(String command) {
-        if (!BuildConfig.DEBUG || getBridge() == null || getBridge().getWebView() == null) {
+        if (!isQaDebuggable() || getBridge() == null || getBridge().getWebView() == null) {
             Log.i(QA_TAG, command + ":bridge=missing");
             return;
         }
