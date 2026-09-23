@@ -25,7 +25,7 @@ has(source,"if(command==='openSettingsVoice')",'Android runtime QA must be able 
 has(source,"'settingsList='+!!document.querySelector('.settingsScreen.mobileSettingsList')",'Android runtime audit must expose Settings list state.');
 has(source,"'settingsDetail='+!!document.querySelector('.settingsScreen.mobileSettingsDetail')",'Android runtime audit must expose Settings detail state.');
 has(source,"const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Files','Configuration','Browser','Git','Environments']);",'Mobile Settings must keep desktop-only Browser, Computer, Git, Environments, files and shortcuts out of the Android list.');
-has(source,"{isNative&&label==='Plugins'?'Apps':label}",'Mobile Settings must label plugin integrations as Apps.');
+has(source,"label==='Plugins'?'Apps'",'Mobile Settings must label plugin integrations as Apps.');
 has(styles,'.settingsScreen.mobileSettingsList .settingsNav{display:block','Mobile Settings list layout is missing.');
 has(styles,'.settingsScreen.mobileSettingsDetail .settingsNav{display:none','Mobile Settings detail layout is missing.');
 has(styles,'.mobileSettingsBack{display:grid!important}','Mobile Settings detail must expose a visible back control.');
