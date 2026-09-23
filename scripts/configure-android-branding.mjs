@@ -86,11 +86,9 @@ if(fs.existsSync(stylesPath)){
     const re=new RegExp('(<style\\s+name="'+name.replaceAll('.','\\.')+'"[^>]*>)([\\s\\S]*?)(</style>)');
     xml=xml.replace(re,(full,open,body,close)=>{
       const items=[
-        ['android:statusBarColor','@android:color/transparent'],
-        ['android:navigationBarColor','@android:color/transparent'],
         ['android:windowLightStatusBar','false'],
         ['android:windowLightNavigationBar','false'],
-        ['android:windowLayoutInDisplayCutoutMode','shortEdges']
+        ['android:windowLayoutInDisplayCutoutMode','always']
       ];
       let next=body;
       for(const [key,value] of items){
