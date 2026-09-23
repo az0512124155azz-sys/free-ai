@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 import android.webkit.WebView;
 
@@ -77,6 +78,19 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
         }
 
         WebView webView = getBridge().getWebView();
+
+        if ("nativeIme".equals(command)) {
+            WindowInsets insets = webView.getRootWindowInsets();
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && insets != null) {
+                boolean visible = insets.isVisible(WindowInsets.Type.ime());
+                int height = insets.getInsets(WindowInsets.Type.ime()).bottom;
+                Log.i(QA_TAG, command + ":visible=" + visible + ";height=" + height);
+            } else {
+                Log.i(QA_TAG, command + ":visible=false;height=0;unsupported=true");
+            }
+            return;
+        }
+
         String script = "window.__FREEAI_ANDROID_QA__ ? window.__FREEAI_ANDROID_QA__("
                 + JSONObject.quote(command) + ") : 'qa=missing'";
 
