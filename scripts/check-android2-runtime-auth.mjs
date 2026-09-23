@@ -50,10 +50,13 @@ has(workflow,'same public Supabase fallback configuration bundled by the app','L
 has(workflow,'mailer_autoconfirm=','Live auth CI must capture whether email signup auto-confirm is enabled.');
 has(workflow,'google_enabled=','Live auth CI must capture whether Google auth is enabled.');
 
-has(workflow,'ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}','Live auth QA email must come from a GitHub Actions secret.');
-has(workflow,'ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}','Live auth QA password must come from a GitHub Actions secret.');
-has(workflow,"if: steps.auth_credentials.outputs.configured == 'true'",'Live auth emulator steps must be gated on configured runtime credentials.');
-has(workflow,'Android email/session runtime QA is required for this checkpoint.','Missing live-auth credentials must fail CI instead of producing a false-green job.');
+ok(!workflow.includes('ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}'),'Live auth QA must not depend on a long-lived GitHub email secret.');
+ok(!workflow.includes('ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}'),'Live auth QA must not depend on a long-lived GitHub password secret.');
+has(workflow,'Provision ephemeral Android auth QA account','CI must provision a short-lived QA credential after OIDC trust verification.');
+has(workflow,'free-ai-ci-auth-provision','CI must use the Supabase OIDC-gated QA account provisioner.');
+has(workflow,'openssl rand -hex 32','CI must generate a fresh QA password for each workflow run.');
+has(workflow,'>> "$GITHUB_ENV"','Ephemeral QA credentials must be passed only to subsequent steps in the same job.');
+has(workflow,"if: steps.provision_qa_account.outputs.configured == 'true'",'Live auth emulator steps must be gated on successful ephemeral account provisioning.');
 
 has(workflow,'bash scripts/android-auth-runtime-qa.sh','CI must execute the live Android auth runtime driver.');
 has(workflow,'free-ai-android-auth-runtime-email-session','CI must upload live auth runtime evidence separately.');
