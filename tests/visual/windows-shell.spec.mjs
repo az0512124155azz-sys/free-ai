@@ -43,6 +43,8 @@ test('Windows main shell visual baseline',async()=>{
 
     await page.reload({waitUntil:'domcontentloaded'});
     await page.locator('.windowsDesktopRoot').waitFor({state:'visible'});
+    await page.locator('.desktopShell').waitFor({state:'visible'});
+    await expect(page.locator('.authScreen')).toHaveCount(0);
 
     const browserWindow=await electronApp.browserWindow(page);
     await browserWindow.evaluate(win=>{
