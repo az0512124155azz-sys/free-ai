@@ -5,6 +5,7 @@ const bridge=fs.readFileSync('scripts/configure-android-runtime-qa.mjs','utf8');
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const liveAuth=fs.readFileSync('scripts/android-auth-runtime-qa.sh','utf8');
 const googleRuntime=fs.readFileSync('scripts/android-google-runtime-qa.sh','utf8');
+const googleRealAccount=fs.readFileSync('scripts/android-google-real-account-qa.ps1','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 
 function fail(message){
@@ -31,6 +32,12 @@ has(source,"command==='authSignOut'",'Runtime auth QA must support logout.');
 has(source,'run(\'signOut\',()=>signOutAccount())','Runtime logout QA must use the same product logout path.');
 has(source,"command==='authStartGoogle'",'Runtime auth QA must be able to start the real native Google flow.');
 has(source,"setAndroidGoogleQaState('credential_manager_requested','',true)",'Google runtime QA must record that the native Credential Manager request was issued.');
+has(source,'async function googleQaIdentityFingerprint(user)','Real-account Google QA must derive a non-PII account fingerprint.');
+has(source,"new TextEncoder().encode('free-ai-google-qa:'+String(user.id))",'Real-account fingerprint must derive from the Supabase user UUID, not email/profile PII.');
+has(source,"crypto.subtle.digest('SHA-256',encoded)",'Real-account fingerprint must use SHA-256.');
+has(source,"'googleIdentity='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.identity||'')",'Runtime auth audit must expose only the sanitized Google identity fingerprint.');
+has(source,"'authProvider='+String(session?.user?.app_metadata?.provider||'')",'Runtime auth audit must expose the session provider without exposing profile PII.');
+has(source,"command==='authResetGoogleQa'",'Real-account QA must be able to reset Google QA state between account selections.');
 has(source,"'googleStatus='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.status||'idle')",'Runtime auth audit must expose sanitized Google flow state.');
 has(source,"'googleRequested='+!!window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.requested",'Runtime auth audit must retain proof that the native Google request was reached.');
 has(source,"nativeError.kind==='cancelled'",'Native Google cancellation must be handled as a non-fatal outcome.');
@@ -120,6 +127,19 @@ has(googleRuntime,'browserFallback=false','Google runtime evidence must explicit
 has(googleRuntime,'com\\.android\\.chrome','Google runtime QA must detect unexpected Chrome/browser fallback.');
 ok(!googleRuntime.includes('GOOGLE_PASSWORD'),'Google runtime QA must not embed Google account credentials.');
 ok(!googleRuntime.includes('GOOGLE_TEST_PASSWORD'),'Google runtime QA must not embed Google account credentials.');
+
+has(googleRealAccount,'AT LEAST TWO real Google accounts','Real-account QA must require two pre-provisioned Google accounts on the device.');
+has(googleRealAccount,'googleStatus=signed_in','Real-account QA must require a successful native Google sign-in.');
+has(googleRealAccount,'authProvider=google','Real-account QA must verify Supabase session provider is Google.');
+has(googleRealAccount,'googleIdentity=([a-f0-9]{16,24})','Real-account QA must read only the anonymous identity fingerprint.');
+has(googleRealAccount,'if ($accountA -eq $accountB)','Real-account QA must prove Account B differs from Account A.');
+has(googleRealAccount,'authSignOut','Real-account QA must use the product logout path between Google accounts.');
+has(googleRealAccount,'googleCode=user_cancelled','Real-account QA must verify user cancellation after the account-switch scenarios.');
+has(googleRealAccount,'browserFallback=false','Real-account QA evidence must explicitly record no browser fallback.');
+has(googleRealAccount,'com\\.android\\.chrome','Real-account QA must reject unexpected Chrome/browser fallback.');
+ok(!googleRealAccount.includes('GOOGLE_PASSWORD'),'Real-account QA must never request or embed a Google password secret.');
+ok(!googleRealAccount.includes('GOOGLE_TEST_PASSWORD'),'Real-account QA must never request or embed a Google password secret.');
+ok(!googleRealAccount.includes('GOOGLE_EMAIL'),'Real-account QA must not store Google account email addresses.');
 
 ok(String(pkg?.scripts?.validate||'').includes('check-android2-runtime-auth.mjs'),'Android 2A2 runtime auth regression guard is not part of validation.');
 
