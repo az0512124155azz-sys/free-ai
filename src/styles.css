@@ -564,7 +564,13 @@ button:disabled{opacity:.42;cursor:default}
 .pluginPermissionList>div>span:first-child{display:flex;min-width:0;flex-direction:column}.pluginPermissionList b{font-size:10.5px}.pluginPermissionList small{font-size:9px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
 .capabilityBadge{font-size:8.5px;border-radius:999px;padding:4px 7px;background:var(--surface-tertiary);color:var(--text-tertiary);white-space:nowrap}.capabilityBadge.read{color:var(--text-secondary)}
 .pluginDetailsActions{display:flex;justify-content:flex-end;gap:7px;flex-wrap:wrap;margin-top:12px}.pluginDetailsActions button{display:inline-flex;align-items:center;gap:5px;background:var(--surface-secondary);border:1px solid var(--border-soft);border-radius:9px;padding:7px 10px;font-size:10px;color:var(--text-secondary)}.pluginDetailsActions button:hover{background:var(--surface-tertiary);color:var(--text)}.pluginDetailsActions .primaryAction{background:var(--text);color:var(--canvas)}
-@media(max-width:780px){.directoryGrid,.hintGrid{grid-template-columns:1fr}.pluginPageHero{flex-direction:column}.directoryTabs{width:100%}.directoryTabs button{flex:1}.pluginDetailsDialog{width:calc(100vw - 24px)}}
+@media(max-width:780px){.directoryGrid,.hintGrid{grid-template-columns:1fr}.pluginPageHero{flex-direction:column}.directoryTabs{width:100%}.directoryTabs button{flex:1}.pluginDetailsDialog{width:calc(100vw - 24px)}
+.mobileAppsPage .contentInner,.mobileExplorePage .contentInner{width:calc(100% - 28px);padding-top:20px}
+.mobileAppsPage .pluginGrid{grid-template-columns:1fr;gap:4px}
+.mobileAppsPage .sectionHeading,.mobileExplorePage .sectionHeading{align-items:flex-start;gap:8px}
+.mobileAppsPage .sectionHeading .textLinkButton,.mobileExplorePage .sectionHeading .textLinkButton{flex:none}
+.mobileExploreHintsHeading{margin-top:22px}
+}
 .placeholderPage{flex:1;display:flex;align-items:center;justify-content:center;flex-direction:column;color:var(--text-tertiary);text-align:center}
 .placeholderPage h1{color:var(--text);font-size:24px;font-weight:550;margin:12px 0 4px}.placeholderPage p{margin:0;font-size:13px;max-width:440px}
 
