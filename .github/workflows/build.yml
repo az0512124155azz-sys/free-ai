@@ -193,6 +193,8 @@ jobs:
 
       - name: Build deterministic visual-test renderer
         run: npm run build:web
+        env:
+          VITE_VISUAL_TEST: '1'
 
       - name: Record Windows visual baseline candidate
         shell: pwsh
