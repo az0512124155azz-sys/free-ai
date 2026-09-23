@@ -156,8 +156,10 @@ ok(Number(extensionManifest.minimum_chrome_version)>=120,'Browser Bridge wake-al
 has(background,"const BRIDGE_WAKE_ALARM='freeai-bridge-wake';",'Browser Bridge wake alarm is missing.');
 has(background,'chrome.alarms.onAlarm.addListener','Browser Bridge must wake and reconnect after service-worker suspension.');
 has(background,"safeSend({type:'keepalive',at:Date.now()});",'Browser Bridge heartbeat must keep the extension service worker alive.');
-ok(!/function startHeartbeat\(\)\{[\s\S]*?scanProviders\(\)\.catch/.test(background),'20-second keepalive must not force a full provider rescan.');
-ok(!/chrome\.alarms\.onAlarm\.addListener\([\s\S]*?scanProviders\(\)\.catch/.test(background),'Wake alarm must reconnect the bridge without forcing provider churn.');
+has(background,"function startHeartbeat(){\n  stopHeartbeat();\n  heartbeatTimer=setInterval(()=>{\n    if(ws&&ws.readyState===WebSocket.OPEN){\n      safeSend({type:'keepalive',at:Date.now()});\n    }\n  },HEARTBEAT_MS);\n}",'20-second keepalive must not force a full provider rescan.');
+has(background,"chrome.alarms.onAlarm.addListener(alarm=>{if(alarm?.name!==BRIDGE_WAKE_ALARM)return;ensureConnected()});",'Wake alarm must reconnect the bridge without forcing provider churn.');
+ok(!background.includes("safeSend({type:'keepalive',at:Date.now()});\n      scanProviders().catch(()=>{});"),'Heartbeat must not reintroduce provider churn.');
+ok(!background.includes("ensureConnected();scanProviders().catch(()=>{})"),'Wake alarm must not reintroduce provider churn.');
 has(background,'if(previous){','Transient provider scans must retain the previous provider snapshot.');
 has(background,'adapterReady:previous?previous.adapterReady!==false:false','Transient capability probe failures must preserve known adapter health.');
 has(source,'<RefreshCw size={12}/>Detect models','Free AI must expose an explicit provider-model detection action.');
