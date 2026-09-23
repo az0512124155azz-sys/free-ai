@@ -62,7 +62,7 @@ has(main,'Update check timed out. Check your internet connection and try again.'
 has(main,"parsed.protocol!=='https:'||parsed.hostname!=='github.com'",'Update release link must require HTTPS GitHub.');
 has(main,"parsed.pathname.startsWith('/az0512124155azz-sys/free-ai/releases/')",'Update release link must stay inside the Free AI releases path.');
 has(preload,"checkForUpdates:()=>ipcRenderer.invoke('shell:checkForUpdates')",'Preload update-check bridge is missing.');
-has(source,'window.desktopApi?.checkForUpdates?.()','Windows Settings update-check action is missing.');
+has(source,'window.desktopApi.checkForUpdates()','Windows Settings update-check action is missing.');
 has(source,"Open release",'Windows Settings must expose the verified release link when an update is available.');
 
 has(main,"function encodeSecret(value,{requireEncryption=false}={})",'Secret persistence must support an encryption-required mode.');
