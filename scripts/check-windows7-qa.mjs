@@ -83,6 +83,23 @@ has(preload,"checkForUpdates:()=>ipcRenderer.invoke('shell:checkForUpdates')",'P
 has(source,'window.desktopApi.checkForUpdates()','Windows Settings update-check action is missing.');
 has(source,"Open release",'Windows Settings must expose the verified release link when an update is available.');
 
+// Windows 7.13 browser permission scope coverage.
+has(main,'ses.setPermissionCheckHandler((webContents,permission,requestingOrigin,details={})=>','Built-in browser permission checks must remain explicit.');
+has(main,'ses.setPermissionRequestHandler((webContents,permission,callback,details={})=>','Built-in browser permission requests must remain explicit.');
+has(main,'function browserPermissionMediaTypes(details={})','Media permission subtype normalization is missing.');
+has(main,"value==='audio'||value==='video'",'Media permission scope must distinguish microphone from camera.');
+has(main,"if(permission!=='media')return [base];",'Non-media permission session scoping changed unexpectedly.');
+has(main,"return mediaTypes.map(type=>base+':'+type);",'Media grants must use subtype-specific keys.');
+has(main,'return keys.length>0&&keys.every(key=>browserPermissionGrants.has(key));','Media permission checks must require every requested subtype grant.');
+has(main,'mediaTypes:browserPermissionMediaTypes(details)','Permission requests must preserve media subtype details for the renderer.');
+has(main,'grantKeys,','Permission requests must preserve the exact grant keys being approved.');
+has(main,'for(const key of grantKeys)browserPermissionGrants.add(key);','Approved media permissions must persist each requested subtype independently.');
+has(main,'function clearBrowserPermissions()','Browser permission reset is missing.');
+has(source,"if(audio&&video)return 'your camera and microphone';",'Permission UI must label combined media access precisely.');
+has(source,"if(video)return 'your camera';",'Permission UI must distinguish camera access.');
+has(source,"if(audio)return 'your microphone';",'Permission UI must distinguish microphone access.');
+has(source,'permissionLabel(permissionRequest)','Permission UI must label the concrete request, not only the generic permission name.');
+
 has(main,"function encodeSecret(value,{requireEncryption=false}={})",'Secret persistence must support an encryption-required mode.');
 has(main,"throw new Error('Secure credential storage is unavailable. Free AI will not save API keys in plaintext.')",'API-key persistence must refuse plaintext fallback.');
 has(main,"const containsApiKey=apiConnections.some",'API connection persistence must detect stored API keys.');

@@ -249,7 +249,8 @@ function browserPermissionPublic(record){
     permission:record.permission,
     origin:record.origin,
     requestingUrl:record.requestingUrl,
-    userGesture:!!record.userGesture
+    userGesture:!!record.userGesture,
+    mediaTypes:Array.isArray(record.mediaTypes)?[...record.mediaTypes]:[]
   };
 }
 
@@ -624,7 +625,7 @@ function persistentBrowserSession(){
     browserPermissionsConfigured=true;
     ses.setPermissionCheckHandler((webContents,permission,requestingOrigin,details={})=>{
       const origin=browserPermissionOrigin(details.requestingUrl||requestingOrigin||webContents?.getURL?.()||'');
-      return !!origin&&browserPermissionGrants.has(browserPermissionKey(origin,permission));
+      return !!origin&&browserPermissionGranted(origin,permission,details);
     });
     ses.setPermissionRequestHandler((webContents,permission,callback,details={})=>{
       const tabId=browserTabIdForWebContents(webContents);
@@ -634,8 +635,9 @@ function persistentBrowserSession(){
         callback(false);
         return;
       }
-      const key=browserPermissionKey(origin,permission);
-      if(browserPermissionGrants.has(key)){
+      const grantKeys=browserPermissionGrantKeys(origin,permission,details);
+      const key=grantKeys.join('|');
+      if(grantKeys.length&&grantKeys.every(item=>browserPermissionGrants.has(item))){
         callback(true);
         return;
       }
@@ -653,6 +655,8 @@ function persistentBrowserSession(){
         origin,
         requestingUrl,
         userGesture:!!details.isUserGesture,
+        mediaTypes:browserPermissionMediaTypes(details),
+        grantKeys,
         key,
         callbacks:[callback]
       });
@@ -670,8 +674,22 @@ function browserPermissionOrigin(value){
   }catch{return ''}
 }
 
-function browserPermissionKey(origin,permission){
-  return String(origin||'')+'\n'+String(permission||'unknown');
+function browserPermissionMediaTypes(details={}){
+  const raw=Array.isArray(details?.mediaTypes)?details.mediaTypes:[details?.mediaType];
+  return [...new Set(raw.map(value=>String(value||'').toLowerCase()).filter(value=>value==='audio'||value==='video'))].sort();
+}
+
+function browserPermissionGrantKeys(origin,permission,details={}){
+  const base=String(origin||'')+'\n'+String(permission||'unknown');
+  if(permission!=='media')return [base];
+  const mediaTypes=browserPermissionMediaTypes(details);
+  if(!mediaTypes.length)return [base+':unknown'];
+  return mediaTypes.map(type=>base+':'+type);
+}
+
+function browserPermissionGranted(origin,permission,details={}){
+  const keys=browserPermissionGrantKeys(origin,permission,details);
+  return keys.length>0&&keys.every(key=>browserPermissionGrants.has(key));
 }
 
 function browserTabIdForWebContents(webContents){
@@ -686,7 +704,10 @@ function resolveBrowserPermission(id,allow){
   const record=browserPermissionRequests.get(id);
   if(!record)return browserSnapshot();
   browserPermissionRequests.delete(id);
-  if(allow)browserPermissionGrants.add(record.key);
+  if(allow){
+    const grantKeys=Array.isArray(record.grantKeys)&&record.grantKeys.length?record.grantKeys:[record.key].filter(Boolean);
+    for(const key of grantKeys)browserPermissionGrants.add(key);
+  }
   for(const callback of record.callbacks){
     try{callback(!!allow)}catch{}
   }

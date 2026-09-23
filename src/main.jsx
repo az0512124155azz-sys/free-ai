@@ -3116,8 +3116,17 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
   }
   const permissionRequests=Array.isArray(state.permissionRequests)?state.permissionRequests:[];
   const permissionRequest=permissionRequests[0]||null;
-  const permissionLabel=permission=>{
-    const labels={media:'camera or microphone',geolocation:'your location',notifications:'notifications','clipboard-read':'clipboard access','clipboard-sanitized-write':'clipboard write',fullscreen:'fullscreen',pointerLock:'pointer lock',midi:'MIDI devices',midiSysex:'MIDI system access',openExternal:'external application access'};
+  const permissionLabel=request=>{
+    const permission=request?.permission;
+    if(permission==='media'){
+      const mediaTypes=Array.isArray(request?.mediaTypes)?request.mediaTypes:[];
+      const audio=mediaTypes.includes('audio'),video=mediaTypes.includes('video');
+      if(audio&&video)return 'your camera and microphone';
+      if(video)return 'your camera';
+      if(audio)return 'your microphone';
+      return 'camera or microphone access';
+    }
+    const labels={geolocation:'your location',notifications:'notifications','clipboard-read':'clipboard access','clipboard-sanitized-write':'clipboard write',fullscreen:'fullscreen',pointerLock:'pointer lock',midi:'MIDI devices',midiSysex:'MIDI system access',openExternal:'external application access'};
     return labels[permission]||String(permission||'website permission').replace(/-/g,' ');
   };
   const permissionHost=request=>{
@@ -3167,7 +3176,7 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
     </div>
 
     {isWindowsDesktop&&permissionRequest&&<div className="siteToolsHeader browserPermissionBar" role="dialog" aria-label="Website permission request">
-      <span><b>{permissionHost(permissionRequest)} wants {permissionLabel(permissionRequest.permission)}</b><small>{permissionRequest.userGesture?'Requested after your action.':'Requested by this page.'} Allow for this Free AI session?</small></span>
+      <span><b>{permissionHost(permissionRequest)} wants {permissionLabel(permissionRequest)}</b><small>{permissionRequest.userGesture?'Requested after your action.':'Requested by this page.'} Allow for this Free AI session?</small></span>
       <span className="browserPermissionActions"><button onClick={()=>resolvePermission(permissionRequest.id,false)}>Deny</button><button onClick={()=>resolvePermission(permissionRequest.id,true)}>Allow</button></span>
     </div>}
 
