@@ -52,6 +52,17 @@ has(source,'function ModelMenu','Model picker is missing.');
 has(source,'function ResearchSetupDialog','Deep Research setup is missing.');
 has(source,'function ChatContextMenu','Chat management menu is missing.');
 
+// Windows 7.13 OAuth deep-link boundary coverage.
+has(main,"const AUTH_CALLBACK_URL='freeai://auth/callback';",'Desktop auth callback must use the exact registered callback URL.');
+has(main,'function isAuthCallbackUrl(value)','Desktop auth callback parser is missing.');
+has(main,'parsed.hostname===expected.hostname','Desktop auth callback validation must compare the exact host.');
+has(main,'parsed.pathname===expected.pathname','Desktop auth callback validation must compare the exact callback path.');
+has(main,'find(arg=>isAuthCallbackUrl(arg))','Second-instance auth URL discovery must use strict callback validation.');
+has(source,'function isAuthCallbackUrl(value)','Renderer auth callback parser is missing.');
+has(source,'if(!isAuthCallbackUrl(url))return;','Renderer must reject non-matching auth deep links before session exchange.');
+ok(!main.includes("startsWith('freeai://auth')"),'Desktop auth callback must not regress to prefix matching.');
+ok(!source.includes("startsWith('freeai://auth')"),'Renderer auth callback must not regress to prefix matching.');
+
 // Windows 7.12 update/offline coverage.
 has(main,'async function checkForWindowsUpdates()','Windows update-check runtime is missing.');
 has(main,'if(!net.isOnline())','Update check must fail fast when Electron reports the device offline.');
