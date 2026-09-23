@@ -356,6 +356,61 @@ if [[ "$FORM_FACTOR" == "phone" ]]; then
   dictation_report="started=$dictation_started | stopped=$dictation_stopped | denied=$dictation_denied"
 fi
 
+qa_line setThemeLight >/dev/null
+sleep 1
+light_theme="$(qa_line audit)"
+require_token "$light_theme" "theme=light"
+require_token "$light_theme" "systemBars=light"
+require_token "$light_theme" "horizontalOverflow=false"
+capture "13-light-theme"
+
+qa_line setThemeDark >/dev/null
+sleep 1
+dark_theme="$(qa_line audit)"
+require_token "$dark_theme" "theme=dark"
+require_token "$dark_theme" "systemBars=dark"
+require_token "$dark_theme" "horizontalOverflow=false"
+capture "14-dark-theme"
+
+qa_line setRtl >/dev/null
+sleep 1
+rtl_shell="$(qa_line audit)"
+require_token "$rtl_shell" "dir=rtl"
+require_token "$rtl_shell" "lang=he"
+require_token "$rtl_shell" "shell=true"
+require_token "$rtl_shell" "horizontalOverflow=false"
+
+qa_line openDrawer >/dev/null
+sleep 1
+rtl_drawer="$(qa_line audit)"
+require_token "$rtl_drawer" "drawer=true"
+require_token "$rtl_drawer" "dir=rtl"
+require_token "$rtl_drawer" "horizontalOverflow=false"
+rtl_drawer_inline_start="$(metric "$rtl_drawer" drawerInlineStart)"
+if [[ -z "$rtl_drawer_inline_start" || "$rtl_drawer_inline_start" -gt 4 ]]; then
+  echo "RTL drawer is not aligned to the logical inline-start edge."
+  echo "$rtl_drawer"
+  exit 1
+fi
+capture "15-rtl-drawer"
+
+adb shell input keyevent 4
+sleep 1
+rtl_after_back="$(qa_line audit)"
+require_token "$rtl_after_back" "drawer=false"
+require_token "$rtl_after_back" "dir=rtl"
+require_token "$rtl_after_back" "shell=true"
+
+qa_line setLtr >/dev/null
+sleep 1
+ltr_restored="$(qa_line audit)"
+require_token "$ltr_restored" "dir=ltr"
+require_token "$ltr_restored" "lang=en"
+require_token "$ltr_restored" "horizontalOverflow=false"
+
+qa_line setThemeDark >/dev/null
+sleep 1
+
 final="$(qa_line audit)"
 require_token "$final" "shell=true"
 require_token "$final" "auth=false"
@@ -382,6 +437,12 @@ adb shell pidof "$PACKAGE" >/dev/null
   echo "viewport_shrink=$viewport_shrink"
   echo "rotated=$rotated"
   echo "dictation=$dictation_report"
+  echo "light_theme=$light_theme"
+  echo "dark_theme=$dark_theme"
+  echo "rtl_shell=$rtl_shell"
+  echo "rtl_drawer=$rtl_drawer"
+  echo "rtl_after_back=$rtl_after_back"
+  echo "ltr_restored=$ltr_restored"
   echo "final=$final"
 } > "$OUT/runtime-report.txt"
 

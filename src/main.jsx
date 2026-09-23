@@ -40,6 +40,15 @@ function readAndroidDictationQaState(){
   return typeof window==='undefined'?{}:(window.__FREEAI_ANDROID_DICTATION_QA_STATE__||{});
 }
 
+function updateAndroidSystemBarsQaState(patch={}){
+  if(!isAndroidNative||!isVisualTestBuild||typeof window==='undefined')return;
+  const previous=window.__FREEAI_ANDROID_SYSTEM_BARS_QA_STATE__||{};
+  window.__FREEAI_ANDROID_SYSTEM_BARS_QA_STATE__={...previous,...patch};
+}
+function readAndroidSystemBarsQaState(){
+  return typeof window==='undefined'?{}:(window.__FREEAI_ANDROID_SYSTEM_BARS_QA_STATE__||{});
+}
+
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
@@ -657,7 +666,11 @@ function App(){
     const scheme=window.matchMedia?.('(prefers-color-scheme: light)');
     const applySystemBars=()=>{
       const light=appPrefs.appearance==='light'||(appPrefs.appearance==='system'&&scheme?.matches);
-      SystemBars.setStyle({style:light?SystemBarsStyle.Light:SystemBarsStyle.Dark}).catch(()=>{});
+      const requested=light?'light':'dark';
+      updateAndroidSystemBarsQaState({requested,applied:'pending',error:''});
+      SystemBars.setStyle({style:light?SystemBarsStyle.Light:SystemBarsStyle.Dark})
+        .then(()=>updateAndroidSystemBarsQaState({requested,applied:requested,error:''}))
+        .catch(error=>updateAndroidSystemBarsQaState({requested,applied:'error',error:String(error?.message||error||'unknown')}));
       SystemBars.show().catch(()=>{});
     };
     applySystemBars();
@@ -700,12 +713,27 @@ function App(){
       return style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0;
     };
     const audit=()=>{
-      const rootStyle=getComputedStyle(document.documentElement);
+      const root=document.documentElement;
+      const rootStyle=getComputedStyle(root);
       const shell=document.querySelector('.desktopShell');
+      const drawerElement=document.querySelector('.gptSidebar');
+      const drawerRect=drawerElement?.getBoundingClientRect();
+      const direction=root.dir||rootStyle.direction||'ltr';
+      const drawerInlineStart=drawerRect
+        ? Math.max(0,Math.round(direction==='rtl'?window.innerWidth-drawerRect.right:drawerRect.left))
+        : 0;
+      const horizontalOverflow=document.body.scrollWidth>window.innerWidth+2||root.scrollWidth>window.innerWidth+2;
+      const systemBarsQa=readAndroidSystemBarsQaState();
       return [
         'shell='+(!!shell&&shell.classList.contains('nativeMobileShell')),
         'auth='+!!document.querySelector('.authScreen'),
         'drawer='+!!document.querySelector('.gptSidebar.mobileOpen'),
+        'theme='+String(root.dataset.theme||''),
+        'dir='+String(direction),
+        'lang='+String(root.lang||''),
+        'systemBars='+String(systemBarsQa.applied||systemBarsQa.requested||'unknown'),
+        'horizontalOverflow='+horizontalOverflow,
+        'drawerInlineStart='+drawerInlineStart,
         'mobileNav='+visible(document.querySelector('.mobileNavTrigger')),
         'desktopNav='+visible(document.querySelector('.desktopPrimaryNav')),
         'modelPicker='+visible(document.querySelector('.mobileConversationPicker')),
@@ -747,6 +775,16 @@ function App(){
       ].join(';');
     };
     window.__FREEAI_ANDROID_QA__=(command='audit')=>{
+      if(command==='setThemeLight')setAppPrefs(current=>({...current,appearance:'light'}));
+      if(command==='setThemeDark')setAppPrefs(current=>({...current,appearance:'dark'}));
+      if(command==='setRtl'){
+        document.documentElement.dir='rtl';
+        document.documentElement.lang='he';
+      }
+      if(command==='setLtr'){
+        document.documentElement.dir='ltr';
+        document.documentElement.lang='en';
+      }
       if(command==='openDrawer')document.querySelector('.mobileNavTrigger')?.click();
       if(command==='openModel')document.querySelector('.mobileModelTrigger')?.click();
       if(command==='focusComposer'){
