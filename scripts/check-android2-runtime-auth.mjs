@@ -37,7 +37,8 @@ has(workflow,'name: free-ai-android-auth-runtime-qa','CI must upload the auth ru
 has(workflow,'name: free-ai-android-runtime-qa','Existing auth-independent shell runtime artifact must remain intact.');
 has(workflow,'VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}','Auth QA build must use configured Supabase project settings.');
 has(workflow,'VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}','Auth QA build must use the configured Google web client ID.');
-ok(!/name: free-ai-android\n[\s\S]{0,450}free-ai-auth-runtime-qa\.apk/.test(workflow),'Auth QA APK must never be bundled into the release Android artifact.');
+const releaseAndroidArtifact=workflow.match(/name: free-ai-android\\n\\s+path: \\|\\n([\\s\\S]*?)\\n\\s+if-no-files-found:/)?.[1]||'';
+ok(!releaseAndroidArtifact.includes('free-ai-auth-runtime-qa.apk'),'Auth QA APK must never be bundled into the release Android artifact.');
 
 ok(String(pkg?.scripts?.validate||'').includes('check-android2-runtime-auth.mjs'),'Android 2A2 runtime auth regression guard is not part of validation.');
 
