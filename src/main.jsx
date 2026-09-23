@@ -2682,15 +2682,11 @@ function Composer(props){
         });
         nativeSpeechHandles.current=[partial,segment,stateHandle,errorHandle,readyHandle];
 
-        const onDevice=await SpeechRecognition.isOnDeviceRecognitionAvailable?.(
-          nativeLanguage?{language:nativeLanguage}:undefined
-        ).catch(()=>({available:false}));
         const options={
           maxResults:3,
           partialResults:true,
           popup:false,
-          addPunctuation:true,
-          useOnDeviceRecognition:!!onDevice?.available
+          addPunctuation:true
         };
         if(nativeLanguage)options.language=nativeLanguage;
 
