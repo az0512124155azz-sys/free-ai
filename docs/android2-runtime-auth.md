@@ -160,3 +160,19 @@ Flow:
 The dedicated account is marked in `app_metadata.purpose` as `free-ai-android-auth-runtime-qa`.
 
 No service-role or `sb_secret_` key leaves Supabase. No long-lived QA password is stored in GitHub, the repository, the APK, artifacts, or logs.
+
+
+## Android 2A2-S — Revoked/expired session recovery runtime QA
+
+The Android auth runtime suite now verifies the deterministic equivalent of reaching access-token expiry after the server has revoked the session:
+
+1. Sign in to the dedicated QA account.
+2. In the dedicated QA build only, capture the current access token into runner memory without writing it to the evidence report.
+3. Mask the token immediately and send it over HTTPS to the OIDC-gated Supabase Edge Function `free-ai-ci-auth-revoke`.
+4. The Edge Function verifies GitHub OIDC claims, validates that the supplied JWT belongs to the dedicated QA identity, and calls Supabase Admin `signOut(jwt, "global")`.
+5. Because Supabase access-token JWTs remain valid until their `exp` time, the test explicitly calls `refreshSession()` immediately after revocation. This deterministically exercises the failure the client will hit once it needs to refresh.
+6. The renderer treats only terminal Auth error codes (`refresh_token_not_found`, `refresh_token_already_used`, `session_not_found`, or `session_expired`) as revoked/expired sessions. Temporary network errors are not treated as logout.
+7. On a terminal refresh failure, the app attempts a local-only sign-out, clears stale React session state, and must show the Auth screen.
+8. The suite captures `05-revoked-session-recovered.png` and verifies a fresh password sign-in works afterward.
+
+The access token is never written to `runtime-report.txt`, GitHub artifacts, repository files, or application release builds. No Supabase secret/service-role credential is exposed to the Android app or GitHub Actions.

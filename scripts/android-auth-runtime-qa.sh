@@ -81,6 +81,94 @@ capture() {
   test -s "$OUT/$name.png"
 }
 
+capture_access_token() {
+  qa_line authCaptureAccessToken >/dev/null
+  wait_for_tokens authAudit "status=captureAccessToken:success" "session=true" "authScreen=false" >/dev/null
+
+  local token_line
+  adb logcat -c
+  adb shell am broadcast -a "$ACTION" -p "$PACKAGE" --es command authReadAccessToken >/dev/null
+  sleep 1
+  token_line="$(adb logcat -d -s FreeAIAndroidQA:I '*:S' | grep "authReadAccessToken:" | tail -n 1 || true)"
+  QA_ACCESS_TOKEN="$(printf '%s' "$token_line" | sed -n 's/.*accessToken=\([A-Za-z0-9._-]*\).*/\1/p')"
+  adb logcat -c
+
+  if [[ -z "$QA_ACCESS_TOKEN" || "$QA_ACCESS_TOKEN" != *.*.* ]]; then
+    echo "Android auth runtime QA could not capture a valid access token."
+    exit 1
+  fi
+
+  echo "::add-mask::$QA_ACCESS_TOKEN"
+}
+
+revoke_remote_session() {
+  local oidc_response="$RUNNER_TEMP/free-ai-revoke-oidc.json"
+  local oidc_token_file="$RUNNER_TEMP/free-ai-revoke-oidc-token"
+  local access_token_file="$RUNNER_TEMP/free-ai-revoke-access-token"
+  local revoke_body="$RUNNER_TEMP/free-ai-revoke-body.json"
+  local revoke_response="$RUNNER_TEMP/free-ai-revoke-response.json"
+
+  if [[ -z "${ACTIONS_ID_TOKEN_REQUEST_TOKEN:-}" || -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]]; then
+    echo "GitHub OIDC request environment is unavailable to revoked-session QA."
+    exit 1
+  fi
+
+  curl --silent --show-error --fail \
+    --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+    "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=free-ai-android-auth-qa" \
+    --output "$oidc_response"
+
+  node - "$oidc_response" "$oidc_token_file" <<'NODE'
+const fs = require('node:fs');
+const [responsePath, tokenPath] = process.argv.slice(2);
+const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+if (!response.value || typeof response.value !== 'string') {
+  console.error('GitHub OIDC token response did not contain a token.');
+  process.exit(1);
+}
+fs.writeFileSync(tokenPath, response.value, { mode: 0o600 });
+NODE
+
+  printf '%s' "$QA_ACCESS_TOKEN" > "$access_token_file"
+  chmod 600 "$access_token_file"
+  node - "$access_token_file" "$revoke_body" <<'NODE'
+const fs = require('node:fs');
+const [tokenPath, bodyPath] = process.argv.slice(2);
+const accessToken = fs.readFileSync(tokenPath, 'utf8');
+fs.writeFileSync(bodyPath, JSON.stringify({ access_token: accessToken }), { mode: 0o600 });
+NODE
+
+  local http_code
+  http_code="$(curl --silent --show-error \
+    --output "$revoke_response" \
+    --write-out '%{http_code}' \
+    --request POST \
+    --header "Authorization: Bearer $(cat "$oidc_token_file")" \
+    --header "Content-Type: application/json" \
+    --data-binary "@$revoke_body" \
+    "https://xquntkgjlmrxkwkrwsjl.supabase.co/functions/v1/free-ai-ci-auth-revoke")"
+
+  rm -f "$oidc_response" "$oidc_token_file" "$access_token_file" "$revoke_body"
+  QA_ACCESS_TOKEN=""
+
+  if [[ "$http_code" != "200" ]]; then
+    echo "Supabase revoked-session QA endpoint returned HTTP $http_code."
+    cat "$revoke_response"
+    rm -f "$revoke_response"
+    exit 1
+  fi
+
+  node - "$revoke_response" <<'NODE'
+const fs = require('node:fs');
+const response = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+if (response.ok !== true) {
+  console.error('Supabase revoked-session QA endpoint did not confirm revocation.');
+  process.exit(1);
+}
+NODE
+  rm -f "$revoke_response"
+}
+
 adb install -r "$APK" >/dev/null
 adb shell am force-stop "$PACKAGE" || true
 adb shell am start -W -n "$ACTIVITY" >/dev/null
@@ -116,6 +204,22 @@ invalid="$(wait_for_tokens authAudit "status=signInPassword:error" "session=fals
 qa_login_line "$PASSWORD" >/dev/null
 relogin="$(wait_for_tokens authAudit "status=signInPassword:success" "session=true" "authScreen=false")"
 
+QA_ACCESS_TOKEN=""
+capture_access_token
+revoke_remote_session
+
+qa_line authRefreshSession >/dev/null
+revoked="$(wait_for_tokens authAudit "status=refreshSession:error" "session=false" "authScreen=true")"
+if [[ "$revoked" != *"code=refresh_token_not_found"* && "$revoked" != *"code=refresh_token_already_used"* && "$revoked" != *"code=session_not_found"* && "$revoked" != *"code=session_expired"* ]]; then
+  echo "Expected a terminal revoked-session refresh error but got:"
+  echo "$revoked"
+  exit 1
+fi
+capture "05-revoked-session-recovered"
+
+qa_login_line "$PASSWORD" >/dev/null
+post_revoke_relogin="$(wait_for_tokens authAudit "status=signInPassword:success" "session=true" "authScreen=false")"
+
 qa_line authSignOut >/dev/null
 final="$(wait_for_tokens authAudit "status=signOut:success" "session=false" "authScreen=true")"
 
@@ -128,7 +232,9 @@ final="$(wait_for_tokens authAudit "status=signOut:success" "session=false" "aut
   echo "signed_out=$signed_out"
   echo "invalid=$invalid"
   echo "relogin=$relogin"
+  echo "revoked=$revoked"
+  echo "post_revoke_relogin=$post_revoke_relogin"
   echo "final=$final"
 } > "$OUT/runtime-report.txt"
 
-echo "Android email/session runtime QA passed."
+echo "Android email/session and revoked-session runtime QA passed."

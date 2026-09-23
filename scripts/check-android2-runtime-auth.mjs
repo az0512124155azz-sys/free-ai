@@ -17,8 +17,15 @@ has(source,"const isAndroidAuthQaBuild=import.meta.env.VITE_ANDROID_AUTH_QA==='1
 has(source,'window.__FREEAI_ANDROID_AUTH_QA__=(payload={})=>','Android auth runtime QA hook is missing.');
 has(source,"command==='authSignInPassword'",'Runtime auth QA must support password sign-in.');
 has(source,'supabase.auth.signInWithPassword({email,password})','Password runtime QA must use the real Supabase client.');
+has(source,"command==='authCaptureAccessToken'",'Revoked-session QA must capture the current access token only inside the dedicated QA build.');
+has(source,"command==='authReadAccessToken'",'Revoked-session QA must provide one-time access-token retrieval to the native QA bridge.');
+has(source,"qa.accessToken='';",'QA access-token material must be cleared after use.');
 has(source,"command==='authRefreshSession'",'Runtime auth QA must support explicit session refresh.');
 has(source,'supabase.auth.refreshSession()','Runtime auth QA must exercise Supabase refreshSession.');
+has(source,"code==='refresh_token_not_found'",'Runtime auth recovery must recognize a missing revoked refresh token.');
+has(source,"code==='refresh_token_already_used'",'Runtime auth recovery must recognize a revoked refresh token outside the reuse interval.');
+has(source,"supabase.auth.signOut({scope:'local'})",'Terminal refresh failures must clear the local Supabase session without globally signing out unrelated devices.');
+has(source,'setSession(null);','Terminal refresh failures must immediately clear stale signed-in UI state.');
 has(source,"command==='authSignOut'",'Runtime auth QA must support logout.');
 has(source,'run(\'signOut\',()=>signOutAccount())','Runtime logout QA must use the same product logout path.');
 has(source,"command==='authStartGoogle'",'Runtime auth QA must be able to start the real native Google flow.');
@@ -75,8 +82,18 @@ has(liveAuth,'adb shell input keyevent 3','Live auth QA must exercise Android ba
 has(liveAuth,'status=signOut:success','Live auth QA must verify logout.');
 has(liveAuth,'status=signInPassword:error','Live auth QA must verify invalid-password behavior.');
 has(liveAuth,'relogin=','Live auth QA must verify relogin.');
-ok(!liveAuth.includes('access_token'),'Live auth QA must never print access tokens.');
-ok(!liveAuth.includes('refresh_token'),'Live auth QA must never print refresh tokens.');
+has(liveAuth,'capture_access_token','Revoked-session QA must capture the access token without writing it to evidence.');
+has(liveAuth,'::add-mask::$QA_ACCESS_TOKEN','Revoked-session QA must mask the captured access token immediately.');
+has(liveAuth,'free-ai-ci-auth-revoke','Revoked-session QA must use the OIDC-gated Supabase revoke endpoint.');
+has(liveAuth,'status=refreshSession:error','Revoked-session QA must force refresh after server-side revocation.');
+has(liveAuth,'code=refresh_token_not_found','Revoked-session QA must accept the documented missing-refresh-token terminal error.');
+has(liveAuth,'05-revoked-session-recovered','Revoked-session QA must capture signed-out recovery evidence.');
+has(liveAuth,'post_revoke_relogin=','Revoked-session QA must verify the user can sign in again after recovery.');
+ok(!liveAuth.includes('echo "$QA_ACCESS_TOKEN"'),'Live auth QA must never print the captured access token.');
+ok(!liveAuth.includes('echo "access_token='),'Live auth QA must never write access tokens to reports.');
+ok(!liveAuth.includes('refresh_token='),'Live auth QA must never write refresh tokens to reports.');
+ok(!source.includes('sb_secret_'),'Renderer source must never contain Supabase secret keys.');
+ok(!liveAuth.includes('SUPABASE_SERVICE_ROLE_KEY'),'Android runtime QA must never receive the Supabase service-role key.');
 
 ok(String(pkg?.scripts?.validate||'').includes('check-android2-runtime-auth.mjs'),'Android 2A2 runtime auth regression guard is not part of validation.');
 
