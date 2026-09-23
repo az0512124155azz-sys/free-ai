@@ -262,13 +262,78 @@ jobs:
       - name: Build APK
         run: cd android && ./gradlew assembleDebug
 
+      - name: Build runtime QA APK
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/free-ai-app-debug.apk"
+          VITE_VISUAL_TEST=1 npm run build:web
+          npx cap copy android
+          npm run android:configure-runtime-qa
+          cd android
+          ./gradlew assembleDebug
+          cd ..
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/free-ai-runtime-qa.apk
+          cp "$RUNNER_TEMP/free-ai-app-debug.apk" android/app/build/outputs/apk/debug/app-debug.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: free-ai-android
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/free-ai-runtime-qa.apk
             android-oauth-info.txt
           if-no-files-found: error
+
+  android_runtime:
+    name: Android runtime (${{ matrix.form_factor }})
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - form_factor: phone
+            profile: pixel_7_pro
+          - form_factor: tablet
+            profile: pixel_tablet
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Android build
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-android
+          path: runtime-artifacts
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android 16 runtime QA
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: ${{ matrix.profile }}
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          disable-spellchecker: true
+          enable-hw-keyboard: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/android-runtime-qa.sh ${{ matrix.form_factor }}
+
+      - name: Upload Android runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-android-runtime-${{ matrix.form_factor }}
+          path: artifacts/android-runtime/${{ matrix.form_factor }}
+          if-no-files-found: warn
 
   extension:
     runs-on: ubuntu-latest
@@ -294,7 +359,7 @@ jobs:
 
   release:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
-    needs: [desktop, windows_visual, android, extension]
+    needs: [desktop, windows_visual, android, android_runtime, extension]
     runs-on: ubuntu-latest
 
     steps:
