@@ -180,6 +180,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - id: visual_baseline
+        name: Check committed Windows visual baseline
+        shell: pwsh
+        run: |
+          $present = Test-Path -LiteralPath 'tests/visual/baselines/windows-main-shell.png' -PathType Leaf
+          "present=$($present.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
       - uses: actions/setup-node@v4
         with:
@@ -199,6 +208,19 @@ jobs:
       - name: Record Windows visual baseline candidate
         shell: pwsh
         run: npx playwright test --config=playwright.windows.config.mjs --update-snapshots
+
+      - name: Commit bootstrap Windows visual baseline
+        if: github.event_name == 'pull_request' && steps.visual_baseline.outputs.present == 'false'
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add tests/visual/baselines/windows-main-shell.png
+          if (git diff --cached --quiet) {
+            throw 'Visual baseline bootstrap produced no commit candidate.'
+          }
+          git commit -m "Windows 7.16: commit reviewed visual baseline"
+          git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Upload Windows visual evidence
         if: always()
