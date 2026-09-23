@@ -78,13 +78,27 @@ wss.on('connection',ws=>{
         return;
       }
       r.pending.set(m.id,ws);
-      send(r.desktop,m);
+      send(r.desktop,{...m,requestId:m.requestId||m.id});
+      return;
+    }
+
+    if(ctx.role==='mobile'&&m.type==='cancel'){
+      const id=String(m.id||m.requestId||'');
+      if(!id||r.pending.get(id)!==ws)return;
+      if(r.desktop)send(r.desktop,{type:'cancel',id,requestId:id});
+      r.pending.delete(id);
       return;
     }
 
     if(ctx.role==='desktop'&&m.type==='providerStatus'){
       r.providerStatus=m;
       for(const mobile of r.mobiles)send(mobile,m);
+      return;
+    }
+
+    if(ctx.role==='desktop'&&m.type==='stream'){
+      const target=r.pending.get(m.id);
+      if(target)send(target,{type:'stream',id:m.id,text:String(m.text||'')});
       return;
     }
 
