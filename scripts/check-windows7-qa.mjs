@@ -79,6 +79,15 @@ has(installerSmoke,"Start-FreeAISmokeLaunch 'First launch'",'Installer smoke mus
 has(installerSmoke,"First launch did not initialize the isolated userData profile.",'Installer smoke must verify first launch initializes the profile before restart.');
 has(installerSmoke,"Start-FreeAISmokeLaunch 'Second launch with existing profile'",'Installer smoke must validate a second launch using the same userData profile.');
 has(installerSmoke,"Second launch / restart with same profile: PASS",'Installer smoke summary must report restart validation.');
+has(installerSmoke,"Registry::HKEY_CURRENT_USER\\Software\\Classes\\freeai",'Installer smoke must inspect the installed freeai:// registry association.');
+has(installerSmoke,"$protocolRoot.GetValue('URL Protocol')",'Installer smoke must verify the URL Protocol registry marker.');
+has(installerSmoke,"$protocolCommand.IndexOf($appExe",'Installer smoke must verify freeai:// routes to the installed executable.');
+has(installerSmoke,"Silent uninstall left a stale freeai:// protocol command",'Installer smoke must reject stale protocol registration after uninstall.');
+has(main,"app.setAsDefaultProtocolClient(AUTH_SCHEME",'Runtime auth protocol registration is missing.');
+has(main,"app.isDefaultProtocolClient(AUTH_SCHEME)",'Windows app info must expose auth protocol registration state.');
+has(main,"app.on('second-instance'",'Packaged auth callback handling must support an already-running Windows instance.');
+has(main,"const url=findAuthUrl(argv);",'Second-instance handling must extract a freeai:// auth callback.');
+
 
 ok(/extensionSocket=null;\s*browserProviders=\[\];\s*extensionBrowserState=\{tabs:\[\],activeTabId:null,activeWindowId:null\};/.test(main),'Extension disconnect must clear stale browser provider and tab state.');
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
