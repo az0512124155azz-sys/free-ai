@@ -60,9 +60,31 @@ top_activity_text() {
     | head -n 8 || true
 }
 
+is_terminal_google_outcome() {
+  local line="$1"
+  [[
+    ("$line" == *"googleStatus=cancelled"* && "$line" == *"googleCode=user_cancelled"*) ||
+    ("$line" == *"googleStatus=error"* && "$line" == *"googleCode=no_credential"*) ||
+    ("$line" == *"googleStatus=error"* && "$line" == *"googleCode=account_reauth_failed"*) ||
+    ("$line" == *"googleStatus=error"* && "$line" == *"googleCode=google_config"*)
+  ]]
+}
+
 dismiss_google_system_ui() {
   local top=""
-  for _ in $(seq 1 6); do
+  local line=""
+  local terminal_seen=0
+
+  # One Back should normally cancel the active Credential Manager / Google UI.
+  # Nested Google activities can linger briefly while the cancellation callback
+  # propagates. Wait for that callback before deciding a second Back is needed;
+  # otherwise a stale top-activity snapshot can make QA Back out of Free AI too.
+  for back_attempt in $(seq 1 3); do
+    line="$(audit_line)"
+    if is_terminal_google_outcome "$line"; then
+      terminal_seen=1
+    fi
+
     top="$(top_activity_text)"
 
     if printf '%s\n' "$top" | grep -Eqi 'com\.android\.chrome|com\.google\.android\.apps\.chrome|org\.chromium\.chrome'; then
@@ -76,17 +98,65 @@ dismiss_google_system_ui() {
       return 0
     fi
 
-    if printf '%s\n' "$top" | grep -Eqi 'com\.google\.android\.gms|com\.google\.android\.gsf|com\.android\.settings|credentials|identity'; then
-      adb shell input keyevent 4 || true
-      sleep 2
+    if (( terminal_seen == 1 )); then
+      break
+    fi
+
+    if ! printf '%s\n' "$top" | grep -Eqi 'com\.google\.android\.gms|com\.google\.android\.gsf|com\.android\.settings|credentials|identity'; then
+      sleep 1
       continue
     fi
 
-    sleep 1
+    adb shell input keyevent 4 || true
+
+    for _ in $(seq 1 10); do
+      sleep 1
+      line="$(audit_line)"
+      if is_terminal_google_outcome "$line"; then
+        terminal_seen=1
+      fi
+
+      top="$(top_activity_text)"
+
+      if printf '%s\n' "$top" | grep -Eqi 'com\.android\.chrome|com\.google\.android\.apps\.chrome|org\.chromium\.chrome'; then
+        echo "Google runtime QA unexpectedly opened a browser instead of native Credential Manager."
+        printf '%s\n' "$top"
+        return 1
+      fi
+
+      if printf '%s\n' "$top" | grep -Fq "$PACKAGE/.MainActivity"; then
+        write_top_activities "$OUT/post-cancel-activities.txt"
+        return 0
+      fi
+
+      # Once Credential Manager has delivered a terminal result, never send
+      # another Back. Give Android time to finish the activity transition.
+      if (( terminal_seen == 1 )); then
+        continue
+      fi
+    done
+
+    if (( terminal_seen == 1 )); then
+      break
+    fi
   done
+
+  # If the callback has already completed, wait a final grace period for the
+  # app task to resume without injecting any more navigation input.
+  if (( terminal_seen == 1 )); then
+    for _ in $(seq 1 10); do
+      top="$(top_activity_text)"
+      if printf '%s\n' "$top" | grep -Fq "$PACKAGE/.MainActivity"; then
+        write_top_activities "$OUT/post-cancel-activities.txt"
+        return 0
+      fi
+      sleep 1
+    done
+  fi
 
   write_top_activities "$OUT/post-cancel-activities.txt"
   echo "Google runtime QA could not return from native Google system UI to Free AI."
+  echo "last=$(audit_line)"
   cat "$OUT/post-cancel-activities.txt" || true
   return 1
 }
