@@ -49,7 +49,7 @@ has(runtime,'user-set user-fixed','Runtime QA must reproduce Android permanent-d
 has(runtime,'dictationDenied=true','Runtime QA must prove denied permission is handled by the app.');
 has(runtime,'dictationLanguage=device','Runtime QA must prove auto language delegates to Android device language.');
 
-has(workflow,'bash scripts/android-runtime-qa.sh \${{ matrix.form_factor }}','Android 16 phone/tablet runtime QA must execute the dictation lifecycle checks.');
+has(workflow,'bash scripts/android-runtime-qa.sh ${{ matrix.form_factor }}','Android 16 phone/tablet runtime QA must execute the dictation lifecycle checks.');
 
 const speechVersion=String(pkg.devDependencies?.['@capgo/capacitor-speech-recognition']||'');
 const capacitorVersion=String(pkg.devDependencies?.['@capacitor/core']||'');
