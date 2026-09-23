@@ -1,9 +1,9 @@
 !include "StrFunc.nsh"
-${StrStr}
+${UnStrStr}
 
 !macro customUnInstall
   ReadRegStr $0 HKCU "Software\Classes\freeai\shell\open\command" ""
-  ${StrStr} $1 $0 "$INSTDIR\Free AI.exe"
+  ${UnStrStr} $1 $0 "$INSTDIR\Free AI.exe"
   StrCmp $1 "" +2
   DeleteRegKey HKCU "Software\Classes\freeai"
 !macroend
