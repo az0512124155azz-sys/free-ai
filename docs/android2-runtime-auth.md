@@ -239,3 +239,61 @@ The runtime driver also no longer sends Android Back immediately after the JavaS
 Only after native system UI is observed does the driver send Back to exercise user cancellation. Chrome/browser activity still fails the job immediately.
 
 This checkpoint does not weaken the requirement for later real-account Google evidence.
+
+
+## Android 2A2-AC — Real Google account QA harness
+
+Automated CI proves the native Credential Manager path, accountless/cancel behavior, no browser fallback, package/SHA/client configuration, and the Google ID-token → Supabase handoff code path. It does not prove account selection between two real Google identities.
+
+The real-account QA harness is intentionally manual and local. It never stores Google passwords, Google email addresses, or Google ID tokens in GitHub Actions, repository files, artifacts, or reports.
+
+### Device prerequisites
+
+Use a test Android device or emulator that already has **at least two real Google accounts** added through Android Settings. Add those accounts interactively on the device before starting the harness. Do not place Google account passwords in scripts or GitHub secrets.
+
+Use the dedicated auth QA APK from a successful workflow artifact:
+
+`free-ai-android-auth-runtime-qa/free-ai-auth-runtime-qa.apk`
+
+Run on Windows with Android Platform Tools / `adb` available:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\android-google-real-account-qa.ps1 -Apk .\free-ai-auth-runtime-qa.apk
+```
+
+Pass `-Serial <adb-serial>` when more than one device is connected.
+
+### Scenarios
+
+The script drives the real product Google button and pauses only for the tester to interact with native Google UI:
+
+1. Start signed out.
+2. Open the real **Continue with Google** flow.
+3. Select Google Account A and complete consent/reauthentication if Google requests it.
+4. Require `googleStatus=signed_in`, `session=true`, `authProvider=google`.
+5. Record a 16-character SHA-256 fingerprint derived from the Supabase user UUID. The raw UUID, Google email, profile data, and ID token are not recorded.
+6. Use the product logout path.
+7. Open Google again and deliberately select a different Google Account B.
+8. Require a second successful Google/Supabase session and prove the anonymous account fingerprint differs from Account A.
+9. Use product logout again.
+10. Open Google a third time and cancel the native account picker with Back/Cancel.
+11. Require `googleCode=user_cancelled`, `session=false`, and the Auth screen.
+12. Reject any Chrome/browser fallback.
+
+The local sanitized evidence is written to:
+
+`artifacts/android-google-real-account/runtime-report.txt`
+
+The report contains only QA state, provider name, and anonymous account fingerprints. It is not uploaded automatically.
+
+### Completion rule
+
+Real-account Google QA is complete only when the sanitized report proves:
+
+- Account A native Google sign-in succeeds.
+- Account B native Google sign-in succeeds after product logout.
+- Account A and Account B produce different anonymous fingerprints.
+- User cancellation returns to signed-out Auth UI.
+- No browser fallback occurs.
+
+This manual checkpoint complements, rather than replaces, the accountless Android 16 Google Credential Manager CI job.
