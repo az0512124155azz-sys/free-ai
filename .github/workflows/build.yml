@@ -370,8 +370,6 @@ jobs:
       contents: read
       id-token: write
     env:
-      ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}
-      ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}
       VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
       VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
 
@@ -474,35 +472,95 @@ jobs:
           console.log('GitHub OIDC trust verified by Supabase Edge Function.');
           NODE
 
-      - id: auth_credentials
-        name: Check Android auth test credentials
+      - id: provision_qa_account
+        name: Provision ephemeral Android auth QA account
         shell: bash
         run: |
-          if [[ -n "$ANDROID_AUTH_TEST_EMAIL" && -n "$ANDROID_AUTH_TEST_PASSWORD" ]]; then
-            echo "::add-mask::$ANDROID_AUTH_TEST_EMAIL"
-            echo "::add-mask::$ANDROID_AUTH_TEST_PASSWORD"
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "::error::Android email/session runtime QA is required for this checkpoint. Set ANDROID_AUTH_TEST_EMAIL and ANDROID_AUTH_TEST_PASSWORD repository secrets before rerunning CI."
+          qa_password="Qa1!$(openssl rand -hex 32)"
+          echo "::add-mask::$qa_password"
+
+          oidc_response="$RUNNER_TEMP/free-ai-provision-oidc.json"
+          oidc_token_file="$RUNNER_TEMP/free-ai-provision-oidc-token"
+          provision_body="$RUNNER_TEMP/free-ai-provision-body.json"
+          provision_response="$RUNNER_TEMP/free-ai-provision-response.json"
+
+          curl --silent --show-error --fail \
+            --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=free-ai-android-auth-qa" \
+            --output "$oidc_response"
+
+          node - "$oidc_response" "$oidc_token_file" <<'NODE'
+          const fs = require('node:fs');
+          const [responsePath, tokenPath] = process.argv.slice(2);
+          const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+          if (!response.value || typeof response.value !== 'string') {
+            console.error('GitHub OIDC token response did not contain a token.');
+            process.exit(1);
+          }
+          fs.writeFileSync(tokenPath, response.value, { mode: 0o600 });
+          NODE
+
+          printf '%s' "$qa_password" > "$RUNNER_TEMP/free-ai-qa-password"
+          node - "$RUNNER_TEMP/free-ai-qa-password" "$provision_body" <<'NODE'
+          const fs = require('node:fs');
+          const [passwordPath, bodyPath] = process.argv.slice(2);
+          const password = fs.readFileSync(passwordPath, 'utf8');
+          fs.writeFileSync(bodyPath, JSON.stringify({ password }), { mode: 0o600 });
+          NODE
+
+          http_code="$(curl --silent --show-error \
+            --output "$provision_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $(cat "$oidc_token_file")" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$provision_body" \
+            "https://xquntkgjlmrxkwkrwsjl.supabase.co/functions/v1/free-ai-ci-auth-provision")"
+
+          rm -f "$oidc_response" "$oidc_token_file" "$provision_body" "$RUNNER_TEMP/free-ai-qa-password"
+
+          if [[ "$http_code" != "200" ]]; then
+            echo "::error::Supabase QA account provisioner returned HTTP $http_code."
+            cat "$provision_response"
             exit 1
           fi
 
+          qa_email="$(node - "$provision_response" <<'NODE'
+          const fs = require('node:fs');
+          const response = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (response.ok !== true || typeof response.email !== 'string' || !response.email) {
+            console.error('Supabase QA account provisioner did not return a valid account.');
+            process.exit(1);
+          }
+          process.stdout.write(response.email);
+          NODE
+          )"
+
+          echo "::add-mask::$qa_email"
+          {
+            echo "ANDROID_AUTH_TEST_EMAIL=$qa_email"
+            echo "ANDROID_AUTH_TEST_PASSWORD=$qa_password"
+          } >> "$GITHUB_ENV"
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "Ephemeral Android auth QA account provisioned for this workflow run."
+
       - name: Download Android auth runtime QA build
-        if: steps.auth_credentials.outputs.configured == 'true'
+        if: steps.provision_qa_account.outputs.configured == 'true'
         uses: actions/download-artifact@v4
         with:
           name: free-ai-android-auth-runtime-qa
           path: runtime-artifacts
 
       - name: Enable KVM
-        if: steps.auth_credentials.outputs.configured == 'true'
+        if: steps.provision_qa_account.outputs.configured == 'true'
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
       - name: Run Android 16 email/session auth QA
-        if: steps.auth_credentials.outputs.configured == 'true'
+        if: steps.provision_qa_account.outputs.configured == 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 36
@@ -518,7 +576,7 @@ jobs:
           script: bash scripts/android-auth-runtime-qa.sh
 
       - name: Upload Android auth runtime evidence
-        if: always() && steps.auth_credentials.outputs.configured == 'true'
+        if: always() && steps.provision_qa_account.outputs.configured == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: free-ai-android-auth-runtime-email-session
