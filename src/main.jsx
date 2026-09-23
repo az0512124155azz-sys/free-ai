@@ -30,6 +30,18 @@ const isNative=Capacitor.isNativePlatform();
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
+function isAuthCallbackUrl(value){
+  try{
+    const parsed=new URL(String(value||''));
+    const expected=new URL(AUTH_CALLBACK_URL);
+    return parsed.protocol===expected.protocol
+      && parsed.hostname===expected.hostname
+      && parsed.port===expected.port
+      && parsed.pathname===expected.pathname
+      && !parsed.username
+      && !parsed.password;
+  }catch{return false}
+}
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
 const BRAND_LOGO_SRC=new URL('free-ai-logo.svg',document.baseURI).href;
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
@@ -3597,7 +3609,7 @@ function Auth(){
   useEffect(()=>{
     let desktopOff=null,nativeHandle=null,cancelled=false;
     async function finishOAuth(url){
-      if(!url||!url.startsWith('freeai://auth'))return;
+      if(!isAuthCallbackUrl(url))return;
       setWorking(true);setMessage('');
       try{
         const parsed=new URL(url);
