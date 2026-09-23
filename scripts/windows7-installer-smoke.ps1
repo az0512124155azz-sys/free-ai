@@ -85,6 +85,24 @@ Start-FreeAISmokeLaunch 'First launch'
 
 Wait-Until { (Test-Path -LiteralPath $userDataDir -PathType Container) -and ((Get-ChildItem -LiteralPath $userDataDir -Force -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0) } 15 'First launch did not initialize the isolated userData profile.'
 
+$protocolRootPath = 'Registry::HKEY_CURRENT_USER\Software\Classes\freeai'
+$protocolCommandPath = Join-Path $protocolRootPath 'shell\open\command'
+Wait-Until { Test-Path -LiteralPath $protocolCommandPath } 15 'freeai:// protocol registration did not appear after packaged first launch.'
+$protocolRoot = Get-Item -LiteralPath $protocolRootPath -ErrorAction Stop
+$protocolCommandKey = Get-Item -LiteralPath $protocolCommandPath -ErrorAction Stop
+$protocolMarker = [string]$protocolRoot.GetValue('URL Protocol')
+$protocolCommand = [string]$protocolCommandKey.GetValue('')
+if ($null -eq $protocolRoot.GetValue('URL Protocol')) {
+  Fail 'freeai:// registry registration is missing the URL Protocol marker.'
+}
+if ([string]::IsNullOrWhiteSpace($protocolCommand)) {
+  Fail 'freeai:// registry registration is missing its open command.'
+}
+if ($protocolCommand.IndexOf($appExe, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) {
+  Fail ('freeai:// open command does not point to the installed Free AI.exe. Command: ' + $protocolCommand)
+}
+Write-Host ('freeai:// protocol registered to installed executable: ' + $protocolCommand)
+
 Start-FreeAISmokeLaunch 'Second launch with existing profile'
 
 $uninstaller = Get-ChildItem -Path $installDir -Filter 'Uninstall*.exe' -File -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -101,6 +119,13 @@ if ($uninstall.ExitCode -ne 0) {
 
 Wait-Until { -not (Test-Path -LiteralPath $appExe -PathType Leaf) } 30 'Free AI.exe remained after silent uninstall.'
 
+if (Test-Path -LiteralPath $protocolCommandPath) {
+  $remainingProtocolCommand = [string](Get-Item -LiteralPath $protocolCommandPath -ErrorAction Stop).GetValue('')
+  if ($remainingProtocolCommand.IndexOf($installDir, [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+    Fail ('Silent uninstall left a stale freeai:// protocol command pointing at the removed installation: ' + $remainingProtocolCommand)
+  }
+}
+
 Remove-Item -LiteralPath $installDir -Recurse -Force -ErrorAction SilentlyContinue
 Remove-Item -LiteralPath $userDataDir -Recurse -Force -ErrorAction SilentlyContinue
 
@@ -112,6 +137,8 @@ $summary = @(
   '- First launch process survival: PASS',
   '- Isolated userData profile initialization: PASS',
   '- Second launch / restart with same profile: PASS',
+  '- freeai:// protocol registration points to installed binary: PASS',
+  '- Uninstall leaves no stale protocol command for removed install: PASS',
   '- Installed-binary path verification: PASS',
   '- NSIS silent uninstall: PASS'
 ) -join [Environment]::NewLine

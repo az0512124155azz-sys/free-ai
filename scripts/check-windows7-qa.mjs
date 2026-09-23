@@ -8,6 +8,7 @@ const contentScript=fs.readFileSync('extension/content.js','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
+const installerNsis=fs.readFileSync('build/installer.nsh','utf8');
 
 function fail(message){
   console.error('Windows 7 QA regression failed: '+message);
@@ -79,6 +80,19 @@ has(installerSmoke,"Start-FreeAISmokeLaunch 'First launch'",'Installer smoke mus
 has(installerSmoke,"First launch did not initialize the isolated userData profile.",'Installer smoke must verify first launch initializes the profile before restart.');
 has(installerSmoke,"Start-FreeAISmokeLaunch 'Second launch with existing profile'",'Installer smoke must validate a second launch using the same userData profile.');
 has(installerSmoke,"Second launch / restart with same profile: PASS",'Installer smoke summary must report restart validation.');
+has(installerSmoke,"Registry::HKEY_CURRENT_USER\\Software\\Classes\\freeai",'Installer smoke must inspect the installed freeai:// registry association.');
+has(installerSmoke,"$protocolRoot.GetValue('URL Protocol')",'Installer smoke must verify the URL Protocol registry marker.');
+has(installerSmoke,"$protocolCommand.IndexOf($appExe",'Installer smoke must verify freeai:// routes to the installed executable.');
+has(installerSmoke,"Silent uninstall left a stale freeai:// protocol command",'Installer smoke must reject stale protocol registration after uninstall.');
+has(installerNsis,'!macro customUnInstall','NSIS uninstall customization for protocol cleanup is missing.');
+has(installerNsis,'ReadRegStr $0 HKCU "Software\\Classes\\freeai\\shell\\open\\command" ""','Uninstaller must inspect the current freeai:// HKCU command before cleanup.');
+has(installerNsis,'StrCmp $0 \'"$INSTDIR\\Free AI.exe" "%1"\' 0 +2','Uninstaller must only remove the exact protocol command owned by the installation being removed.');
+has(installerNsis,'DeleteRegKey HKCU "Software\\Classes\\freeai"','Uninstaller must remove its stale freeai:// registry key.');
+has(main,"app.setAsDefaultProtocolClient(AUTH_SCHEME",'Runtime auth protocol registration is missing.');
+has(main,"app.isDefaultProtocolClient(AUTH_SCHEME)",'Windows app info must expose auth protocol registration state.');
+has(main,"app.on('second-instance'",'Packaged auth callback handling must support an already-running Windows instance.');
+has(main,"const url=findAuthUrl(argv);",'Second-instance handling must extract a freeai:// auth callback.');
+
 
 ok(/extensionSocket=null;\s*browserProviders=\[\];\s*extensionBrowserState=\{tabs:\[\],activeTabId:null,activeWindowId:null\};/.test(main),'Extension disconnect must clear stale browser provider and tab state.');
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
