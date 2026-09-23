@@ -583,6 +583,51 @@ jobs:
           path: artifacts/android-auth-runtime
           if-no-files-found: warn
 
+
+  android_google_runtime:
+    name: Android Google Credential Manager runtime
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Android auth runtime QA build
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-android-auth-runtime-qa
+          path: runtime-artifacts
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android 16 Google Credential Manager QA
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          disable-spellchecker: true
+          enable-hw-keyboard: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/android-google-runtime-qa.sh
+
+      - name: Upload Android Google runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-android-google-runtime
+          path: artifacts/android-google-runtime
+          if-no-files-found: warn
+
   extension:
     runs-on: ubuntu-latest
 
