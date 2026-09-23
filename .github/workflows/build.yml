@@ -379,15 +379,31 @@ jobs:
         name: Inspect public Supabase auth configuration
         shell: bash
         run: |
-          if [[ -z "$VITE_SUPABASE_URL" || -z "$VITE_SUPABASE_ANON_KEY" ]]; then
-            echo "::error::Supabase public project configuration is unavailable to Android auth QA."
-            exit 1
+          public_config_file="$RUNNER_TEMP/free-ai-public-auth-config"
+          node - "$public_config_file" <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('src/main.jsx', 'utf8');
+          const url = source.match(/const supabaseUrl=import\.meta\.env\.VITE_SUPABASE_URL\|\|'([^']+)'/)?.[1] || '';
+          const key = source.match(/const supabaseKey=import\.meta\.env\.VITE_SUPABASE_ANON_KEY\|\|'([^']+)'/)?.[1] || '';
+          if (!url || !key || !key.startsWith('sb_publishable_')) {
+            console.error('Unable to resolve the app public Supabase fallback configuration.');
+            process.exit(1);
+          }
+          fs.writeFileSync(process.argv[2], JSON.stringify({ url, key }));
+          NODE
+
+          SUPABASE_URL_FOR_QA="$VITE_SUPABASE_URL"
+          SUPABASE_KEY_FOR_QA="$VITE_SUPABASE_ANON_KEY"
+          if [[ -z "$SUPABASE_URL_FOR_QA" || -z "$SUPABASE_KEY_FOR_QA" ]]; then
+            SUPABASE_URL_FOR_QA="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).url" "$public_config_file")"
+            SUPABASE_KEY_FOR_QA="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).key" "$public_config_file")"
+            echo "::notice::Android auth QA is using the same public Supabase fallback configuration bundled by the app."
           fi
 
           settings_file="$RUNNER_TEMP/free-ai-auth-settings.json"
           http_code="$(curl --silent --show-error --output "$settings_file" --write-out '%{http_code}' \
-            --header "apikey: $VITE_SUPABASE_ANON_KEY" \
-            "$VITE_SUPABASE_URL/auth/v1/settings")"
+            --header "apikey: $SUPABASE_KEY_FOR_QA" \
+            "$SUPABASE_URL_FOR_QA/auth/v1/settings")"
 
           if [[ "$http_code" != "200" ]]; then
             echo "::error::Supabase /auth/v1/settings returned HTTP $http_code."
