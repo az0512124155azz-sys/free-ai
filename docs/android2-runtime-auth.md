@@ -297,3 +297,27 @@ Real-account Google QA is complete only when the sanitized report proves:
 - No browser fallback occurs.
 
 This manual checkpoint complements, rather than replaces, the accountless Android 16 Google Credential Manager CI job.
+
+
+## Android 2A2-AE — Stabilize accountless Credential Manager cancellation in CI
+
+Run #321 showed a CI-only cancellation race. The Android 16 emulator reached nested Google system activities:
+
+- `com.google.android.gms/.identitycredentials.ui.CredentialChooserActivity`
+- `com.google.android.gms/.auth.api.credentials.assistedsignin.ui.GoogleSignInActivity`
+
+The previous driver sent a single Android Back event as soon as any Google/system UI was observed. A single Back can dismiss only an inner Google activity and leave the outer Credential Manager flow active, so the app may never receive the terminal cancellation callback.
+
+The accountless CI driver now:
+
+1. detects native Google/Credential Manager system UI;
+2. rejects Chrome/browser fallback immediately;
+3. sends Back only while a Google/system credential activity remains resumed;
+4. repeats that traversal for a small bounded number of nested activities;
+5. requires `com.freeai.mobile/.MainActivity` to return to the foreground;
+6. records `post-cancel-activities.txt` as evidence;
+7. still requires a real terminal app outcome (`user_cancelled`, `no_credential`, or the documented account reauthentication outcome).
+
+Returning to the app is therefore not enough to pass the test by itself. The driver still fails if the product never receives a recognized terminal Credential Manager result.
+
+Android documents `GetCredentialCancellationException` as the exception used when a user intentionally cancels a credential retrieval flow. The application should handle that outcome rather than automatically retrying it.
