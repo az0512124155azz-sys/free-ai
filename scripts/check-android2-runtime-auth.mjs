@@ -37,6 +37,11 @@ has(workflow,'free-ai-auth-runtime-qa.apk','CI must produce a dedicated auth run
 has(workflow,'name: free-ai-android-auth-runtime-qa','CI must upload the auth runtime APK separately.');
 has(workflow,'name: free-ai-android-runtime-qa','Existing auth-independent shell runtime artifact must remain intact.');
 has(workflow,'android_auth_runtime:','CI must define a live Android email/session auth runtime job.');
+has(workflow,'Inspect public Supabase auth configuration','Live auth CI must inspect Supabase public auth settings before credential-gated runtime testing.');
+has(workflow,'$VITE_SUPABASE_URL/auth/v1/settings','Live auth CI must use the public Supabase auth settings endpoint.');
+has(workflow,'mailer_autoconfirm=','Live auth CI must capture whether email signup auto-confirm is enabled.');
+has(workflow,'google_enabled=','Live auth CI must capture whether Google auth is enabled.');
+
 has(workflow,'ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}','Live auth QA email must come from a GitHub Actions secret.');
 has(workflow,'ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}','Live auth QA password must come from a GitHub Actions secret.');
 has(workflow,"if: steps.auth_credentials.outputs.configured == 'true'",'Live auth emulator steps must be gated on configured runtime credentials.');
