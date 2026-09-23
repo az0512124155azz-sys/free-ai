@@ -101,11 +101,11 @@ for(const [density,scale] of Object.entries(scales)){
   fs.mkdirSync(mipmapDir,{recursive:true});
   fs.mkdirSync(drawableDir,{recursive:true});
 
-  await (await solidCanvas(legacySize,legacyMark)).toFile(path.join(mipmapDir,'ic_launcher.png'));
-  await (await solidCanvas(legacySize,legacyMark)).toFile(path.join(mipmapDir,'ic_launcher_round.png'));
-  await (await transparentCanvas(adaptiveSize,blueAdaptiveMark)).toFile(path.join(mipmapDir,'ic_launcher_foreground.png'));
-  await (await transparentCanvas(adaptiveSize,whiteAdaptiveMark)).toFile(path.join(mipmapDir,'ic_launcher_monochrome.png'));
-  await (await transparentCanvas(splashSize,splashMark)).toFile(path.join(drawableDir,'free_ai_splash_logo.png'));
+  await fs.promises.writeFile(path.join(mipmapDir,'ic_launcher.png'),await solidCanvas(legacySize,legacyMark));
+  await fs.promises.writeFile(path.join(mipmapDir,'ic_launcher_round.png'),await solidCanvas(legacySize,legacyMark));
+  await fs.promises.writeFile(path.join(mipmapDir,'ic_launcher_foreground.png'),await transparentCanvas(adaptiveSize,blueAdaptiveMark));
+  await fs.promises.writeFile(path.join(mipmapDir,'ic_launcher_monochrome.png'),await transparentCanvas(adaptiveSize,whiteAdaptiveMark));
+  await fs.promises.writeFile(path.join(drawableDir,'free_ai_splash_logo.png'),await transparentCanvas(splashSize,splashMark));
 }
 
 for(const dirent of fs.readdirSync(res,{withFileTypes:true})){
