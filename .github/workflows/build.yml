@@ -262,9 +262,18 @@ jobs:
       - name: Build APK
         run: cd android && ./gradlew assembleDebug
 
-      - name: Build runtime QA APK
+      - name: Build runtime QA APKs
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/free-ai-app-debug.apk"
+
+          VITE_ANDROID_AUTH_QA=1 npm run build:web
+          npx cap copy android
+          npm run android:configure-runtime-qa
+          cd android
+          ./gradlew assembleDebug
+          cd ..
+          cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/free-ai-auth-runtime-qa.apk
+
           VITE_VISUAL_TEST=1 npm run build:web
           npx cap copy android
           npm run android:configure-runtime-qa
@@ -273,6 +282,10 @@ jobs:
           cd ..
           cp android/app/build/outputs/apk/debug/app-debug.apk android/app/build/outputs/apk/debug/free-ai-runtime-qa.apk
           cp "$RUNNER_TEMP/free-ai-app-debug.apk" android/app/build/outputs/apk/debug/app-debug.apk
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -287,6 +300,13 @@ jobs:
         with:
           name: free-ai-android-runtime-qa
           path: android/app/build/outputs/apk/debug/free-ai-runtime-qa.apk
+          if-no-files-found: error
+
+      - name: Upload Android auth runtime QA APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-android-auth-runtime-qa
+          path: android/app/build/outputs/apk/debug/free-ai-auth-runtime-qa.apk
           if-no-files-found: error
 
   android_runtime:
