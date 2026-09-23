@@ -22,7 +22,7 @@ has(source,"if(command==='openModel')",'Runtime QA must exercise the model picke
 has(source,"if(command==='focusComposer')",'Runtime QA must exercise the composer/IME.');
 
 has(bridge,'com.freeai.mobile.FREEAI_RUNTIME_QA','Debug runtime broadcast action is missing.');
-has(bridge,'if (!BuildConfig.DEBUG) return;','Runtime QA bridge must stay debug-only.');
+has(bridge,'ApplicationInfo.FLAG_DEBUGGABLE','Runtime QA bridge must stay debug-only without requiring generated BuildConfig.');
 has(bridge,'Context.RECEIVER_EXPORTED','ADB runtime QA receiver must be callable on modern Android.');
 has(bridge,'window.__FREEAI_ANDROID_QA__','Native QA bridge must invoke the renderer audit hook.');
 has(bridge,'InputMethodManager.SHOW_IMPLICIT','Runtime QA must explicitly exercise the soft keyboard.');
