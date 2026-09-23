@@ -119,6 +119,10 @@ ok(!liveAuth.includes('SUPABASE_SERVICE_ROLE_KEY'),'Android runtime QA must neve
 has(googleRuntime,'authStartGoogle','Google runtime QA must launch the real product Google button flow.');
 has(googleRuntime,'googleRequested=true','Google runtime QA must prove the native Google request path was reached.');
 has(googleRuntime,'system_ui_seen=1','Google runtime QA must wait for Google/system account UI before attempting cancellation.');
+has(googleRuntime,'dismiss_google_system_ui','Google runtime QA must unwind nested Google system UI before judging cancellation.');
+has(googleRuntime,'for _ in $(seq 1 6)','Google runtime QA must tolerate multiple nested Credential Manager / Google activities.');
+has(googleRuntime,'$PACKAGE/.MainActivity','Google runtime QA must confirm Free AI returns to the foreground after cancellation.');
+has(googleRuntime,'post-cancel-activities.txt','Google runtime QA must preserve post-cancel activity evidence.');
 has(googleRuntime,'adb shell input keyevent 4','Google runtime QA must exercise native Back/cancel behavior after system UI is observed.');
 has(googleRuntime,'googleCode=user_cancelled','Google runtime QA must recognize benign user cancellation.');
 has(googleRuntime,'googleCode=no_credential','Accountless CI must recognize the documented no-credential outcome.');
