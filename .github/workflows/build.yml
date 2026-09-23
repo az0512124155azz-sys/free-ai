@@ -361,6 +361,69 @@ jobs:
           path: artifacts/android-runtime/${{ matrix.form_factor }}
           if-no-files-found: warn
 
+  android_auth_runtime:
+    name: Android auth runtime (email/session)
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}
+      ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth_credentials
+        name: Check Android auth test credentials
+        shell: bash
+        run: |
+          if [[ -n "$ANDROID_AUTH_TEST_EMAIL" && -n "$ANDROID_AUTH_TEST_PASSWORD" ]]; then
+            echo "::add-mask::$ANDROID_AUTH_TEST_EMAIL"
+            echo "::add-mask::$ANDROID_AUTH_TEST_PASSWORD"
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Android email/session runtime QA is not configured. Set ANDROID_AUTH_TEST_EMAIL and ANDROID_AUTH_TEST_PASSWORD repository secrets to run the live auth test."
+          fi
+
+      - name: Download Android auth runtime QA build
+        if: steps.auth_credentials.outputs.configured == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-android-auth-runtime-qa
+          path: runtime-artifacts
+
+      - name: Enable KVM
+        if: steps.auth_credentials.outputs.configured == 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android 16 email/session auth QA
+        if: steps.auth_credentials.outputs.configured == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          disable-spellchecker: true
+          enable-hw-keyboard: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/android-auth-runtime-qa.sh
+
+      - name: Upload Android auth runtime evidence
+        if: always() && steps.auth_credentials.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-android-auth-runtime-email-session
+          path: artifacts/android-auth-runtime
+          if-no-files-found: warn
+
   extension:
     runs-on: ubuntu-latest
 
