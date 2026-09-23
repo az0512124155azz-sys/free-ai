@@ -284,6 +284,9 @@ jobs:
       - name: Apply Free AI Android branding
         run: npm run android:configure-branding
 
+      - name: Verify generated Android native branding
+        run: node scripts/check-android6-generated-branding.mjs
+
       - name: Configure stable Android OAuth signing
         run: npm run android:configure-signing
 
