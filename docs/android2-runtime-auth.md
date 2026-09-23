@@ -119,3 +119,14 @@ Store that account only as GitHub repository Actions secrets:
 Do not place either value in repository variables, workflow YAML, documentation, issue/PR comments, or source code.
 
 Supabase's Admin API is also valid for provisioning a test user from a trusted server, but it requires a secret/service-role key and must never be exposed to the renderer or Android APK.
+
+
+## Android 2A2-K — Public Auth configuration alignment
+
+The live-auth configuration probe must use the same public Supabase project configuration as the application itself.
+
+If GitHub Actions does not define `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY`, the probe reads the application's existing fallback values from `src/main.jsx`. The fallback key must begin with `sb_publishable_`; secret/service-role keys are rejected.
+
+This is intentional: Supabase publishable keys are designed for public clients such as browser, mobile, desktop applications, scripts, source code, and CI. They do not grant server/admin privileges.
+
+This fallback applies only to public project configuration. It does not provide the credentialed test account required for the live email/password lifecycle test.
