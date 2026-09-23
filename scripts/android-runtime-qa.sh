@@ -208,7 +208,21 @@ if [[ "$FORM_FACTOR" == "phone" ]]; then
   require_token "$dictation_ready" "dictationMic=true"
   require_token "$dictation_ready" "dictationPermission=unknown"
 
-  qa_line startDictation >/dev/null
+  dictation_start_command="$(qa_line startDictation)"
+  require_token "$dictation_start_command" "dictationMic=true"
+  adb shell pidof "$PACKAGE" >/dev/null
+  native_speech_start="$(adb logcat -d | grep 'Starting recognition |' | tail -n 1 || true)"
+  if [[ -z "$native_speech_start" ]]; then
+    echo "Native SpeechRecognizer start was not observed after startDictation."
+    echo "$dictation_start_command"
+    adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity|mLastPausedActivity' | tail -n 20 || true
+    exit 1
+  fi
+  require_token "$native_speech_start" "partial=true"
+  require_token "$native_speech_start" "popup=false"
+  require_token "$native_speech_start" "onDevice=false"
+  printf '%s\n' "$native_speech_start" > "$OUT/dictation-native-start.txt"
+
   dictation_started=""
   for _ in $(seq 1 10); do
     dictation_started="$(qa_line audit)"
