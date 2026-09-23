@@ -46,6 +46,39 @@ function isAuthCallbackUrl(value){
   }catch{return false}
 }
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
+
+function setAndroidGoogleQaState(status,code='',requested){
+  if(!isAndroidAuthQaBuild||typeof window==='undefined')return;
+  const previous=window.__FREEAI_ANDROID_GOOGLE_QA_STATE__||{};
+  window.__FREEAI_ANDROID_GOOGLE_QA_STATE__={
+    status:String(status||'idle'),
+    code:String(code||'').replace(/[^a-z0-9_.-]/gi,'_').slice(0,96),
+    requested:requested===undefined?!!previous.requested:!!requested
+  };
+}
+
+function classifyNativeGoogleError(error){
+  const code=String(error?.code||'');
+  const name=String(error?.name||'');
+  const message=String(error?.message||error||'');
+  const detail=[code,name,message].filter(Boolean).join(' ');
+
+  if(/USER_CANCELLED|GetCredentialCancellationException|\bcancel(?:led|ed)?\b/i.test(detail)){
+    return {kind:'cancelled',code:'user_cancelled'};
+  }
+  if(/NoCredentialException|No credentials available/i.test(detail)){
+    return {kind:'no_credential',code:'no_credential'};
+  }
+  if(/\[16\]|Account reauth failed|reauth/i.test(detail)){
+    return {kind:'reauth',code:'account_reauth_failed'};
+  }
+  if(/28444|Developer console is not set up correctly|not configured|webClientId|web client id|SHA-1|client ID/i.test(detail)){
+    return {kind:'config',code:'google_config'};
+  }
+
+  const sanitized=(code||name||'google_error').replace(/[^a-z0-9_.-]/gi,'_').slice(0,96);
+  return {kind:'error',code:sanitized||'google_error'};
+}
 const BRAND_LOGO_SRC=new URL('free-ai-logo.svg',document.baseURI).href;
 const providerNames={chatgpt:'ChatGPT',claude:'Claude',gemini:'Gemini',deepseek:'DeepSeek',grok:'Grok',manus:'Manus'};
 const projectIconOptions=[
@@ -483,7 +516,10 @@ function App(){
       'session='+!!session,
       'authScreen='+!!document.querySelector('.authScreen'),
       'status='+(qa.status||'idle'),
-      'code='+(qa.code||'')
+      'code='+(qa.code||''),
+      'googleStatus='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.status||'idle'),
+      'googleCode='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.code||''),
+      'googleRequested='+!!window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.requested
     ].join(';');
     const run=(label,task)=>{
       qa.status=label+':running';
@@ -538,8 +574,15 @@ function App(){
         run('signOut',()=>signOutAccount());
       }else if(command==='authStartGoogle'){
         const button=document.querySelector('.googleButton');
-        if(button){qa.status='startGoogle:started';qa.code='';button.click()}
-        else{qa.status='startGoogle:error';qa.code='google_button_missing'}
+        if(button){
+          setAndroidGoogleQaState('button_clicked','',false);
+          qa.status='startGoogle:started';
+          qa.code='';
+          button.click();
+        }else{
+          qa.status='startGoogle:error';
+          qa.code='google_button_missing';
+        }
       }
       return snapshot();
     };
@@ -3879,8 +3922,11 @@ function Auth(){
     setWorking(true);setMessage('');
     try{
       if(isNative){
+        setAndroidGoogleQaState('provider_check','',false);
         await assertAuthProvider('google');
+        setAndroidGoogleQaState('initializing');
         await initNativeGoogle();
+        setAndroidGoogleQaState('credential_manager_requested','',true);
         const login=await SocialLogin.login({
           provider:'google',
           options:{
@@ -3889,10 +3935,12 @@ function Auth(){
             scopes:['email','profile']
           }
         });
+        setAndroidGoogleQaState('credential_received','',true);
         const idToken=login?.result?.idToken;
-        if(!idToken)throw new Error('Google did not return an ID token.');
+        if(!idToken)throw Object.assign(new Error('Google did not return an ID token.'),{code:'missing_google_id_token'});
         const {error}=await supabase.auth.signInWithIdToken({provider:'google',token:idToken});
         if(error)throw error;
+        setAndroidGoogleQaState('signed_in','',true);
         setWorking(false);
         return;
       }
@@ -3909,10 +3957,30 @@ function Auth(){
       }
     }catch(e){
       const raw=e?.message||String(e);
-      const setup=/28444|developer console|configuration|credential/i.test(raw)
-        ? 'Google sign-in is not configured for this Android build. Verify the Android OAuth client for com.freeai.mobile, this APK signing SHA-1, and the Web client ID in the same Google Cloud project.'
-        : raw;
-      setMessage(setup);setWorking(false);
+      if(isNative){
+        const nativeError=classifyNativeGoogleError(e);
+        if(nativeError.kind==='cancelled'){
+          setAndroidGoogleQaState('cancelled',nativeError.code);
+          setMessage('');
+          setWorking(false);
+          return;
+        }
+
+        setAndroidGoogleQaState('error',nativeError.code);
+        const nativeMessage=nativeError.kind==='config'
+          ? 'Google sign-in is not configured for this Android build. Verify the Android OAuth client for com.freeai.mobile, this APK signing SHA-1, and the Web client ID in the same Google Cloud project.'
+          : nativeError.kind==='no_credential'
+            ? 'No Google account is currently available for sign-in on this device.'
+            : nativeError.kind==='reauth'
+              ? 'Google could not reauthenticate this account. Choose another account or sign in to the Google account on this device again.'
+              : raw;
+        setMessage(nativeMessage);
+        setWorking(false);
+        return;
+      }
+
+      setMessage(raw);
+      setWorking(false);
     }
   }
 
