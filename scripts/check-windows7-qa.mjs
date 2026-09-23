@@ -86,7 +86,7 @@ has(installerSmoke,"$protocolCommand.IndexOf($appExe",'Installer smoke must veri
 has(installerSmoke,"Silent uninstall left a stale freeai:// protocol command",'Installer smoke must reject stale protocol registration after uninstall.');
 has(installerNsis,'!macro customUnInstall','NSIS uninstall customization for protocol cleanup is missing.');
 has(installerNsis,'ReadRegStr $0 HKCU "Software\\Classes\\freeai\\shell\\open\\command" ""','Uninstaller must inspect the current freeai:// HKCU command before cleanup.');
-has(installerNsis,'${StrStr} $1 $0 "$INSTDIR\\Free AI.exe"','Uninstaller must only match the protocol registration owned by the installation being removed.');
+has(installerNsis,'${UnStrStr} $1 $0 "$INSTDIR\\Free AI.exe"','Uninstaller must only match the protocol registration owned by the installation being removed.');
 has(installerNsis,'DeleteRegKey HKCU "Software\\Classes\\freeai"','Uninstaller must remove its stale freeai:// registry key.');
 has(main,"app.setAsDefaultProtocolClient(AUTH_SCHEME",'Runtime auth protocol registration is missing.');
 has(main,"app.isDefaultProtocolClient(AUTH_SCHEME)",'Windows app info must expose auth protocol registration state.');
