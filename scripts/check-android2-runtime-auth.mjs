@@ -38,7 +38,10 @@ has(workflow,'name: free-ai-android-auth-runtime-qa','CI must upload the auth ru
 has(workflow,'name: free-ai-android-runtime-qa','Existing auth-independent shell runtime artifact must remain intact.');
 has(workflow,'android_auth_runtime:','CI must define a live Android email/session auth runtime job.');
 has(workflow,'Inspect public Supabase auth configuration','Live auth CI must inspect Supabase public auth settings before credential-gated runtime testing.');
-has(workflow,'$VITE_SUPABASE_URL/auth/v1/settings','Live auth CI must use the public Supabase auth settings endpoint.');
+has(workflow,"fs.readFileSync('src/main.jsx', 'utf8')",'Live auth CI must derive fallback Supabase public config from the same app source.');
+has(workflow,"key.startsWith('sb_publishable_')",'Live auth CI fallback must be a publishable key, never a secret key.');
+has(workflow,'SUPABASE_URL_FOR_QA/auth/v1/settings','Live auth CI must use the public Supabase auth settings endpoint.');
+has(workflow,'same public Supabase fallback configuration bundled by the app','Live auth CI must explicitly report when it uses the app public fallback config.');
 has(workflow,'mailer_autoconfirm=','Live auth CI must capture whether email signup auto-confirm is enabled.');
 has(workflow,'google_enabled=','Live auth CI must capture whether Google auth is enabled.');
 
