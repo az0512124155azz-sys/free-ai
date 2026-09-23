@@ -6,6 +6,7 @@ const preload=fs.readFileSync('electron/preload.cjs','utf8');
 const source=fs.readFileSync('src/main.jsx','utf8');
 const background=fs.readFileSync('extension/background.js','utf8');
 const contentScript=fs.readFileSync('extension/content.js','utf8');
+const extensionManifest=JSON.parse(fs.readFileSync('extension/manifest.json','utf8'));
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
@@ -143,10 +144,27 @@ has(main,"app.on('second-instance'",'Packaged auth callback handling must suppor
 has(main,"const url=findAuthUrl(argv);",'Second-instance handling must extract a freeai:// auth callback.');
 
 
-ok(/extensionSocket=null;\s*browserProviders=\[\];\s*extensionBrowserState=\{tabs:\[\],activeTabId:null,activeWindowId:null\};/.test(main),'Extension disconnect must clear stale browser provider and tab state.');
+ok(!/extensionSocket=null;\s*browserProviders=\[\];/.test(main),'Transient Browser Bridge disconnects must retain the last provider snapshot until reconnection.');
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
 has(main,"for(const [id,request] of pending)",'Extension disconnect must drain pending browser prompts.');
-has(source,"if(!fresh||fresh.connected===false){setSelected(null);setSelectedTool(null);setParallelCount(1)}",'Renderer must clear a selected provider after disconnect or adapter failure.');
+has(source,"if(product==='super'){",'Super AI must recover a controller automatically from the connected provider set.');
+has(source,"const fresh=selected?connected.find",'Renderer must reconcile a selected provider against refreshed bridge state.');
+
+// Browser Bridge / Super AI hotfix coverage.
+ok(Array.isArray(extensionManifest.permissions)&&extensionManifest.permissions.includes('alarms'),'Browser Bridge manifest must allow wake alarms.');
+ok(Number(extensionManifest.minimum_chrome_version)>=120,'Browser Bridge wake-alarm recovery requires Chrome 120+ timing support.');
+has(background,"const BRIDGE_WAKE_ALARM='freeai-bridge-wake';",'Browser Bridge wake alarm is missing.');
+has(background,'chrome.alarms.onAlarm.addListener','Browser Bridge must wake and reconnect after service-worker suspension.');
+has(background,'freeai:addCustomProvider','Browser Bridge must allow registering the current AI tab as a custom provider.');
+has(background,'freeAiCustomProviders','Custom AI providers must persist across extension service-worker restarts.');
+has(contentScript,'const genericConfig={','Unknown AI chats need a generic adapter fallback.');
+has(contentScript,'return configs[provider]||genericConfig','Custom AI providers must use the generic adapter when no built-in adapter exists.');
+has(source,"product!=='super'&&<div className=\"menuAnchor\">",'Super AI must not expose the regular model picker.');
+has(source,'Every available AI participates automatically. No model selection is required in Super AI.','Super AI automatic-team UX is missing.');
+has(source,"connected.filter(model=>model.connected!==false&&model.adapterReady!==false&&modelKey(model)!==modelKey(selected))",'Super AI must route to all healthy connected models automatically.');
+has(source,'<ProviderBadge model={agent} small/>','Super AI task agents must show provider logos.');
+has(main,"iconDataUrl:String(primary.iconDataUrl||'')",'Super AI controller must preserve its provider icon.');
+has(main,"iconDataUrl:String(model.iconDataUrl||'')",'Super AI agents must preserve their provider icons.');
 
 // Windows 7.6 provider-adapter contract coverage.
 has(contentScript,'function providerAdapterHealth(provider)','Provider DOM health detection is missing.');
@@ -156,7 +174,7 @@ has(background,"adapterReady:capabilities?.adapterReady===true",'Browser Bridge 
 has(background,"adapterIssue:String(capabilities?.adapterIssue||'')",'Browser Bridge must preserve adapter failure details.');
 has(main,"connected:extensionConnected&&p.adapterReady!==false",'Desktop provider status must disable unhealthy adapters.');
 has(main,"if(provider.adapterReady===false)",'Browser routing must reject an unhealthy provider adapter.');
-has(source,"if(!fresh||fresh.connected===false)",'Selected provider must clear when its adapter becomes unavailable.');
+has(source,"const fresh=selected?connected.find",'Selected provider reconciliation must remain present.');
 has(source,"function modelConnectionDetail(model)",'Model picker must distinguish adapter failure from reconnecting state.');
 has(source,"return ' · adapter unavailable';",'Model picker must label provider adapter failures truthfully.');
 has(source,"title={model.adapterIssue||undefined}",'Provider adapter failure reason must be available in the picker.');

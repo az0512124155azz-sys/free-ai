@@ -263,7 +263,7 @@ function BrandMark({size=22,className=''}) {
 function ProviderBadge({model,small=false}){
   const providerId=modelProviderId(model);
   const [failed,setFailed]=useState(false);
-  const icon=model?.source==='browser'?String(model?.iconDataUrl||model?.favIconUrl||''):'';
+  const icon=String(model?.iconDataUrl||model?.favIconUrl||model?.iconUrl||'');
   useEffect(()=>setFailed(false),[icon]);
   return <span className={'providerBadge '+(small?'small ':'')+(model?.source==='api'?'api':providerId)} aria-hidden="true">
     {icon&&!failed?<img src={icon} alt="" referrerPolicy="no-referrer" onError={()=>setFailed(true)}/>:<span>{model?modelLabel(model).slice(0,1).toUpperCase():'+'}</span>}
@@ -476,11 +476,19 @@ function App(){
   },[connected]);
 
   useEffect(()=>{
-    if(!selected)return;
-    const fresh=connected.find(p=>p.id===selected.id&&p.source===selected.source);
-    if(!fresh||fresh.connected===false){setSelected(null);setSelectedTool(null);setParallelCount(1)}
-    else if(fresh!==selected)setSelected(fresh);
-  },[connected]);
+    const fresh=selected?connected.find(p=>p.id===selected.id&&p.source===selected.source):null;
+    if(fresh){
+      if(fresh!==selected)setSelected(fresh);
+      return;
+    }
+    if(product==='super'){
+      const automatic=connected.find(model=>model.connected!==false&&model.adapterReady!==false)
+        ||connected.find(model=>model.connected!==false)
+        ||null;
+      if(automatic){setSelected(automatic);setSelectedTool(null);setParallelCount(1);return}
+    }
+    if(selected){setSelected(null);setSelectedTool(null);setParallelCount(1)}
+  },[connected,product]);
 
   useEffect(()=>{
     if(!selected||selected.source!=='browser'){setParallelCount(1);return}
@@ -493,7 +501,7 @@ function App(){
       const primary=modelKey(selected);
       const eligible=connected.filter(model=>model.connected!==false&&modelKey(model)!==primary).map(modelKey);
       const retained=(Array.isArray(current)?current:[]).filter(key=>key!==primary&&eligible.includes(key));
-      const next=product==='super'&&retained.length===0?eligible:retained;
+      const next=product==='super'?eligible:retained;
       localStorage.setItem('freeai.super.team',JSON.stringify(next));
       return next;
     });
@@ -994,7 +1002,13 @@ function App(){
   async function runWorkGeneration(text){
     const userText=String(text||'').trim();
     if((!userText&&!attachments.length)||workBusy)return;
-    if(!selected){setModelMenu(true);return}
+    if(!selected){
+      if(product==='super'){
+        setAttachmentError('Super AI needs at least one connected AI tab or API model. Open one and the team will be assembled automatically.');
+        window.desktopApi?.scanProviders?.({probeModels:true}).catch(()=>{});
+      }else setModelMenu(true);
+      return;
+    }
     if(selectedTool){
       setAttachmentError('That item is only a provider-managed connector hint, not a verified direct MCP app. Remove it and select a Direct MCP app from Add → Direct MCP apps.');
       return;
@@ -1022,10 +1036,7 @@ function App(){
     const taskText=userText||'Review the attached files and determine the next useful step.';
     const finalUserText=inlineParts.length?[taskText,'',...inlineParts].filter(Boolean).join('\n\n'):taskText;
     const teamModels=product==='super'
-      ? superTeamKeys
-          .map(key=>connected.find(model=>modelKey(model)===key))
-          .filter(Boolean)
-          .filter(model=>model.connected!==false&&modelKey(model)!==modelKey(selected))
+      ? connected.filter(model=>model.connected!==false&&model.adapterReady!==false&&modelKey(model)!==modelKey(selected))
       : [];
     const team=teamModels.map(model=>({
       id:model.id,
@@ -2341,17 +2352,17 @@ function Composer(props){
       <div className="composerRight">
         {product==='super'&&windowsDesktop&&mode==='work'&&<div className="menuAnchor">
           <button className="teamButton" aria-haspopup="dialog" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
-            <Bot size={14}/>{selected?'AI team · '+(1+superTeamKeys.length):'Set up AI team'}<ChevronDown size={12}/>
+            <Bot size={14}/>All AI · {connected.filter(model=>model.connected!==false&&model.adapterReady!==false).length}<ChevronDown size={12}/>
           </button>
-          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} selectedKeys={superTeamKeys} choose={keys=>setSuperTeamKeys?.(keys)} onChooseController={model=>setSelected?.(model)} onClose={()=>setTeamMenu(false)}/>}
+          {teamMenu&&<AgentTeamMenu connected={connected} selected={selected} onClose={()=>setTeamMenu(false)}/>}
         </div>}
-        {!isNative&&<div className="menuAnchor">
-          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>!busy&&setModelMenu(v=>!v)}>
+        {!isNative&&product!=='super'&&<div className="menuAnchor">
+          <button className="modelButton" aria-haspopup="listbox" aria-expanded={modelMenu} disabled={busy} onClick={()=>{if(busy)return;const next=!modelMenu;setModelMenu(next);if(next)onRefreshModels?.()}}>
             <span>{modelLabel(selected)}</span>{selected?.modelName&&selected.modelName!==selected.name&&<small>{selected.name}</small>}<ChevronDown size={13}/>
           </button>
           {modelMenu&&<MenuErrorBoundary onClose={()=>setModelMenu(false)}><ModelMenu connected={connected} selected={selected} parallelCount={parallelCount} setParallelCount={setParallelCount} onRefreshModels={onRefreshModels} onSelectProviderModel={onSelectProviderModel} choose={m=>{setSelected(m);setParallelCount?.(1);setModelMenu(false)}}/></MenuErrorBoundary>}
         </div>}
-        {!isNative&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
+        {!isNative&&product!=='super'&&((windowsDesktop&&selected?.effortControl==='native'&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1)||(!windowsDesktop&&Array.isArray(selected?.effortLevels)&&selected.effortLevels.length>1))&&<div className="menuAnchor">
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{onSelectProviderEffort?.(v);setEffortMenu(false)}}/>}
         </div>}
@@ -2460,47 +2471,24 @@ function ModelMenu({connected,selected,choose,parallelCount=1,setParallelCount,o
   </div>
 }
 
-function AgentTeamMenu({connected,selected,selectedKeys=[],choose,onChooseController,onClose}){
-  const available=connected.filter(model=>model.connected!==false);
+function AgentTeamMenu({connected,selected,onClose}){
+  const available=connected.filter(model=>model.connected!==false&&model.adapterReady!==false);
   const primary=modelKey(selected);
-  const eligible=available.filter(model=>modelKey(model)!==primary);
-  const eligibleKeys=eligible.map(modelKey);
-  const toggle=key=>{
-    const current=Array.isArray(selectedKeys)?selectedKeys:[];
-    if(current.includes(key)){choose(current.filter(item=>item!==key));return}
-    choose([...current,key]);
-  };
-  const allSelected=eligible.length>0&&eligibleKeys.every(key=>selectedKeys.includes(key));
-  const useAll=()=>choose(allSelected?[]:eligibleKeys);
-  const teamSize=(selected?1:0)+selectedKeys.filter(key=>eligibleKeys.includes(key)).length;
-  return <div className="floatingMenu teamPicker" role="dialog" aria-label="Set up Super AI team">
-    <div className="teamPickerHead"><span><b>AI team</b><small>Choose one lead model. It coordinates the other selected models and combines their results.</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
-
-    <div className="teamSetupStep"><span>1</span><div><b>Lead model</b><small>The lead plans the task, delegates work and returns the final answer.</small></div></div>
-    {available.length===0?<div className="menuEmpty compact">Open AI chats in your connected browser first.</div>:<div className="teamControllerChoices">
+  return <div className="floatingMenu teamPicker" role="dialog" aria-label="Super AI automatic team">
+    <div className="teamPickerHead"><span><b>Automatic AI team</b><small>Every available AI participates automatically. No model selection is required in Super AI.</small></span><button onClick={onClose} aria-label="Close team picker"><X size={14}/></button></div>
+    {available.length===0?<div className="menuEmpty compact">Open AI chats in your connected browser or add an API model. Super AI will add them automatically.</div>:<div className="teamControllerChoices">
       {available.map(model=>{
-        const active=modelKey(model)===primary;
-        return <button key={modelKey(model)} className={'teamControllerChoice '+(active?'active':'')} onClick={()=>onChooseController?.(model)}>
+        const controller=modelKey(model)===primary;
+        return <div key={modelKey(model)} className={'teamControllerChoice '+(controller?'active':'')}>
           <ProviderBadge model={model}/>
-          <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
-          {active&&<Check size={14}/>}
-        </button>;
+          <span><b>{modelLabel(model)}</b><small>{controller?'Automatic coordinator · ':'Parallel agent · '}{modelInstanceLabel(model)}</small></span>
+          <Check size={14}/>
+        </div>;
       })}
     </div>}
-
-    <div className="teamSetupStep"><span>2</span><div><b>Parallel agents</b><small>Select the additional models that should work behind the scenes in their own child chats.</small></div></div>
-    {selected&&eligible.length>0&&<button className={'teamUseAll '+(allSelected?'active':'')} onClick={useAll}><Bot size={14}/><span>{allSelected?'Use lead model only':'Use all '+eligible.length+' available agents'}</span>{allSelected&&<Check size={13}/>}</button>}
-    {!selected?<div className="menuEmpty compact">Choose the lead model above to finish the team setup.</div>:eligible.length===0?<div className="menuEmpty compact">Open another AI model or another tab to add parallel agents.</div>:eligible.map(model=>{
-      const key=modelKey(model),checked=selectedKeys.includes(key);
-      return <button key={key} className={'teamModelRow '+(checked?'active ':'')} onClick={()=>toggle(key)}>
-        <ProviderBadge model={model}/>
-        <span><b>{modelLabel(model)}</b><small>{modelInstanceLabel(model)}</small></span>
-        <span className={'teamCheck '+(checked?'checked':'')}>{checked?<Check size={13}/>:null}</span>
-      </button>;
-    })}
-    <div className="teamPickerFoot">{selected
-      ? teamSize+' model'+(teamSize===1?'':'s')+' · sending the task creates a Master project with a separate chat for every agent'
-      : 'A lead model is required before a Super AI task can start'}</div>
+    <div className="teamPickerFoot">{available.length
+      ? available.length+' connected AI'+(available.length===1?'':'s')+' · all will work on the next Super AI task'
+      : 'Waiting for a connected AI'}</div>
   </div>
 }
 
@@ -2548,7 +2536,7 @@ function WorkTaskStatus({task,onApproval,onOpenProject,onOpenAgent}){
     {task.folder&&<div className="workWorkspaceLine"><Folder size={12}/><span>{task.folder.name}</span><small>Local Files</small></div>}
     {Array.isArray(task.apps)&&task.apps.length>0&&<div className="workAppsLine"><Plug size={12}/><span>{task.apps.map(app=>app.name).join(' · ')}</span><small>{task.apps.reduce((sum,app)=>sum+(Number(app.toolCount)||0),0)} direct MCP tools</small></div>}
     {agents.length>0&&<div className="workAgentList">{agents.map(agent=>{
-      const body=<><span className="workAgentDot"/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>{Array.isArray(agent.thread)&&agent.thread.length>0&&<span className="agentMessageCount">{agent.thread.length}</span>}</>;
+      const body=<><ProviderBadge model={agent} small/><span><b>{agent.name}</b><small>{agent.role} · {agent.detail||agent.status}</small></span>{Array.isArray(agent.thread)&&agent.thread.length>0&&<span className="agentMessageCount">{agent.thread.length}</span>}</>;
       return onOpenAgent&&!agent.controller
         ? <button type="button" className={'workAgent '+agent.status+' clickable'} key={agent.id} onClick={()=>onOpenAgent(task,agent)}>{body}</button>
         : <div className={'workAgent '+agent.status} key={agent.id}>{body}</div>;

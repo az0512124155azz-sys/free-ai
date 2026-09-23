@@ -2388,7 +2388,6 @@ function startLocalBridge(){
     ws.on('close',()=>{
       if(ws===extensionSocket){
         extensionSocket=null;
-        browserProviders=[];
         extensionBrowserState={tabs:[],activeTabId:null,activeWindowId:null};
         for(const [id,request] of extensionBrowserPending){
           clearTimeout(request.timer);
@@ -3661,6 +3660,8 @@ async function startWorkTask(input={}){
       source:primary.source||source,
       modelName:taskModelName(primary),
       name:taskModelName(primary),
+      iconDataUrl:String(primary.iconDataUrl||''),
+      favIconUrl:String(primary.favIconUrl||''),
       role:'Master',
       controller:true,
       status:'idle',
@@ -3673,6 +3674,8 @@ async function startWorkTask(input={}){
       source:model.source||'browser',
       modelName:taskModelName(model),
       name:taskModelName(model),
+      iconDataUrl:String(model.iconDataUrl||''),
+      favIconUrl:String(model.favIconUrl||''),
       role:'Agent',
       controller:false,
       status:'idle',

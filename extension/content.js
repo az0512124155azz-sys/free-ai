@@ -26,6 +26,12 @@
     return '';
   }
 
+  const genericConfig={
+    inputs:['textarea:not([disabled])','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
+    send:['button[type="submit"]','button[aria-label*="Send" i]','button[data-testid*="send" i]','button[data-test-id*="send" i]'],
+    stop:['button[aria-label*="Stop" i]','button[data-testid*="stop" i]','button[data-test-id*="stop" i]'],
+    answers:['[data-message-author-role="assistant"]','[data-role="assistant"]','[data-testid*="assistant" i]','[class*="assistant" i]','[class*="markdown" i]','article']
+  };
   const configs={
     chatgpt:{
       inputs:['#prompt-textarea','textarea[placeholder*="Message"]','div[contenteditable="true"][data-virtualkeyboard]','div[contenteditable="true"][role="textbox"]'],
@@ -65,11 +71,9 @@
     }
   };
 
+  function providerConfig(provider){return configs[provider]||genericConfig}
   function providerAdapterHealth(provider){
-    const config=configs[provider];
-    if(!config){
-      return {adapterReady:false,adapterIssue:'This provider adapter is not supported by the installed Free AI Browser Bridge.'};
-    }
+    const config=providerConfig(provider);
     const input=first(config.inputs||[]);
     if(!input){
       return {
@@ -130,7 +134,7 @@
       'header button','nav button','[role="banner"] button',
       'button[aria-haspopup]','[role="button"][aria-haspopup]',
       '[role="menuitemradio"]','[role="option"]','[aria-checked="true"]','[aria-selected="true"]',
-      '[data-testid*="model"]','[data-test-id*="model"]','[class*="model"] button'
+      '[data-testid*="model"]','[data-test-id*="model"]','[class*="model"] button','[role="menuitem"]'
     ];
     const out=[];
     const seen=new Set();
@@ -138,7 +142,9 @@
       if(!visible(el)||seen.has(el))continue;
       seen.add(el);
       const label=controlLabel(el);
-      const model=modelFromLabel(provider,label);
+      const marker=String(el.getAttribute('data-testid')||el.getAttribute('data-test-id')||el.getAttribute('aria-label')||el.className||'');
+      let model=modelFromLabel(provider,label);
+      if(!model&&/model/i.test(marker)&&label&&label.length<=80)model=label;
       if(!model)continue;
       const rect=el.getBoundingClientRect();
       let score=0;
@@ -860,8 +866,7 @@
   }
 
   async function prompt(provider,text,toolRequest,effort,requestId,attachments,nativeTool){
-    const c=configs[provider];
-    if(!c) throw new Error('Unsupported provider.');
+    const c=providerConfig(provider);
     const input=first(c.inputs);
     if(!input) throw new Error('Could not find the chat input. Open the chat page and wait for it to finish loading.');
 
@@ -963,7 +968,7 @@
     }
 
     if(m?.type==='freeai:cancel'){
-      const config=configs[m.provider];
+      const config=providerConfig(m.provider);
       const stop=config?first(config.stop||[]):null;
       if(stop)stop.click();
       sendResponse({ok:!!stop});
