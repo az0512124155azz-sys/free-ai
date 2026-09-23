@@ -15,6 +15,7 @@ const windowsSigningGuide=fs.readFileSync('docs/windows-signing.md','utf8');
 const windowsVisualConfig=fs.readFileSync('playwright.windows.config.mjs','utf8');
 const windowsVisualSpec=fs.readFileSync('tests/visual/windows-shell.spec.mjs','utf8');
 const windowsVisualGuide=fs.readFileSync('docs/windows-visual-regression.md','utf8');
+const windowsVisualBaseline='tests/visual/baselines/windows-main-shell.png';
 
 function fail(message){
   console.error('Windows 7 QA regression failed: '+message);
@@ -129,7 +130,10 @@ has(workflow,"matrix.artifact == 'windows'",'Installer smoke must remain Windows
 // Windows 7.16 visual-regression CI coverage.
 has(workflow,'windows_visual:','Windows CI must include a dedicated visual-regression job.');
 has(workflow,'@playwright/test@1.63.0','Windows visual CI must pin the reviewed Playwright version.');
-has(workflow,'Record Windows visual baseline candidate','Baseline capture must remain explicit during bootstrap.');
+has(workflow,'Run Windows visual regression','Windows CI must compare the committed visual baseline.');
+ok(!workflow.includes('--update-snapshots'),'Normal Windows visual CI must never auto-update committed baselines.');
+ok(fs.existsSync(windowsVisualBaseline),'Committed Windows visual baseline is missing.');
+ok(fs.statSync(windowsVisualBaseline).size>10000,'Committed Windows visual baseline is unexpectedly small.');
 has(workflow,"VITE_VISUAL_TEST: '1'",'Windows visual build must use the explicit auth-independent test flag.');
 has(source,"const isVisualTestBuild=import.meta.env.VITE_VISUAL_TEST==='1';",'Visual auth bypass must be an explicit build-time test flag.');
 has(source,'const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey','Visual auth bypass must not change normal production auth.');
