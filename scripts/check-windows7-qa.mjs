@@ -12,6 +12,10 @@ const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
 const installerNsis=fs.readFileSync('build/installer.nsh','utf8');
 const windowsSigningGuide=fs.readFileSync('docs/windows-signing.md','utf8');
+const windowsVisualConfig=fs.readFileSync('playwright.windows.config.mjs','utf8');
+const windowsVisualSpec=fs.readFileSync('tests/visual/windows-shell.spec.mjs','utf8');
+const windowsVisualGuide=fs.readFileSync('docs/windows-visual-regression.md','utf8');
+const windowsVisualBaseline='tests/visual/baselines/windows-main-shell.png';
 
 function fail(message){
   console.error('Windows 7 QA regression failed: '+message);
@@ -122,6 +126,29 @@ ok(/ipcMain\.handle\('mcp:removeConnection'[\s\S]*?const previous=mcpConnections
 
 has(workflow,'Windows clean install and first-launch smoke','Windows CI is not running the packaged installer smoke.');
 has(workflow,"matrix.artifact == 'windows'",'Installer smoke must remain Windows-only.');
+
+// Windows 7.16 visual-regression CI coverage.
+has(workflow,'windows_visual:','Windows CI must include a dedicated visual-regression job.');
+has(workflow,'@playwright/test@1.63.0','Windows visual CI must pin the reviewed Playwright version.');
+has(workflow,'Run Windows visual regression','Windows CI must compare the committed visual baseline.');
+ok(!workflow.includes('--update-snapshots'),'Normal Windows visual CI must never auto-update committed baselines.');
+ok(fs.existsSync(windowsVisualBaseline),'Committed Windows visual baseline is missing.');
+ok(fs.statSync(windowsVisualBaseline).size>10000,'Committed Windows visual baseline is unexpectedly small.');
+has(workflow,"VITE_VISUAL_TEST: '1'",'Windows visual build must use the explicit auth-independent test flag.');
+has(source,"const isVisualTestBuild=import.meta.env.VITE_VISUAL_TEST==='1';",'Visual auth bypass must be an explicit build-time test flag.');
+has(source,'const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey','Visual auth bypass must not change normal production auth.');
+has(workflow,'free-ai-windows-visual','Windows visual evidence must be uploaded for review.');
+has(workflow,'needs: [desktop, windows_visual, android, extension]','Release publishing must depend on the Windows visual gate.');
+has(windowsVisualConfig,"snapshotPathTemplate:'{testDir}/baselines/{arg}{ext}'",'Windows visual snapshots must use the committed baseline directory.');
+has(windowsVisualSpec,"_electron as electron",'Visual regression must launch the real Electron app through Playwright.');
+has(windowsVisualSpec,"--user-data-dir=",'Visual regression must isolate its Electron profile.');
+has(windowsVisualSpec,"width:1440,height:900",'Windows visual regression must use deterministic window dimensions.');
+has(windowsVisualSpec,"page.locator('.desktopShell').waitFor",'Visual regression must prove the real desktop shell rendered.');
+has(windowsVisualSpec,"page.locator('.authScreen')).toHaveCount(0)",'Visual regression must reject an auth-screen baseline.');
+has(windowsVisualSpec,"appearance:'dark'",'Windows visual regression must pin appearance.');
+has(windowsVisualSpec,"await document.fonts.ready",'Windows visual regression must wait for fonts before capture.');
+has(windowsVisualSpec,"maxDiffPixelRatio:0.003",'Windows visual regression must keep an explicit reviewed pixel-diff threshold.');
+has(windowsVisualGuide,'must not auto-update snapshots','Normal CI must not silently rewrite visual baselines.');
 
 // Windows 7.15 code-signing readiness coverage.
 has(workflow,'- id: windows_signing','Windows CI must preflight signing configuration before packaging.');

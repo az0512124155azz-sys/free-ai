@@ -20,7 +20,8 @@ import './styles.css';
 
 const supabaseUrl=import.meta.env.VITE_SUPABASE_URL||'https://xquntkgjlmrxkwkrwsjl.supabase.co';
 const supabaseKey=import.meta.env.VITE_SUPABASE_ANON_KEY||'sb_publishable_5jLA64uA5h7NICd9sQLwUg_aQquD67t';
-const supabase=supabaseUrl&&supabaseKey
+const isVisualTestBuild=import.meta.env.VITE_VISUAL_TEST==='1';
+const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey
   ? createClient(supabaseUrl,supabaseKey,{auth:{flowType:'pkce',persistSession:true,autoRefreshToken:true,detectSessionInUrl:false}})
   : null;
 
