@@ -130,12 +130,17 @@ has(workflow,"matrix.artifact == 'windows'",'Installer smoke must remain Windows
 has(workflow,'windows_visual:','Windows CI must include a dedicated visual-regression job.');
 has(workflow,'@playwright/test@1.63.0','Windows visual CI must pin the reviewed Playwright version.');
 has(workflow,'Record Windows visual baseline candidate','Baseline capture must remain explicit during bootstrap.');
+has(workflow,"VITE_VISUAL_TEST: '1'",'Windows visual build must use the explicit auth-independent test flag.');
+has(source,"const isVisualTestBuild=import.meta.env.VITE_VISUAL_TEST==='1';",'Visual auth bypass must be an explicit build-time test flag.');
+has(source,'const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey','Visual auth bypass must not change normal production auth.');
 has(workflow,'free-ai-windows-visual','Windows visual evidence must be uploaded for review.');
 has(workflow,'needs: [desktop, windows_visual, android, extension]','Release publishing must depend on the Windows visual gate.');
 has(windowsVisualConfig,"snapshotPathTemplate:'{testDir}/baselines/{arg}{ext}'",'Windows visual snapshots must use the committed baseline directory.');
 has(windowsVisualSpec,"_electron as electron",'Visual regression must launch the real Electron app through Playwright.');
 has(windowsVisualSpec,"--user-data-dir=",'Visual regression must isolate its Electron profile.');
 has(windowsVisualSpec,"width:1440,height:900",'Windows visual regression must use deterministic window dimensions.');
+has(windowsVisualSpec,"page.locator('.desktopShell').waitFor",'Visual regression must prove the real desktop shell rendered.');
+has(windowsVisualSpec,"page.locator('.authScreen')).toHaveCount(0)",'Visual regression must reject an auth-screen baseline.');
 has(windowsVisualSpec,"appearance:'dark'",'Windows visual regression must pin appearance.');
 has(windowsVisualSpec,"await document.fonts.ready",'Windows visual regression must wait for fonts before capture.');
 has(windowsVisualSpec,"maxDiffPixelRatio:0.003",'Windows visual regression must keep an explicit reviewed pixel-diff threshold.');
