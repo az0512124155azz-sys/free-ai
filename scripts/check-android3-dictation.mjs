@@ -17,6 +17,8 @@ function ok(value,message){if(!value)fail(message)}
 has(source,"import {SpeechRecognition} from '@capgo/capacitor-speech-recognition';",'Android dictation must use the native Capacitor speech plugin.');
 has(source,"const nativeLanguage=voiceLanguage==='auto'?undefined:voiceLanguage;",'Device-language mode must omit a forced locale so native speech recognition uses the Android device language.');
 has(source,'SpeechRecognition.available()','Native speech availability must be checked before listening.');
+has(source,'popup:false','Android native dictation must use inline recognition rather than the system popup.');
+ok(!source.includes('const onDevice=await SpeechRecognition.isOnDeviceRecognitionAvailable'),'Android dictation must not automatically opt into the on-device/model-download path; keep the plugin stable default unless a dedicated rollout enables it.');
 has(source,'SpeechRecognition.checkPermissions()','Native microphone permission must be checked before listening.');
 has(source,'SpeechRecognition.requestPermissions()','Native microphone permission must be requested when needed.');
 has(source,"permissionState==='denied'",'Denied microphone permission must have an explicit product state.');
@@ -43,6 +45,8 @@ has(runtime,'pm grant "$PACKAGE" "$permission"','Runtime QA must exercise native
 has(runtime,'startDictation','Runtime QA must start dictation through the real product microphone path.');
 has(runtime,'stopDictation','Runtime QA must stop dictation through the real product path.');
 has(runtime,'dictationStarted=true','Runtime QA must prove the native recognizer start promise succeeded.');
+has(runtime,"grep 'Starting recognition |'",'Runtime QA must preserve native SpeechRecognizer start evidence.');
+has(runtime,'onDevice=false','Runtime QA must prove dictation stayed on the stable native recognizer path.');
 has(runtime,'dictationFinalized=true','Runtime QA must prove the stop/finalization path completed.');
 has(runtime,'pm revoke "$PACKAGE" "$permission"','Runtime QA must exercise denied microphone permission.');
 has(runtime,'user-set user-fixed','Runtime QA must reproduce Android permanent-denial permission flags.');
