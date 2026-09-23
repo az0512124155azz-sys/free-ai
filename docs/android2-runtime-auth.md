@@ -218,3 +218,24 @@ The runtime driver:
 Evidence is uploaded separately as `free-ai-android-google-runtime`.
 
 This does **not** yet mark the credentialed Google scenarios complete. A later checkpoint still needs real-account evidence for account selection, successful Google ID-token → Supabase sign-in, logout → different Google account, and user cancellation on a device/emulator that actually has Google accounts.
+
+
+## Android 2A2-Y — Fix explicit Google button flow in CI
+
+Run #315 proved that the previous `style:'bottom'` choice could leave the Google request pending indefinitely on an accountless CI emulator. The request reached Credential Manager (`googleRequested=true`) and did not open a browser, but it never returned a terminal result.
+
+The product has an explicit **Continue with Google** button. The native plugin maps:
+
+- `style:'bottom'` → `GetGoogleIdOption` (bottom-sheet credential option)
+- `style:'standard'` → `GetSignInWithGoogleOption` (explicit Sign in with Google button flow)
+
+The explicit product button now uses `style:'standard'`, which matches Google's recommended button-flow API. `filterByAuthorizedAccounts:false` remains set for account-selection compatibility.
+
+The runtime driver also no longer sends Android Back immediately after the JavaScript request flag changes. It waits for either:
+
+- a recognized Credential Manager terminal outcome; or
+- Google/system account UI to actually become the resumed activity.
+
+Only after native system UI is observed does the driver send Back to exercise user cancellation. Chrome/browser activity still fails the job immediately.
+
+This checkpoint does not weaken the requirement for later real-account Google evidence.
