@@ -1,8 +1,12 @@
 import fs from 'node:fs';
 
-const source=fs.readFileSync('src/main.jsx','utf8');
-const runtime=fs.readFileSync('scripts/android-runtime-qa.sh','utf8');
-const styles=fs.readFileSync('src/styles.css','utf8');
+function readNormalized(path){
+  return fs.readFileSync(path,'utf8').replace(/\r\n?/g,'\n');
+}
+
+const source=readNormalized('src/main.jsx');
+const runtime=readNormalized('scripts/android-runtime-qa.sh');
+const styles=readNormalized('src/styles.css');
 
 function fail(message){
   console.error('Android 4A1 mobile settings regression failed: '+message);
