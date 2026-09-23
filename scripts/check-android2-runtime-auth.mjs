@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const source=fs.readFileSync('src/main.jsx','utf8');
 const bridge=fs.readFileSync('scripts/configure-android-runtime-qa.mjs','utf8');
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
+const liveAuth=fs.readFileSync('scripts/android-auth-runtime-qa.sh','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 
 function fail(message){
@@ -35,10 +36,47 @@ has(workflow,'VITE_ANDROID_AUTH_QA=1 npm run build:web','CI must build a dedicat
 has(workflow,'free-ai-auth-runtime-qa.apk','CI must produce a dedicated auth runtime QA APK.');
 has(workflow,'name: free-ai-android-auth-runtime-qa','CI must upload the auth runtime APK separately.');
 has(workflow,'name: free-ai-android-runtime-qa','Existing auth-independent shell runtime artifact must remain intact.');
+has(workflow,'android_auth_runtime:','CI must define a live Android email/session auth runtime job.');
+has(workflow,'id-token: write','Android auth runtime job must request GitHub OIDC permission.');
+has(workflow,'Verify GitHub OIDC trust with Supabase','CI must verify GitHub workflow identity with the Supabase OIDC verifier.');
+has(workflow,'audience=free-ai-android-auth-qa','GitHub OIDC token must use the dedicated Android auth QA audience.');
+has(workflow,'free-ai-ci-oidc-check','CI must call the dedicated Supabase GitHub OIDC verifier.');
+
+has(workflow,'Inspect public Supabase auth configuration','Live auth CI must inspect Supabase public auth settings before credential-gated runtime testing.');
+has(workflow,"fs.readFileSync('src/main.jsx', 'utf8')",'Live auth CI must derive fallback Supabase public config from the same app source.');
+has(workflow,"key.startsWith('sb_publishable_')",'Live auth CI fallback must be a publishable key, never a secret key.');
+has(workflow,'SUPABASE_URL_FOR_QA/auth/v1/settings','Live auth CI must use the public Supabase auth settings endpoint.');
+has(workflow,'same public Supabase fallback configuration bundled by the app','Live auth CI must explicitly report when it uses the app public fallback config.');
+has(workflow,'mailer_autoconfirm=','Live auth CI must capture whether email signup auto-confirm is enabled.');
+has(workflow,'google_enabled=','Live auth CI must capture whether Google auth is enabled.');
+
+ok(!workflow.includes('ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}'),'Live auth QA must not depend on a long-lived GitHub email secret.');
+ok(!workflow.includes('ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}'),'Live auth QA must not depend on a long-lived GitHub password secret.');
+has(workflow,'Provision ephemeral Android auth QA account','CI must provision a short-lived QA credential after OIDC trust verification.');
+has(workflow,'free-ai-ci-auth-provision','CI must use the Supabase OIDC-gated QA account provisioner.');
+has(workflow,'openssl rand -hex 32','CI must generate a fresh QA password for each workflow run.');
+has(workflow,'>> "$GITHUB_ENV"','Ephemeral QA credentials must be passed only to subsequent steps in the same job.');
+has(workflow,"if: steps.provision_qa_account.outputs.configured == 'true'",'Live auth emulator steps must be gated on successful ephemeral account provisioning.');
+
+has(workflow,'bash scripts/android-auth-runtime-qa.sh','CI must execute the live Android auth runtime driver.');
+has(workflow,'free-ai-android-auth-runtime-email-session','CI must upload live auth runtime evidence separately.');
+
 has(workflow,'VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}','Auth QA build must use configured Supabase project settings.');
 has(workflow,'VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}','Auth QA build must use the configured Google web client ID.');
 const releaseAndroidArtifact=workflow.match(/name: free-ai-android\\n\\s+path: \\|\\n([\\s\\S]*?)\\n\\s+if-no-files-found:/)?.[1]||'';
 ok(!releaseAndroidArtifact.includes('free-ai-auth-runtime-qa.apk'),'Auth QA APK must never be bundled into the release Android artifact.');
+
+has(liveAuth,'ANDROID_AUTH_TEST_EMAIL','Live auth QA must read the test email only from the runtime environment.');
+has(liveAuth,'ANDROID_AUTH_TEST_PASSWORD','Live auth QA must read the test password only from the runtime environment.');
+has(liveAuth,'qa_login_line "$PASSWORD"','Live auth QA must exercise a real existing-account password login.');
+has(liveAuth,'authRefreshSession','Live auth QA must exercise explicit session refresh.');
+has(liveAuth,'adb shell am force-stop "$PACKAGE"','Live auth QA must exercise cold-start session restoration.');
+has(liveAuth,'adb shell input keyevent 3','Live auth QA must exercise Android background/foreground resume.');
+has(liveAuth,'status=signOut:success','Live auth QA must verify logout.');
+has(liveAuth,'status=signInPassword:error','Live auth QA must verify invalid-password behavior.');
+has(liveAuth,'relogin=','Live auth QA must verify relogin.');
+ok(!liveAuth.includes('access_token'),'Live auth QA must never print access tokens.');
+ok(!liveAuth.includes('refresh_token'),'Live auth QA must never print refresh tokens.');
 
 ok(String(pkg?.scripts?.validate||'').includes('check-android2-runtime-auth.mjs'),'Android 2A2 runtime auth regression guard is not part of validation.');
 

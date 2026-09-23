@@ -361,6 +361,228 @@ jobs:
           path: artifacts/android-runtime/${{ matrix.form_factor }}
           if-no-files-found: warn
 
+  android_auth_runtime:
+    name: Android auth runtime (email/session)
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth_config
+        name: Inspect public Supabase auth configuration
+        shell: bash
+        run: |
+          public_config_file="$RUNNER_TEMP/free-ai-public-auth-config"
+          node - "$public_config_file" <<'NODE'
+          const fs = require('node:fs');
+          const source = fs.readFileSync('src/main.jsx', 'utf8');
+          const url = source.match(/const supabaseUrl=import\.meta\.env\.VITE_SUPABASE_URL\|\|'([^']+)'/)?.[1] || '';
+          const key = source.match(/const supabaseKey=import\.meta\.env\.VITE_SUPABASE_ANON_KEY\|\|'([^']+)'/)?.[1] || '';
+          if (!url || !key || !key.startsWith('sb_publishable_')) {
+            console.error('Unable to resolve the app public Supabase fallback configuration.');
+            process.exit(1);
+          }
+          fs.writeFileSync(process.argv[2], JSON.stringify({ url, key }));
+          NODE
+
+          SUPABASE_URL_FOR_QA="$VITE_SUPABASE_URL"
+          SUPABASE_KEY_FOR_QA="$VITE_SUPABASE_ANON_KEY"
+          if [[ -z "$SUPABASE_URL_FOR_QA" || -z "$SUPABASE_KEY_FOR_QA" ]]; then
+            SUPABASE_URL_FOR_QA="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).url" "$public_config_file")"
+            SUPABASE_KEY_FOR_QA="$(node -p "JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).key" "$public_config_file")"
+            echo "::notice::Android auth QA is using the same public Supabase fallback configuration bundled by the app."
+          fi
+
+          settings_file="$RUNNER_TEMP/free-ai-auth-settings.json"
+          http_code="$(curl --silent --show-error --output "$settings_file" --write-out '%{http_code}' \
+            --header "apikey: $SUPABASE_KEY_FOR_QA" \
+            "$SUPABASE_URL_FOR_QA/auth/v1/settings")"
+
+          if [[ "$http_code" != "200" ]]; then
+            echo "::error::Supabase /auth/v1/settings returned HTTP $http_code."
+            exit 1
+          fi
+
+          node - "$settings_file" "$GITHUB_OUTPUT" <<'NODE'
+          const fs = require('node:fs');
+          const [settingsPath, outputPath] = process.argv.slice(2);
+          const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+          const disableSignup = settings.disable_signup === true;
+          const autoConfirm = settings.mailer_autoconfirm === true || settings.autoconfirm === true;
+          const googleEnabled = settings.external?.google === true;
+          fs.appendFileSync(outputPath,
+            `disable_signup=${disableSignup}\nmailer_autoconfirm=${autoConfirm}\ngoogle_enabled=${googleEnabled}\n`);
+          console.log(`Supabase Auth: signup=${disableSignup ? 'disabled' : 'enabled'}, email_autoconfirm=${autoConfirm ? 'enabled' : 'disabled'}, google=${googleEnabled ? 'enabled' : 'disabled'}`);
+          NODE
+
+      - id: github_oidc
+        name: Verify GitHub OIDC trust with Supabase
+        shell: bash
+        run: |
+          oidc_response="$RUNNER_TEMP/free-ai-github-oidc.json"
+          oidc_token_file="$RUNNER_TEMP/free-ai-github-oidc-token"
+          broker_response="$RUNNER_TEMP/free-ai-oidc-broker-response.json"
+
+          curl --silent --show-error --fail \
+            --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=free-ai-android-auth-qa" \
+            --output "$oidc_response"
+
+          node - "$oidc_response" "$oidc_token_file" <<'NODE'
+          const fs = require('node:fs');
+          const [responsePath, tokenPath] = process.argv.slice(2);
+          const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+          if (!response.value || typeof response.value !== 'string') {
+            console.error('GitHub OIDC token response did not contain a token.');
+            process.exit(1);
+          }
+          fs.writeFileSync(tokenPath, response.value, { mode: 0o600 });
+          NODE
+
+          http_code="$(curl --silent --show-error \
+            --output "$broker_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $(cat "$oidc_token_file")" \
+            "https://xquntkgjlmrxkwkrwsjl.supabase.co/functions/v1/free-ai-ci-oidc-check")"
+
+          rm -f "$oidc_response" "$oidc_token_file"
+
+          if [[ "$http_code" != "200" ]]; then
+            echo "::error::Supabase GitHub OIDC verifier returned HTTP $http_code."
+            cat "$broker_response"
+            exit 1
+          fi
+
+          node - "$broker_response" <<'NODE'
+          const fs = require('node:fs');
+          const response = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (response.ok !== true) {
+            console.error('Supabase GitHub OIDC verifier rejected the workflow identity.');
+            process.exit(1);
+          }
+          console.log('GitHub OIDC trust verified by Supabase Edge Function.');
+          NODE
+
+      - id: provision_qa_account
+        name: Provision ephemeral Android auth QA account
+        shell: bash
+        run: |
+          qa_password="Qa1!$(openssl rand -hex 32)"
+          echo "::add-mask::$qa_password"
+
+          oidc_response="$RUNNER_TEMP/free-ai-provision-oidc.json"
+          oidc_token_file="$RUNNER_TEMP/free-ai-provision-oidc-token"
+          provision_body="$RUNNER_TEMP/free-ai-provision-body.json"
+          provision_response="$RUNNER_TEMP/free-ai-provision-response.json"
+
+          curl --silent --show-error --fail \
+            --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=free-ai-android-auth-qa" \
+            --output "$oidc_response"
+
+          node - "$oidc_response" "$oidc_token_file" <<'NODE'
+          const fs = require('node:fs');
+          const [responsePath, tokenPath] = process.argv.slice(2);
+          const response = JSON.parse(fs.readFileSync(responsePath, 'utf8'));
+          if (!response.value || typeof response.value !== 'string') {
+            console.error('GitHub OIDC token response did not contain a token.');
+            process.exit(1);
+          }
+          fs.writeFileSync(tokenPath, response.value, { mode: 0o600 });
+          NODE
+
+          printf '%s' "$qa_password" > "$RUNNER_TEMP/free-ai-qa-password"
+          node - "$RUNNER_TEMP/free-ai-qa-password" "$provision_body" <<'NODE'
+          const fs = require('node:fs');
+          const [passwordPath, bodyPath] = process.argv.slice(2);
+          const password = fs.readFileSync(passwordPath, 'utf8');
+          fs.writeFileSync(bodyPath, JSON.stringify({ password }), { mode: 0o600 });
+          NODE
+
+          http_code="$(curl --silent --show-error \
+            --output "$provision_response" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer $(cat "$oidc_token_file")" \
+            --header "Content-Type: application/json" \
+            --data-binary "@$provision_body" \
+            "https://xquntkgjlmrxkwkrwsjl.supabase.co/functions/v1/free-ai-ci-auth-provision")"
+
+          rm -f "$oidc_response" "$oidc_token_file" "$provision_body" "$RUNNER_TEMP/free-ai-qa-password"
+
+          if [[ "$http_code" != "200" ]]; then
+            echo "::error::Supabase QA account provisioner returned HTTP $http_code."
+            cat "$provision_response"
+            exit 1
+          fi
+
+          qa_email="$(node - "$provision_response" <<'NODE'
+          const fs = require('node:fs');
+          const response = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          if (response.ok !== true || typeof response.email !== 'string' || !response.email) {
+            console.error('Supabase QA account provisioner did not return a valid account.');
+            process.exit(1);
+          }
+          process.stdout.write(response.email);
+          NODE
+          )"
+
+          echo "::add-mask::$qa_email"
+          {
+            echo "ANDROID_AUTH_TEST_EMAIL=$qa_email"
+            echo "ANDROID_AUTH_TEST_PASSWORD=$qa_password"
+          } >> "$GITHUB_ENV"
+
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "Ephemeral Android auth QA account provisioned for this workflow run."
+
+      - name: Download Android auth runtime QA build
+        if: steps.provision_qa_account.outputs.configured == 'true'
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-android-auth-runtime-qa
+          path: runtime-artifacts
+
+      - name: Enable KVM
+        if: steps.provision_qa_account.outputs.configured == 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Run Android 16 email/session auth QA
+        if: steps.provision_qa_account.outputs.configured == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 36
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7_pro
+          cores: 2
+          ram-size: 3072M
+          disable-animations: true
+          disable-spellchecker: true
+          enable-hw-keyboard: false
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: bash scripts/android-auth-runtime-qa.sh
+
+      - name: Upload Android auth runtime evidence
+        if: always() && steps.provision_qa_account.outputs.configured == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-android-auth-runtime-email-session
+          path: artifacts/android-auth-runtime
+          if-no-files-found: warn
+
   extension:
     runs-on: ubuntu-latest
 
