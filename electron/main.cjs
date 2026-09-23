@@ -1692,7 +1692,7 @@ async function clickMacPoint(x,y){
 
 async function pasteMacText(text){
   ensureMacAccessibility();
-  clipboard.writeText(String(text||''));
+  await clipboard.writeText(String(text||''));
   await runAppleScript('tell application "System Events" to keystroke "v" using command down');
 }
 

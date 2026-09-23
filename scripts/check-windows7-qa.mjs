@@ -27,6 +27,13 @@ ok(pkg?.build?.win?.artifactName==='Free-AI-Windows-${version}.${ext}','Windows 
 ok(pkg?.build?.win?.icon==='build/free-ai-symbol.svg','Windows application icon must use the canonical Free AI symbol.');
 ok(pkg?.build?.asar===true,'Packaged Windows application must keep ASAR enabled.');
 
+const electronVersion=String(pkg?.devDependencies?.electron||'').replace(/^[^0-9]*/,'');
+const electronMajor=Number.parseInt(electronVersion.split('.')[0],10);
+ok(Number.isInteger(electronMajor)&&electronMajor>=44,'Windows release-readiness must use a currently supported Electron major (44+ for this checkpoint).');
+ok(/async function pasteWindowsText\(text\)\{[\s\S]*?await clipboard\.writeText\(/.test(main),'Windows Computer Use paste must await Electron 44 async clipboard writes.');
+ok(/async function pasteMacText\(text\)\{[\s\S]*?await clipboard\.writeText\(/.test(main),'macOS paste compatibility must await Electron 44 async clipboard writes.');
+
+
 has(main,'function windowsInitialWindowBounds','DPI-aware first-launch window sizing is missing.');
 has(main,"screen.getPrimaryDisplay()?.workArea",'First-launch window must use the primary display work area in DIP.');
 has(main,'const usableWidth=Math.max(480','First-launch width floor is missing.');
