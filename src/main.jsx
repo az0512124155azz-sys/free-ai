@@ -47,13 +47,27 @@ function isAuthCallbackUrl(value){
 }
 const GOOGLE_WEB_CLIENT_ID=import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID||'991329297292-fp0ciud251vjasflsjq4r7k2vgo4sij7.apps.googleusercontent.com';
 
-function setAndroidGoogleQaState(status,code='',requested){
+async function googleQaIdentityFingerprint(user){
+  if(!isAndroidAuthQaBuild||!user?.id||!globalThis.crypto?.subtle)return '';
+  const encoded=new TextEncoder().encode('free-ai-google-qa:'+String(user.id));
+  const digest=await crypto.subtle.digest('SHA-256',encoded);
+  return Array.from(new Uint8Array(digest))
+    .map(value=>value.toString(16).padStart(2,'0'))
+    .join('')
+    .slice(0,16);
+}
+
+function setAndroidGoogleQaState(status,code='',requested,identity){
   if(!isAndroidAuthQaBuild||typeof window==='undefined')return;
   const previous=window.__FREEAI_ANDROID_GOOGLE_QA_STATE__||{};
+  const nextIdentity=identity===undefined
+    ? String(previous.identity||'')
+    : String(identity||'').replace(/[^a-f0-9]/gi,'').slice(0,24);
   window.__FREEAI_ANDROID_GOOGLE_QA_STATE__={
     status:String(status||'idle'),
     code:String(code||'').replace(/[^a-z0-9_.-]/gi,'_').slice(0,96),
-    requested:requested===undefined?!!previous.requested:!!requested
+    requested:requested===undefined?!!previous.requested:!!requested,
+    identity:nextIdentity
   };
 }
 
@@ -519,7 +533,9 @@ function App(){
       'code='+(qa.code||''),
       'googleStatus='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.status||'idle'),
       'googleCode='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.code||''),
-      'googleRequested='+!!window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.requested
+      'googleRequested='+!!window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.requested,
+      'googleIdentity='+(window.__FREEAI_ANDROID_GOOGLE_QA_STATE__?.identity||''),
+      'authProvider='+String(session?.user?.app_metadata?.provider||'').replace(/[^a-z0-9_.-]/gi,'_').slice(0,32)
     ].join(';');
     const run=(label,task)=>{
       qa.status=label+':running';
@@ -572,6 +588,10 @@ function App(){
         });
       }else if(command==='authSignOut'){
         run('signOut',()=>signOutAccount());
+      }else if(command==='authResetGoogleQa'){
+        setAndroidGoogleQaState('idle','',false,'');
+        qa.status='resetGoogle:success';
+        qa.code='';
       }else if(command==='authStartGoogle'){
         const button=document.querySelector('.googleButton');
         if(button){
@@ -3938,9 +3958,13 @@ function Auth(){
         setAndroidGoogleQaState('credential_received','',true);
         const idToken=login?.result?.idToken;
         if(!idToken)throw Object.assign(new Error('Google did not return an ID token.'),{code:'missing_google_id_token'});
-        const {error}=await supabase.auth.signInWithIdToken({provider:'google',token:idToken});
+        const {data,error}=await supabase.auth.signInWithIdToken({provider:'google',token:idToken});
         if(error)throw error;
-        setAndroidGoogleQaState('signed_in','',true);
+        const identity=await googleQaIdentityFingerprint(data?.user||data?.session?.user);
+        if(isAndroidAuthQaBuild&&!identity){
+          throw Object.assign(new Error('Google QA could not derive a non-PII account fingerprint.'),{code:'google_identity_fingerprint_missing'});
+        }
+        setAndroidGoogleQaState('signed_in','',true,identity);
         setWorking(false);
         return;
       }

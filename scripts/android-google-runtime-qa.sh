@@ -47,6 +47,50 @@ capture() {
   test -s "$OUT/$name.png"
 }
 
+write_top_activities() {
+  local target="$1"
+  adb shell dumpsys activity activities \
+    | grep -E 'mResumedActivity|topResumedActivity|mLastPausedActivity|Hist #' \
+    | head -n 80 > "$target" || true
+}
+
+top_activity_text() {
+  adb shell dumpsys activity activities \
+    | grep -E 'mResumedActivity|topResumedActivity' \
+    | head -n 8 || true
+}
+
+dismiss_google_system_ui() {
+  local top=""
+  for _ in $(seq 1 6); do
+    top="$(top_activity_text)"
+
+    if printf '%s\n' "$top" | grep -Eqi 'com\.android\.chrome|com\.google\.android\.apps\.chrome|org\.chromium\.chrome'; then
+      echo "Google runtime QA unexpectedly opened a browser instead of native Credential Manager."
+      printf '%s\n' "$top"
+      return 1
+    fi
+
+    if printf '%s\n' "$top" | grep -Fq "$PACKAGE/.MainActivity"; then
+      write_top_activities "$OUT/post-cancel-activities.txt"
+      return 0
+    fi
+
+    if printf '%s\n' "$top" | grep -Eqi 'com\.google\.android\.gms|com\.google\.android\.gsf|com\.android\.settings|credentials|identity'; then
+      adb shell input keyevent 4 || true
+      sleep 2
+      continue
+    fi
+
+    sleep 1
+  done
+
+  write_top_activities "$OUT/post-cancel-activities.txt"
+  echo "Google runtime QA could not return from native Google system UI to Free AI."
+  cat "$OUT/post-cancel-activities.txt" || true
+  return 1
+}
+
 adb install -r "$APK" >/dev/null
 adb shell am force-stop "$PACKAGE" || true
 adb shell am start -W -n "$ACTIVITY" >/dev/null
@@ -84,9 +128,7 @@ for _ in $(seq 1 20); do
     exit 1
   fi
 
-  adb shell dumpsys activity activities \
-    | grep -E 'mResumedActivity|topResumedActivity|mLastPausedActivity|Hist #' \
-    | head -n 60 > "$OUT/top-activities.txt" || true
+  write_top_activities "$OUT/top-activities.txt"
 
   if grep -Eqi 'com\.android\.chrome|com\.google\.android\.apps\.chrome|org\.chromium\.chrome' "$OUT/top-activities.txt"; then
     echo "Google runtime QA unexpectedly opened a browser instead of native Credential Manager."
@@ -104,7 +146,7 @@ done
 capture "02-google-native-requested"
 
 if [[ -z "$outcome" && "$system_ui_seen" == "1" ]]; then
-  adb shell input keyevent 4 || true
+  dismiss_google_system_ui
 fi
 
 if [[ -z "$outcome" ]]; then
