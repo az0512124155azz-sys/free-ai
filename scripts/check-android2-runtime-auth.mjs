@@ -40,6 +40,8 @@ has(workflow,'android_auth_runtime:','CI must define a live Android email/sessio
 has(workflow,'ANDROID_AUTH_TEST_EMAIL: ${{ secrets.ANDROID_AUTH_TEST_EMAIL }}','Live auth QA email must come from a GitHub Actions secret.');
 has(workflow,'ANDROID_AUTH_TEST_PASSWORD: ${{ secrets.ANDROID_AUTH_TEST_PASSWORD }}','Live auth QA password must come from a GitHub Actions secret.');
 has(workflow,"if: steps.auth_credentials.outputs.configured == 'true'",'Live auth emulator steps must be gated on configured runtime credentials.');
+has(workflow,'Android email/session runtime QA is required for this checkpoint.','Missing live-auth credentials must fail CI instead of producing a false-green job.');
+
 has(workflow,'bash scripts/android-auth-runtime-qa.sh','CI must execute the live Android auth runtime driver.');
 has(workflow,'free-ai-android-auth-runtime-email-session','CI must upload live auth runtime evidence separately.');
 
