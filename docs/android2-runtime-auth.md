@@ -63,3 +63,45 @@ This sub-step creates the safe runtime plumbing only. The following still requir
 - successful Google login with a real Google account
 - account switching
 - confirmation that Android never falls back to a Supabase-hosted browser OAuth screen
+
+
+## Android 2A2-E — Live email/password and session runtime QA
+
+This checkpoint adds a credential-gated Android 16 emulator job for a dedicated existing test account.
+
+Repository secrets:
+
+- `ANDROID_AUTH_TEST_EMAIL`
+- `ANDROID_AUTH_TEST_PASSWORD`
+
+The credentials are injected only at workflow runtime. They are not committed, compiled into the APK, written to the QA report, or returned by the renderer audit hook. The workflow masks both values before running the emulator.
+
+When both secrets are configured, the live QA driver verifies:
+
+1. signed-out startup
+2. existing-account email/password login
+3. explicit `refreshSession()`
+4. cold app restart with persisted session restoration
+5. Android background → foreground resume while keeping the session
+6. logout through the product logout path
+7. invalid-password failure without a stale authenticated UI
+8. valid relogin
+9. final logout
+
+Evidence is uploaded separately as `free-ai-android-auth-runtime-email-session`.
+
+If either repository secret is missing, the workflow emits a notice and does not boot the credentialed auth emulator. A green build in that state proves only that the infrastructure is intact; it does **not** count as live authentication verification.
+
+The test account should be dedicated to CI because the current product logout uses Supabase's default global sign-out behavior.
+
+### Still deferred
+
+Android 2A2 is not complete after this checkpoint. Remaining runtime coverage still includes:
+
+- signup
+- expired/revoked session behavior
+- real Google Credential Manager presentation and cancel behavior
+- successful Google login with an account present on the Android device
+- Google account switching
+- wrong/missing Google configuration runtime evidence
+- proof that Android Google auth never falls back to a Supabase-hosted browser OAuth screen
