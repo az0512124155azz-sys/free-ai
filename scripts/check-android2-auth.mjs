@@ -17,7 +17,8 @@ has(source,"CapacitorApp.addListener('appStateChange'",'Android auth lifecycle m
 has(source,'supabase.auth.startAutoRefresh()','Android foreground auth refresh is missing.');
 has(source,'supabase.auth.stopAutoRefresh()','Android background auth refresh stop is missing.');
 has(source,'const {data,error}=await supabase.auth.getSession();','Cold/warm session restore must read the stored Supabase session.');
-has(source,"SocialLogin.login({\n          provider:'google'","Native Google sign-in must use the maintained social-login plugin.");
+has(source,'const login=await SocialLogin.login({','Native Google sign-in must use the maintained social-login plugin.');
+has(source,"provider:'google'",'Native Google sign-in must target the Google provider.');
 has(source,"style:'bottom'",'Android Google sign-in must use Credential Manager bottom-sheet UX.');
 has(source,'filterByAuthorizedAccounts:false','Google sign-in must allow account selection beyond previously authorized accounts.');
 has(source,"scopes:['email','profile']",'Google sign-in must request only profile/email scopes.');
