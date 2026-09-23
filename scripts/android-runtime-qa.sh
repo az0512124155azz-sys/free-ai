@@ -136,6 +136,34 @@ settings_closed="$(qa_line audit)"
 require_token "$settings_closed" "settingsOpen=false"
 require_token "$settings_closed" "shell=true"
 
+qa_line openApps >/dev/null
+sleep 1
+apps_page="$(qa_line audit)"
+require_token "$apps_page" "appsPage=true"
+require_token "$apps_page" "appsDiscover=true"
+require_token "$apps_page" "appsSearch=true"
+require_token "$apps_page" "desktopAppControls=false"
+capture "06-apps"
+adb shell input keyevent 4
+sleep 1
+apps_closed="$(qa_line audit)"
+require_token "$apps_closed" "appsPage=false"
+require_token "$apps_closed" "shell=true"
+
+qa_line openExplore >/dev/null
+sleep 1
+explore_page="$(qa_line audit)"
+require_token "$explore_page" "explorePage=true"
+require_token "$explore_page" "exploreApps=true"
+require_token "$explore_page" "exploreSearch=true"
+require_token "$explore_page" "desktopAppControls=false"
+capture "07-explore"
+adb shell input keyevent 4
+sleep 1
+explore_closed="$(qa_line audit)"
+require_token "$explore_closed" "explorePage=false"
+require_token "$explore_closed" "shell=true"
+
 initial_height="$(metric "$initial" height)"
 
 qa_line focusComposer >/dev/null
@@ -183,7 +211,7 @@ if [[ "$keyboard_offset_value" -le 0 && "$viewport_shrink" -le 80 ]]; then
   exit 1
 fi
 
-capture "06-keyboard"
+capture "08-keyboard"
 adb shell input keyevent 4
 sleep 1
 base="$(qa_line audit)"
@@ -212,7 +240,7 @@ for rotation in 1 2 3 0; do
     require_token "$rotated" "mobileNav=true"
     require_token "$rotated" "desktopNav=false"
     require_token "$rotated" "modelPicker=true"
-    capture "07-rotated"
+    capture "09-rotated"
     rotated_ok=1
     break
   fi
@@ -280,7 +308,7 @@ if [[ "$FORM_FACTOR" == "phone" ]]; then
   done
   require_token "$dictation_stopped" "dictationStopped=true"
   require_token "$dictation_stopped" "dictationFinalized=true"
-  capture "08-dictation-stopped"
+  capture "10-dictation-stopped"
 
   adb shell pm revoke "$PACKAGE" "$permission" >/dev/null 2>&1 || true
   adb shell pm set-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null
@@ -299,7 +327,7 @@ if [[ "$FORM_FACTOR" == "phone" ]]; then
   require_token "$dictation_denied" "dictationDenied=true"
   require_token "$dictation_denied" "dictationError=true"
   adb shell pidof "$PACKAGE" >/dev/null
-  capture "09-dictation-denied"
+  capture "11-dictation-denied"
 
   adb shell pm clear-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null 2>&1 || true
   adb shell pm grant "$PACKAGE" "$permission" >/dev/null 2>&1 || true
@@ -320,6 +348,10 @@ adb shell pidof "$PACKAGE" >/dev/null
   echo "settings_detail=$settings_detail"
   echo "settings_back_to_list=$settings_back_to_list"
   echo "settings_closed=$settings_closed"
+  echo "apps_page=$apps_page"
+  echo "apps_closed=$apps_closed"
+  echo "explore_page=$explore_page"
+  echo "explore_closed=$explore_closed"
   echo "keyboard=$keyboard"
   echo "native_ime=$native_ime"
   echo "viewport_shrink=$viewport_shrink"
