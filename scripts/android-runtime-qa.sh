@@ -191,6 +191,89 @@ if (( rotated_ok != 1 )); then
   exit 1
 fi
 
+dictation_report="not-run"
+if [[ "$FORM_FACTOR" == "phone" ]]; then
+  permission="android.permission.RECORD_AUDIO"
+  package_permissions="$(adb shell dumpsys package "$PACKAGE")"
+  if ! printf '%s\n' "$package_permissions" | grep -q "$permission"; then
+    echo "Android APK does not declare $permission."
+    exit 1
+  fi
+
+  adb shell pm clear-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null 2>&1 || true
+  adb shell pm grant "$PACKAGE" "$permission"
+  adb shell am force-stop "$PACKAGE" || true
+  adb shell am start -W -n "$ACTIVITY" >/dev/null
+  dictation_ready="$(audit_until_ready)"
+  require_token "$dictation_ready" "dictationMic=true"
+  require_token "$dictation_ready" "dictationPermission=unknown"
+
+  dictation_start_command="$(qa_line startDictation)"
+  require_token "$dictation_start_command" "dictationMic=true"
+  adb shell pidof "$PACKAGE" >/dev/null
+  native_speech_start="$(adb logcat -d | grep 'Starting recognition |' | tail -n 1 || true)"
+  if [[ -z "$native_speech_start" ]]; then
+    echo "Native SpeechRecognizer start was not observed after startDictation."
+    echo "$dictation_start_command"
+    adb shell dumpsys activity activities | grep -E 'topResumedActivity|mResumedActivity|mLastPausedActivity' | tail -n 20 || true
+    exit 1
+  fi
+  require_token "$native_speech_start" "partial=true"
+  require_token "$native_speech_start" "popup=false"
+  require_token "$native_speech_start" "onDevice=false"
+  printf '%s\n' "$native_speech_start" > "$OUT/dictation-native-start.txt"
+
+  dictation_started=""
+  for _ in $(seq 1 10); do
+    dictation_started="$(qa_line audit)"
+    if [[ "$dictation_started" == *"dictationStarted=true"* ]]; then break; fi
+    if [[ "$dictation_started" == *"dictationError=true"* ]]; then
+      echo "Native dictation failed to start with RECORD_AUDIO granted."
+      echo "$dictation_started"
+      exit 1
+    fi
+    sleep 1
+  done
+  require_token "$dictation_started" "dictationMic=true"
+  require_token "$dictation_started" "dictationPermission=granted"
+  require_token "$dictation_started" "dictationStarted=true"
+  require_token "$dictation_started" "dictationLanguage=device"
+
+  qa_line stopDictation >/dev/null
+  dictation_stopped=""
+  for _ in $(seq 1 10); do
+    dictation_stopped="$(qa_line audit)"
+    if [[ "$dictation_stopped" == *"dictationStopped=true"* && "$dictation_stopped" == *"dictationFinalized=true"* ]]; then break; fi
+    sleep 1
+  done
+  require_token "$dictation_stopped" "dictationStopped=true"
+  require_token "$dictation_stopped" "dictationFinalized=true"
+  capture "06-dictation-stopped"
+
+  adb shell pm revoke "$PACKAGE" "$permission" >/dev/null 2>&1 || true
+  adb shell pm set-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null
+  adb shell am force-stop "$PACKAGE" || true
+  adb shell am start -W -n "$ACTIVITY" >/dev/null
+  audit_until_ready >/dev/null
+
+  qa_line startDictation >/dev/null
+  dictation_denied=""
+  for _ in $(seq 1 10); do
+    dictation_denied="$(qa_line audit)"
+    if [[ "$dictation_denied" == *"dictationDenied=true"* ]]; then break; fi
+    sleep 1
+  done
+  require_token "$dictation_denied" "dictationPermission=denied"
+  require_token "$dictation_denied" "dictationDenied=true"
+  require_token "$dictation_denied" "dictationError=true"
+  adb shell pidof "$PACKAGE" >/dev/null
+  capture "07-dictation-denied"
+
+  adb shell pm clear-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null 2>&1 || true
+  adb shell pm grant "$PACKAGE" "$permission" >/dev/null 2>&1 || true
+  dictation_report="started=$dictation_started | stopped=$dictation_stopped | denied=$dictation_denied"
+fi
+
 final="$(qa_line audit)"
 require_token "$final" "shell=true"
 require_token "$final" "auth=false"
@@ -205,6 +288,7 @@ adb shell pidof "$PACKAGE" >/dev/null
   echo "native_ime=$native_ime"
   echo "viewport_shrink=$viewport_shrink"
   echo "rotated=$rotated"
+  echo "dictation=$dictation_report"
   echo "final=$final"
 } > "$OUT/runtime-report.txt"
 

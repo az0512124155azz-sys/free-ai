@@ -30,6 +30,16 @@ const isDesktop=!!window.desktopApi;
 const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
 const isAndroidNative=isNative&&Capacitor.getPlatform()==='android';
+
+function updateAndroidDictationQaState(patch={}){
+  if(!isAndroidNative||!isVisualTestBuild||typeof window==='undefined')return;
+  const previous=window.__FREEAI_ANDROID_DICTATION_QA_STATE__||{};
+  window.__FREEAI_ANDROID_DICTATION_QA_STATE__={...previous,...patch};
+}
+function readAndroidDictationQaState(){
+  return typeof window==='undefined'?{}:(window.__FREEAI_ANDROID_DICTATION_QA_STATE__||{});
+}
+
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
@@ -694,7 +704,18 @@ function App(){
         'height='+Math.round(window.innerHeight),
         'keyboard='+Math.round(parseFloat(rootStyle.getPropertyValue('--keyboard-offset'))||0),
         'safeTop='+(rootStyle.getPropertyValue('--safe-area-inset-top').trim()||'0px'),
-        'safeBottom='+(rootStyle.getPropertyValue('--safe-area-inset-bottom').trim()||'0px')
+        'safeBottom='+(rootStyle.getPropertyValue('--safe-area-inset-bottom').trim()||'0px'),
+        'dictationMic='+visible(document.querySelector('.micButton')),
+        'dictationListening='+!!document.querySelector('.micButton.listening'),
+        'dictationError='+!!document.querySelector('.voiceDictationError'),
+        'dictationPermission='+String(readAndroidDictationQaState().permission||'unknown'),
+        'dictationStarted='+!!readAndroidDictationQaState().started,
+        'dictationStopped='+!!readAndroidDictationQaState().stopped,
+        'dictationDenied='+!!readAndroidDictationQaState().denied,
+        'dictationPartial='+!!readAndroidDictationQaState().partial,
+        'dictationFinal='+!!readAndroidDictationQaState().final,
+        'dictationFinalized='+!!readAndroidDictationQaState().finalized,
+        'dictationLanguage='+String(readAndroidDictationQaState().language||'unknown')
       ].join(';');
     };
     window.__FREEAI_ANDROID_QA__=(command='audit')=>{
@@ -705,6 +726,8 @@ function App(){
         field?.focus();
         field?.click();
       }
+      if(command==='startDictation')window.dispatchEvent(new CustomEvent('freeai:start-voice'));
+      if(command==='stopDictation')window.dispatchEvent(new CustomEvent('freeai:stop-voice'));
       return audit();
     };
     return()=>{delete window.__FREEAI_ANDROID_QA__};
@@ -2492,30 +2515,82 @@ function Composer(props){
   const [teamMenu,setTeamMenu]=useState(false);
   const textareaRef=useRef(null);
   const nativeSpeechHandles=useRef([]);
+  const nativeSpeechSession=useRef(0);
+  const nativeSpeechFinalizing=useRef(false);
+  const nativeLastTranscript=useRef('');
   const webRecognition=useRef(null);
   const dictationBase=useRef('');
+  const startVoiceRef=useRef(null);
+  const stopVoiceRef=useRef(null);
   const effortLabel={instant:'Instant',medium:'Medium',high:'High',extra:'Extra High','extra-high':'Extra High','pro-standard':'Pro Standard','pro-extended':'Pro Extended','deep-think':'Deep Think',heavy:'Heavy'}[effort]||'Reasoning';
   const selectedMcpConnections=mcpConnections.filter(connection=>selectedMcpIds.includes(connection.id));
+
+  function nativeTranscriptText(event){
+    return String(event?.accumulatedText||event?.accumulated||event?.text||event?.matches?.[0]||'').trim();
+  }
+  function commitNativeTranscript(text,final=false){
+    const clean=String(text||'').trim();
+    if(!clean)return;
+    nativeLastTranscript.current=clean;
+    setPrompt((dictationBase.current?dictationBase.current+' ':'')+clean);
+    updateAndroidDictationQaState(final?{final:true,finalized:true}:{partial:true});
+  }
+  async function removeNativeSpeechHandles(){
+    const handles=nativeSpeechHandles.current.splice(0);
+    await Promise.all(handles.map(handle=>handle?.remove?.().catch(()=>{})));
+  }
+  async function finalizeNativeVoice(session,{stopped=false}={}){
+    if(!session||session!==nativeSpeechSession.current||nativeSpeechFinalizing.current)return;
+    nativeSpeechFinalizing.current=true;
+    try{
+      const last=await SpeechRecognition.getLastPartialResult?.().catch(()=>null);
+      const text=nativeTranscriptText(last)||nativeLastTranscript.current;
+      if(text)commitNativeTranscript(text,true);
+      updateAndroidDictationQaState({finalized:true,stopped:stopped||readAndroidDictationQaState().stopped===true});
+    }finally{
+      setListening(false);
+      await removeNativeSpeechHandles();
+      if(nativeSpeechSession.current===session)nativeSpeechSession.current=0;
+      nativeSpeechFinalizing.current=false;
+    }
+  }
+  function nativeDictationErrorMessage(event){
+    const detail=[event?.code,event?.errorCode,event?.message].filter(Boolean).join(' ');
+    if(/permission|insufficient/i.test(detail))return 'Microphone access is denied. Enable microphone permission for Free AI in Android Settings.';
+    if(/no[_ -]?match|speech[_ -]?timeout|no speech/i.test(detail))return 'No speech was detected. Try again.';
+    return event?.message||event?.code||'Dictation failed.';
+  }
 
   async function stopVoice(){
     setDictationError('');
     try{
       if(isNative){
-        await SpeechRecognition.stop().catch(()=>SpeechRecognition.forceStop?.({timeout:700}));
-        const last=await SpeechRecognition.getLastPartialResult?.().catch(()=>null);
-        const text=last?.text||last?.matches?.[0]||'';
-        if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text.trim());
-        for(const handle of nativeSpeechHandles.current.splice(0))await handle?.remove?.().catch(()=>{});
+        const session=nativeSpeechSession.current;
+        updateAndroidDictationQaState({stopRequested:true});
+        if(session){
+          if(SpeechRecognition.forceStop)await SpeechRecognition.forceStop({timeout:1200}).catch(()=>SpeechRecognition.stop().catch(()=>{}));
+          else await SpeechRecognition.stop().catch(()=>{});
+          updateAndroidDictationQaState({stopped:true});
+          await finalizeNativeVoice(session,{stopped:true});
+        }else{
+          await removeNativeSpeechHandles();
+          setListening(false);
+          updateAndroidDictationQaState({stopped:true,finalized:true});
+        }
       }else if(webRecognition.current){
         webRecognition.current.stop();
         webRecognition.current=null;
       }
-    }catch(e){setDictationError(e?.message||'Could not stop dictation.')}
+    }catch(e){
+      setDictationError(e?.message||'Could not stop dictation.');
+      updateAndroidDictationQaState({error:String(e?.message||e||'stop_failed')});
+    }
     setListening(false);
   }
 
   async function startVoice(){
     if(isNative&&hapticsEnabled)Haptics.impact({style:ImpactStyle.Light}).catch(()=>{});
+    if(isNative&&nativeSpeechSession.current){await stopVoice();return}
     if(listening){await stopVoice();return}
     setDictationError('');
     dictationBase.current=prompt.trimEnd();
@@ -2535,41 +2610,103 @@ function Composer(props){
       return;
     }
 
-    const language=voiceLanguage==='auto'?(navigator.language||'en-US'):voiceLanguage;
+    const nativeLanguage=voiceLanguage==='auto'?undefined:voiceLanguage;
+    const webLanguage=nativeLanguage||(navigator.language||'en-US');
     if(isNative){
+      const session=Date.now();
+      nativeSpeechSession.current=session;
+      nativeSpeechFinalizing.current=false;
+      nativeLastTranscript.current='';
+      updateAndroidDictationQaState({
+        permission:'checking',started:false,stopped:false,stopRequested:false,
+        denied:false,partial:false,final:false,finalized:false,error:'',
+        language:nativeLanguage||'device'
+      });
       try{
+        await removeNativeSpeechHandles();
         const available=await SpeechRecognition.available();
         if(!available?.available)throw new Error('Speech recognition is not available on this device.');
+
         let permission=await SpeechRecognition.checkPermissions();
-        if(permission?.speechRecognition!=='granted')permission=await SpeechRecognition.requestPermissions();
-        if(permission?.speechRecognition!=='granted')throw new Error('Microphone permission is required for dictation.');
+        let permissionState=permission?.speechRecognition||'prompt';
+        updateAndroidDictationQaState({permission:permissionState});
+        if(permissionState!=='granted'){
+          permission=await SpeechRecognition.requestPermissions();
+          permissionState=permission?.speechRecognition||'denied';
+          updateAndroidDictationQaState({permission:permissionState});
+        }
+        if(permissionState!=='granted'){
+          const denied=permissionState==='denied';
+          updateAndroidDictationQaState({denied,error:'permission_denied'});
+          throw new Error(denied
+            ? 'Microphone access is denied. Enable microphone permission for Free AI in Android Settings.'
+            : 'Microphone permission is required for dictation.');
+        }
 
         const partial=await SpeechRecognition.addListener('partialResults',event=>{
-          const text=(event?.accumulatedText||event?.accumulated||event?.matches?.[0]||'').trim();
-          if(text)setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
+          if(session!==nativeSpeechSession.current)return;
+          const text=nativeTranscriptText(event);
+          if(text)commitNativeTranscript(text,!!event?.forced);
+        });
+        const segment=await SpeechRecognition.addListener('segmentResults',event=>{
+          if(session!==nativeSpeechSession.current)return;
+          const text=nativeTranscriptText(event);
+          if(text)commitNativeTranscript(text,true);
         });
         const stateHandle=await SpeechRecognition.addListener('listeningState',event=>{
-          const state=event?.state||event?.status;
-          setListening(state==='started'||state==='listening');
+          if(session!==nativeSpeechSession.current)return;
+          const state=event?.state||event?.status||'';
+          const active=state==='startingListening'||state==='started'||event?.status==='started';
+          if(active)setListening(true);
+          if(state==='stoppingListening'||state==='stopped'||event?.status==='stopped'){
+            setListening(false);
+            if(state==='stopped'||event?.status==='stopped')setTimeout(()=>finalizeNativeVoice(session),80);
+          }
+          updateAndroidDictationQaState({listening:active,state:String(state),reason:String(event?.reason||'')});
         });
         const errorHandle=await SpeechRecognition.addListener('error',event=>{
+          if(session!==nativeSpeechSession.current)return;
+          const message=nativeDictationErrorMessage(event);
           setListening(false);
-          if(event?.message)setDictationError(event.message);
+          setDictationError(message);
+          updateAndroidDictationQaState({
+            listening:false,
+            error:String(event?.code||event?.errorCode||event?.message||'recognition_error'),
+            denied:/permission|insufficient/i.test([event?.code,event?.errorCode,event?.message].filter(Boolean).join(' '))
+          });
+          setTimeout(()=>finalizeNativeVoice(session),0);
         });
-        nativeSpeechHandles.current=[partial,stateHandle,errorHandle];
-        const onDevice=await SpeechRecognition.isOnDeviceRecognitionAvailable?.({language}).catch(()=>({available:false}));
-        setListening(true);
-        await SpeechRecognition.start({
-          language,
+        const readyHandle=await SpeechRecognition.addListener('readyForNextSession',()=>{
+          if(session!==nativeSpeechSession.current)return;
+          finalizeNativeVoice(session).catch(()=>{});
+        });
+        nativeSpeechHandles.current=[partial,segment,stateHandle,errorHandle,readyHandle];
+
+        const options={
           maxResults:3,
           partialResults:true,
           popup:false,
-          addPunctuation:true,
-          useOnDeviceRecognition:!!onDevice?.available
-        });
+          addPunctuation:true
+        };
+        if(nativeLanguage)options.language=nativeLanguage;
+
+        setListening(true);
+        updateAndroidDictationQaState({listening:true});
+        await SpeechRecognition.start(options);
+        updateAndroidDictationQaState({started:true});
       }catch(e){
         setListening(false);
-        setDictationError(e?.message||'Dictation could not start.');
+        const message=e?.message||'Dictation could not start.';
+        setDictationError(message);
+        updateAndroidDictationQaState({
+          listening:false,
+          error:String(e?.message||e||'start_failed'),
+          denied:/denied|permission/i.test(message)
+        });
+        if(nativeSpeechSession.current===session){
+          await removeNativeSpeechHandles();
+          nativeSpeechSession.current=0;
+        }
       }
       return;
     }
@@ -2578,7 +2715,7 @@ function Composer(props){
     if(!Recognition){setDictationError('Dictation is not supported by this desktop runtime.');return}
     const recognition=new Recognition();
     webRecognition.current=recognition;
-    recognition.lang=language;
+    recognition.lang=webLanguage;
     recognition.interimResults=true;
     recognition.continuous=false;
     recognition.onstart=()=>setListening(true);
@@ -2590,15 +2727,25 @@ function Composer(props){
     };
     recognition.start();
   }
+
+  startVoiceRef.current=startVoice;
+  stopVoiceRef.current=stopVoice;
   useEffect(()=>{
-    const handler=()=>startVoice();
-    window.addEventListener('freeai:start-voice',handler);
+    const startHandler=()=>startVoiceRef.current?.();
+    const stopHandler=()=>stopVoiceRef.current?.();
+    window.addEventListener('freeai:start-voice',startHandler);
+    window.addEventListener('freeai:stop-voice',stopHandler);
     return()=>{
-      window.removeEventListener('freeai:start-voice',handler);
-      if(isNative)SpeechRecognition.removeAllListeners().catch(()=>{});
-      else webRecognition.current?.abort?.();
+      window.removeEventListener('freeai:start-voice',startHandler);
+      window.removeEventListener('freeai:stop-voice',stopHandler);
+      if(isNative){
+        nativeSpeechSession.current=0;
+        if(SpeechRecognition.forceStop)SpeechRecognition.forceStop({timeout:500}).catch(()=>SpeechRecognition.stop().catch(()=>{}));
+        else SpeechRecognition.stop().catch(()=>{});
+        SpeechRecognition.removeAllListeners().catch(()=>{});
+      }else webRecognition.current?.abort?.();
     };
-  },[listening]);
+  },[]);
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
     {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval} onOpenProject={onWorkProject} onOpenAgent={onWorkAgent}/>} 
@@ -2683,7 +2830,7 @@ function Composer(props){
       </div>
     </div>
     {attachmentError&&<div className="dictationError" role="alert">{attachmentError}</div>}
-    {dictationError&&<div className="dictationError">{dictationError}</div>}
+    {dictationError&&<div className="dictationError voiceDictationError" role="alert">{dictationError}</div>}
     {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
@@ -3808,7 +3955,7 @@ function VoiceSettings({prefs,setPrefs}){
       {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Engine" desc="Uses Windows Voice Typing. Its language follows your current Windows input language." control={<span className="valuePill">Windows + H</span>}/>}
       {isDesktop&&desktopPlatform!=='win32'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
       {!isDesktop&&<SettingRow title="Language" desc="Language used by the microphone dictation button." control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Device language</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
-      {isNative&&<SettingRow title="Microphone permission" desc="Required for native Android dictation." control={<button className="settingsInlineButton" onClick={request}>{permission==='granted'?'Granted':'Request access'}</button>}/>}
+      {isNative&&<SettingRow title="Microphone permission" desc={permission==='denied'?'Microphone access is denied. Enable it in Android Settings, then retry.':'Required for native Android dictation.'} control={<button className="settingsInlineButton" onClick={request}>{permission==='granted'?'Granted':permission==='denied'?'Denied · retry':'Request access'}</button>}/>}
     </div>
   </div>
 }
