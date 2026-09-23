@@ -31,6 +31,8 @@ has(styles,'.nativeMobileShell .mobileConversationPicker{display:flex}','Android
 has(styles,'bottom:max(8px,calc(var(--safe-bottom) + var(--keyboard-offset)))','Android composer must account for bottom safe area and keyboard offset.');
 has(styles,'@media(min-width:761px){','Android tablet adaptation is missing.');
 has(styles,'.nativeMobileShell .gptComposer','Android tablet composer sizing is missing.');
+has(styles,'.nativeMobileShell .settingsScreen.mobileSettingsList .settingsNav','Android tablet settings must keep mobile list/detail navigation.');
+has(styles,'.nativeMobileShell .mobileModeButton','Android tablet app bar must keep the mobile mode control.');
 
 ok(capacitor?.plugins?.SystemBars?.insetsHandling==='css','Capacitor SystemBars must inject CSS safe-area variables.');
 ok(capacitor?.plugins?.SystemBars?.hidden===false,'Android system bars must not start hidden.');
