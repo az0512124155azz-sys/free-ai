@@ -492,6 +492,46 @@ function App(){
   },[deleteChatTarget,projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel,page]);
 
   useEffect(()=>{
+    if(!isAndroidNative||!isVisualTestBuild)return;
+    const visible=element=>{
+      if(!element)return false;
+      const style=getComputedStyle(element);
+      const rect=element.getBoundingClientRect();
+      return style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0;
+    };
+    const audit=()=>{
+      const rootStyle=getComputedStyle(document.documentElement);
+      const shell=document.querySelector('.desktopShell');
+      return [
+        'shell='+(!!shell&&shell.classList.contains('nativeMobileShell')),
+        'auth='+!!document.querySelector('.authScreen'),
+        'drawer='+!!document.querySelector('.gptSidebar.mobileOpen'),
+        'mobileNav='+visible(document.querySelector('.mobileNavTrigger')),
+        'desktopNav='+visible(document.querySelector('.desktopPrimaryNav')),
+        'modelPicker='+visible(document.querySelector('.mobileConversationPicker')),
+        'modelOpen='+!!document.querySelector('.mobileTopModelPanel'),
+        'composer='+visible(document.querySelector('.gptComposer')),
+        'width='+Math.round(window.innerWidth),
+        'height='+Math.round(window.innerHeight),
+        'keyboard='+Math.round(parseFloat(rootStyle.getPropertyValue('--keyboard-offset'))||0),
+        'safeTop='+(rootStyle.getPropertyValue('--safe-area-inset-top').trim()||'0px'),
+        'safeBottom='+(rootStyle.getPropertyValue('--safe-area-inset-bottom').trim()||'0px')
+      ].join(';');
+    };
+    window.__FREEAI_ANDROID_QA__=(command='audit')=>{
+      if(command==='openDrawer')document.querySelector('.mobileNavTrigger')?.click();
+      if(command==='openModel')document.querySelector('.mobileModelTrigger')?.click();
+      if(command==='focusComposer'){
+        const field=document.querySelector('.gptComposer textarea');
+        field?.focus();
+        field?.click();
+      }
+      return audit();
+    };
+    return()=>{delete window.__FREEAI_ANDROID_QA__};
+  },[]);
+
+  useEffect(()=>{
     if(!isDesktop)return;
     let active=true;
     window.desktopApi.getStatus().then(s=>active&&setStatus(s)).catch(()=>{});
