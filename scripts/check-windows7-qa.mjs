@@ -8,6 +8,7 @@ const contentScript=fs.readFileSync('extension/content.js','utf8');
 const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const installerSmoke=fs.readFileSync('scripts/windows7-installer-smoke.ps1','utf8');
+const installerNsis=fs.readFileSync('build/installer.nsh','utf8');
 
 function fail(message){
   console.error('Windows 7 QA regression failed: '+message);
@@ -83,6 +84,10 @@ has(installerSmoke,"Registry::HKEY_CURRENT_USER\\Software\\Classes\\freeai",'Ins
 has(installerSmoke,"$protocolRoot.GetValue('URL Protocol')",'Installer smoke must verify the URL Protocol registry marker.');
 has(installerSmoke,"$protocolCommand.IndexOf($appExe",'Installer smoke must verify freeai:// routes to the installed executable.');
 has(installerSmoke,"Silent uninstall left a stale freeai:// protocol command",'Installer smoke must reject stale protocol registration after uninstall.');
+has(installerNsis,'!macro customUnInstall','NSIS uninstall customization for protocol cleanup is missing.');
+has(installerNsis,'ReadRegStr $0 HKCU "Software\\Classes\\freeai\\shell\\open\\command" ""','Uninstaller must inspect the current freeai:// HKCU command before cleanup.');
+has(installerNsis,'${StrStr} $1 $0 "$INSTDIR\\Free AI.exe"','Uninstaller must only match the protocol registration owned by the installation being removed.');
+has(installerNsis,'DeleteRegKey HKCU "Software\\Classes\\freeai"','Uninstaller must remove its stale freeai:// registry key.');
 has(main,"app.setAsDefaultProtocolClient(AUTH_SCHEME",'Runtime auth protocol registration is missing.');
 has(main,"app.isDefaultProtocolClient(AUTH_SCHEME)",'Windows app info must expose auth protocol registration state.');
 has(main,"app.on('second-instance'",'Packaged auth callback handling must support an already-running Windows instance.');
