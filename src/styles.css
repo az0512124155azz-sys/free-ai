@@ -911,6 +911,27 @@ html[data-native-platform="android"][data-keyboard-open] .nativeMobileShell .wor
 
 @media(min-width:761px){
   .nativeMobileShell .workspace{max-width:none}
+  .nativeMobileShell .mobileQuickStart{padding:2px 8px 4px}
+  .nativeMobileShell .mobileNewChat{width:100%;height:42px;border-radius:11px;background:var(--selected);display:flex;align-items:center;gap:9px;padding:0 11px;color:var(--text);font-size:13px;font-weight:560}
+  .nativeMobileShell .mobileExperienceRail{display:flex;gap:7px;overflow-x:auto;padding:9px 1px 5px;scrollbar-width:none}
+  .nativeMobileShell .mobileExperienceRail::-webkit-scrollbar{display:none}
+  .nativeMobileShell .mobileExperienceRail button{flex:none;height:38px;border:1px solid var(--border-soft);background:var(--surface-primary);border-radius:999px;padding:0 12px;display:flex;align-items:center;gap:7px;color:var(--text-secondary);font-size:12px}
+  .nativeMobileShell .mobileExperienceRail button.active{background:var(--selected);color:var(--text);border-color:var(--border)}
+  .nativeMobileShell .mobileModeButton{height:34px;padding:0 11px;border-radius:999px;background:transparent;color:var(--text);display:flex;align-items:center;gap:5px;font-size:13px;font-weight:580}
+  .nativeMobileShell .mobileModeMenu{position:absolute;z-index:120;top:39px;left:50%;transform:translateX(-50%);width:150px;background:var(--popover);border:1px solid var(--border);border-radius:14px;padding:6px;box-shadow:var(--shadow-lg)}
+  .nativeMobileShell .mobileModeMenu button{width:100%;height:34px;border-radius:9px;background:transparent;text-align:left;padding:0 10px;font-size:12px;color:var(--text-secondary)}
+  .nativeMobileShell .mobileModelTrigger{min-width:0;max-width:min(64vw,420px);height:36px;padding:0 10px;border-radius:999px;background:transparent;display:flex;align-items:center;gap:8px;color:var(--text-secondary)}
+  .nativeMobileShell .mobileModelTriggerText{min-width:0;display:flex;align-items:baseline;gap:6px;overflow:hidden}
+  .nativeMobileShell .mobileModelTriggerText b{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nativeMobileShell .mobileTopModelPanel{top:44px;max-height:min(68vh,560px);overflow:auto;background:var(--popover);border:1px solid var(--border);border-radius:20px;padding:7px;box-shadow:var(--shadow-lg)}
+  .nativeMobileShell .settingsScreen.mobileSettingsList .settingsNav{display:block;min-height:calc(100vh - var(--safe-top) - var(--safe-bottom));border-right:0;padding:9px 10px 24px}
+  .nativeMobileShell .settingsScreen.mobileSettingsList .settingsContent{display:none}
+  .nativeMobileShell .settingsScreen.mobileSettingsDetail .settingsNav{display:none}
+  .nativeMobileShell .settingsScreen.mobileSettingsDetail .settingsContent{display:block}
+  .nativeMobileShell .settingsContent{padding:0 max(18px,calc((100vw - 760px)/2)) 44px;overflow:visible}
+  .nativeMobileShell .settingsContentTop{height:62px;margin-bottom:8px;align-items:center;gap:5px}
+  .nativeMobileShell .mobileSettingsBack{display:grid!important}
+  .nativeMobileShell .profileMenu{position:fixed;z-index:250;left:10px;right:10px;bottom:max(10px,var(--safe-bottom));width:auto;max-width:none;border-radius:22px}
   .nativeMobileShell .chatStage,
   .nativeMobileShell .pageBody{width:100%;max-width:100%}
   .nativeMobileShell .gptComposer,
