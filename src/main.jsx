@@ -439,6 +439,7 @@ function App(){
   const [profileMenu,setProfileMenu]=useState(false);
   const [settingsOpen,setSettingsOpen]=useState(false);
   const [settingsSection,setSettingsSection]=useState('General');
+  const [mobileSettingsList,setMobileSettingsList]=useState(true);
   const [sidePanel,setSidePanel]=useState(null);
   const [selectedFile,setSelectedFile]=useState(null);
   const [attachments,setAttachments]=useState([]);
@@ -672,13 +673,16 @@ function App(){
       if(plusMenu){setPlusMenu(false);return}
       if(mobileModeMenu){setMobileModeMenu(false);return}
       if(mobileNavOpen){setMobileNavOpen(false);return}
-      if(settingsOpen){setSettingsOpen(false);return}
+      if(settingsOpen){
+        if(!mobileSettingsList){setMobileSettingsList(true);return}
+        setSettingsOpen(false);return
+      }
       if(sidePanel){setSidePanel(null);return}
       if(page!=='chat'){setPage('chat');return}
       CapacitorApp.exitApp().catch(()=>{});
     }).then(value=>{handle=value}).catch(()=>{});
     return()=>handle?.remove?.();
-  },[deleteChatTarget,projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel,page]);
+  },[deleteChatTarget,projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,mobileSettingsList,sidePanel,page]);
 
   useEffect(()=>{
     if(!isAndroidNative||!isVisualTestBuild)return;
@@ -715,7 +719,11 @@ function App(){
         'dictationPartial='+!!readAndroidDictationQaState().partial,
         'dictationFinal='+!!readAndroidDictationQaState().final,
         'dictationFinalized='+!!readAndroidDictationQaState().finalized,
-        'dictationLanguage='+String(readAndroidDictationQaState().language||'unknown')
+        'dictationLanguage='+String(readAndroidDictationQaState().language||'unknown'),
+        'settingsOpen='+!!document.querySelector('.settingsScreen'),
+        'settingsList='+!!document.querySelector('.settingsScreen.mobileSettingsList'),
+        'settingsDetail='+!!document.querySelector('.settingsScreen.mobileSettingsDetail'),
+        'settingsSection='+String(document.querySelector('.settingsScreen')?.dataset?.section||'')
       ].join(';');
     };
     window.__FREEAI_ANDROID_QA__=(command='audit')=>{
@@ -728,6 +736,16 @@ function App(){
       }
       if(command==='startDictation')window.dispatchEvent(new CustomEvent('freeai:start-voice'));
       if(command==='stopDictation')window.dispatchEvent(new CustomEvent('freeai:stop-voice'));
+      if(command==='openSettings'){
+        setSettingsSection('General');
+        setMobileSettingsList(true);
+        setSettingsOpen(true);
+      }
+      if(command==='openSettingsVoice'){
+        setSettingsSection('Voice');
+        setMobileSettingsList(false);
+        setSettingsOpen(true);
+      }
       return audit();
     };
     return()=>{delete window.__FREEAI_ANDROID_QA__};
@@ -745,7 +763,7 @@ function App(){
     });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
-      if(command==='about'){stopActiveWorkTask();setSettingsSection('General');setSettingsOpen(true)}
+      if(command==='about'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
       if(command==='open-computer'){setSettingsOpen(false);setSidePanel('computer')}
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
@@ -2134,7 +2152,7 @@ function App(){
         </button>
         {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
-        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
+        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setMobileSettingsList(true);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
       </div>
     </aside>}
     {mobileNavOpen&&<button className="mobileNavScrim" aria-label="Close navigation" onClick={()=>setMobileNavOpen(false)}/>}
@@ -2323,7 +2341,8 @@ function App(){
     />}
     {projectDialogOpen&&isWindowsDesktop&&<NewProjectDialog draft={projectDraft} setDraft={setProjectDraft} onCreate={createProject} onClose={()=>setProjectDialogOpen(false)}/>}
     {settingsOpen&&<SettingsView
-      section={settingsSection} setSection={setSettingsSection} onClose={()=>setSettingsOpen(false)}
+      section={settingsSection} setSection={setSettingsSection} mobileList={mobileSettingsList} setMobileList={setMobileSettingsList}
+      onClose={()=>{setMobileSettingsList(true);setSettingsOpen(false)}}
       session={session} prefs={appPrefs} setPrefs={persistPrefs} status={status} settings={settings} setSettings={setSettings}
       saveSettings={saveSettings} connected={connected} mcpConnections={mcpConnections} apiDraft={apiDraft} setApiDraft={setApiDraft}
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
@@ -3798,8 +3817,7 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
 }
 
 function SettingsView(props){
-  const {section,setSection,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
-  const [mobileList,setMobileList]=useState(true);
+  const {section,setSection,mobileList,setMobileList,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
   const [settingsQuery,setSettingsQuery]=useState('');
   const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Files','Configuration','Browser','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>
@@ -3808,7 +3826,7 @@ function SettingsView(props){
     (label!=='App'||isWindowsDesktop)&&
     (!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase()))
   );
-  return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} role="dialog" aria-modal="true" aria-label="Settings">
+  return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} data-section={section} role="dialog" aria-modal="true" aria-label="Settings">
     <aside className="settingsNav">
       <button className="backToApp" onClick={onClose}><ArrowLeft size={15}/>Back to app</button>
       <div className="settingsSearch"><Search size={15}/><input value={settingsQuery} onChange={e=>setSettingsQuery(e.target.value)} placeholder="Search settings"/></div>
