@@ -24,6 +24,11 @@ has("ensureApplicationAttr('roundIcon','@mipmap/ic_launcher_round')",'Generated 
 has("const adaptiveSize=Math.round(108*scale)",'Adaptive icon layers must use the Android 108dp canvas.');
 has("const adaptiveMarkSize=Math.round(66*scale)",'Adaptive icon mark must remain inside the Android 66dp safe zone.');
 has("const splashSize=Math.round(144*scale)",'Legacy splash logo must be generated per density.');
+has("await fs.promises.writeFile(path.join(mipmapDir,'ic_launcher.png'),await solidCanvas(legacySize,legacyMark));",'Generated PNG buffers must be written with fs.promises.writeFile.');
+if(source.includes(")).toFile(path.join(mipmapDir")||source.includes(")).toFile(path.join(drawableDir")){
+  fail('Do not call Sharp .toFile() on values already converted to Buffer with toBuffer().');
+}
+
 has("const legacySize=Math.round(48*scale)",'Legacy launcher fallback must be generated per density.');
 
 console.log('Android 6A1 branding source regression checks passed.');
