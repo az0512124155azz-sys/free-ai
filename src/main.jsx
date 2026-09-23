@@ -723,7 +723,14 @@ function App(){
         'settingsOpen='+!!document.querySelector('.settingsScreen'),
         'settingsList='+!!document.querySelector('.settingsScreen.mobileSettingsList'),
         'settingsDetail='+!!document.querySelector('.settingsScreen.mobileSettingsDetail'),
-        'settingsSection='+String(document.querySelector('.settingsScreen')?.dataset?.section||'')
+        'settingsSection='+String(document.querySelector('.settingsScreen')?.dataset?.section||''),
+        'appsPage='+!!document.querySelector('.mobileAppsPage'),
+        'appsDiscover='+!!document.querySelector('.mobileAppsDiscover'),
+        'appsSearch='+!!document.querySelector('.mobileAppsSearch input'),
+        'explorePage='+!!document.querySelector('.mobileExplorePage'),
+        'exploreApps='+!!document.querySelector('.mobileExploreApps'),
+        'exploreSearch='+!!document.querySelector('.mobileExploreSearch input'),
+        'desktopAppControls='+!!document.querySelector('.mobileAppsPage .mcpAddCard,.mobileAppsPage .directMcpGrid,.mobileExplorePage .directMcpGrid')
       ].join(';');
     };
     window.__FREEAI_ANDROID_QA__=(command='audit')=>{
@@ -745,6 +752,16 @@ function App(){
         setSettingsSection('Voice');
         setMobileSettingsList(false);
         setSettingsOpen(true);
+      }
+      if(command==='openApps'){
+        setSettingsOpen(false);
+        setMobileNavOpen(false);
+        setPage('plugins');
+      }
+      if(command==='openExplore'){
+        setSettingsOpen(false);
+        setMobileNavOpen(false);
+        setPage('explore');
       }
       return audit();
     };
@@ -2305,7 +2322,7 @@ function App(){
         tools={mcpTools} chats={chats} directMcpConnections={mcpConnections}
         selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
         onRefreshMcp={refreshMcpConnections} onRemoveMcp={removeMcpConnection}
-        onBack={()=>setPage('chat')} onManagePlugins={openPluginsPage} onOpenPublicDirectory={openPublicPluginDirectory}
+        onBack={()=>setPage('chat')} onManagePlugins={openPluginsPage} onOpenPublicDirectory={openPublicPluginDirectory} onOpenChat={openChat}
       />}
     </main>
 
@@ -3176,14 +3193,66 @@ function PluginsPage({
   mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh,onExplore,onOpenPublicDirectory
 }){
   const [query,setQuery]=useState('');
-  const [view,setView]=useState('configured');
+  const [view,setView]=useState(()=>isNative?'discover':'configured');
   const [category,setCategory]=useState('All');
   const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
   if(!isWindowsDesktop){
-    const visibleTools=needle?tools.filter(t=>(t.mcp+' '+t.ownerName).toLowerCase().includes(needle)):tools;
-    const visibleProviders=needle?connected.filter(p=>(modelLabel(p)+' '+(p.mcps||[]).join(' ')).toLowerCase().includes(needle)):connected;
+    const visibleTools=needle?tools.filter(t=>pluginSearchMatch([t.mcp,t.ownerName],needle)):tools;
+    const visibleProviders=needle?connected.filter(p=>pluginSearchMatch([modelLabel(p),...(p.mcps||[])],needle)):connected;
+    if(isNative){
+      const mobileCategories=['All',...new Set(publicPluginDirectory.map(item=>item.category))];
+      const visiblePublic=publicPluginDirectory.filter(entry=>
+        (category==='All'||entry.category===category)&&pluginSearchMatch([entry.name,entry.category,entry.description],needle)
+      );
+      return <div className="contentPage mobileAppsPage" data-app-view={view}>
+        <PageTop onBack={onBack} title="Apps" action="Explore" onAction={onExplore}/>
+        <div className="contentInner pluginsDirectoryInner">
+          <div className="pluginPageHero">
+            <div><h1>Apps</h1><p className="pageLead">Discover app listings, review capabilities exposed by connected AI providers, and keep authorization status explicit.</p></div>
+          </div>
+          <div className="searchBar mobileAppsSearch"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search apps and providers"/></div>
+          <div className="directoryTabs mobileAppsTabs" role="tablist" aria-label="Apps sections">
+            {[['discover','Discover'],['available','Available'],['providers','Providers']].map(([id,label])=>
+              <button key={id} role="tab" aria-selected={view===id} className={view===id?'active':''} onClick={()=>setView(id)}>{label}</button>
+            )}
+          </div>
+
+          {view==='discover'&&<section className="pluginSection mobileAppsDiscover">
+            <div className="sectionHeading"><div><h2>Discover</h2><small>Public ChatGPT directory listings. A listing is not an installation or account connection in Free AI.</small></div><button className="textLinkButton" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Directory</button></div>
+            <div className="directoryChips">{mobileCategories.map(name=><button key={name} className={category===name?'active':''} onClick={()=>setCategory(name)}>{name}</button>)}</div>
+            <div className="directoryGrid">
+              {visiblePublic.map(entry=><PublicDirectoryCard key={entry.id} entry={entry} onOpen={()=>setDetails({kind:'public',entry})}/>)}
+              {!visiblePublic.length&&<div className="pluginEmptyCard"><Search size={22}/><b>No app listing matches</b><span>Try another category or search term.</span></div>}
+            </div>
+          </section>}
+
+          {view==='available'&&<section className="pluginSection mobileAppsAvailable">
+            <div className="sectionHeading"><div><h2>Available from connected providers</h2><small>Observed provider labels only. They are not treated as installed apps or verified MCP tools.</small></div><span className="pluginMeta">{visibleTools.length}</span></div>
+            <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Provider-managed</b><span>Account authorization, permissions, and supported actions remain controlled by the provider or its app connection.</span></div></div>
+            <div className="hintGrid">
+              {visibleTools.map(tool=><button className="hintCard" key={tool.key} onClick={()=>setDetails({kind:'hint',hint:tool})}><span className="directoryIcon"><Plug size={15}/></span><span><b>{tool.mcp}</b><small>{tool.ownerName}</small></span><ChevronRight size={14}/></button>)}
+              {!visibleTools.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>No provider app hints</b><span>Connect a supported AI provider on your paired desktop to surface its available labels here.</span></div>}
+            </div>
+          </section>}
+
+          {view==='providers'&&<section className="pluginSection mobileAppsProviders">
+            <div className="sectionHeading"><div><h2>Connected AI providers</h2><small>Provider connectivity is separate from app authorization.</small></div><span className="pluginMeta">{visibleProviders.length}</span></div>
+            <div className="pluginGrid">
+              {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
+                <span className={'providerBadge '+(provider.source==='api'?'api':provider.id)}>{modelLabel(provider).slice(0,1)}</span>
+                <span><b>{modelLabel(provider)}</b><small>{provider.source==='api'?'API model':((provider.mcps?.length||0)+' provider app hints')}</small></span>
+                <span className={'connectionStatus '+(provider.source==='browser'?'good':'')}>{provider.source==='browser'?'Live':'API'}</span>
+              </div>)}
+              {!visibleProviders.length&&<div className="pluginEmptyCard"><Bot size={22}/><b>No AI provider is connected</b><span>Pair your desktop or add an API model in Settings.</span></div>}
+            </div>
+          </section>}
+        </div>
+        {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
+          onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+      </div>;
+    }
     return <div className="contentPage">
       <PageTop onBack={onBack} title={pageName} action={isDesktop?'Refresh':null} onAction={onRefresh}/>
       <div className="contentInner">
@@ -3314,18 +3383,62 @@ function PluginsPage({
   </div>;
 }
 
-function ExplorePage({tools,chats=[],directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onRefreshMcp,onRemoveMcp,onBack,onManagePlugins,onOpenPublicDirectory}){
+function ExplorePage({tools,chats=[],directMcpConnections=[],selectedMcpIds=[],onToggleMcp,onRefreshMcp,onRemoveMcp,onBack,onManagePlugins,onOpenPublicDirectory,onOpenChat}){
   const [query,setQuery]=useState('');
   const [filter,setFilter]=useState('all');
   const [category,setCategory]=useState('All');
   const [details,setDetails]=useState(null);
   if(!isWindowsDesktop){
+    if(isNative){
+      const mobileNeedle=query.trim().toLowerCase();
+      const visibleApps=publicPluginDirectory.filter(entry=>pluginSearchMatch([entry.name,entry.category,entry.description],mobileNeedle));
+      const visibleHints=tools.filter(tool=>pluginSearchMatch([tool.mcp,tool.ownerName],mobileNeedle));
+      const visibleChats=chats.filter(chat=>pluginSearchMatch([chat.title,chat.modelName,chat.providerId],mobileNeedle));
+      const showApps=filter==='all'||filter==='apps';
+      const showChats=filter==='all'||filter==='chats';
+      return <div className="contentPage mobileExplorePage" data-explore-filter={filter}>
+        <PageTop onBack={onBack} title="Explore" action="Apps" onAction={onManagePlugins}/>
+        <div className="contentInner exploreDirectoryInner">
+          <div className="exploreHero"><span className="exploreMark"><Blocks size={22}/></span><div><h1>Explore</h1><p className="pageLead">Search discoverable apps, provider capabilities, and your conversations from one mobile surface.</p></div></div>
+          <div className="searchBar mobileExploreSearch"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search apps and conversations"/></div>
+          <div className="directoryTabs exploreFilters mobileExploreTabs" role="tablist" aria-label="Explore filters">
+            {[['all','All'],['apps','Apps'],['chats','Chats']].map(([id,label])=>
+              <button key={id} role="tab" aria-selected={filter===id} className={filter===id?'active':''} onClick={()=>setFilter(id)}>{label}</button>
+            )}
+          </div>
+
+          {showApps&&<section className="exploreSection mobileExploreApps">
+            <div className="sectionHeading"><div><h2>Apps</h2><small>Public listings are discovery only; provider hints are shown separately and never treated as installed.</small></div><button className="textLinkButton" onClick={onManagePlugins}>Manage</button></div>
+            <div className="directoryGrid">
+              {visibleApps.map(entry=><PublicDirectoryCard key={entry.id} entry={entry} onOpen={()=>setDetails({kind:'public',entry})}/>)}
+              {!visibleApps.length&&!visibleHints.length&&<div className="pluginEmptyCard"><Search size={22}/><b>No app matches</b><span>Try another search term.</span></div>}
+            </div>
+            {!!visibleHints.length&&<>
+              <div className="sectionHeading mobileExploreHintsHeading"><div><h2>Available from providers</h2><small>Unverified provider-managed labels.</small></div><span className="pluginMeta">{visibleHints.length}</span></div>
+              <div className="hintGrid">
+                {visibleHints.map(tool=><button className="hintCard" key={tool.key} onClick={()=>setDetails({kind:'hint',hint:tool})}><span className="directoryIcon"><Plug size={15}/></span><span><b>{tool.mcp}</b><small>{tool.ownerName}</small></span><ChevronRight size={14}/></button>)}
+              </div>
+            </>}
+          </section>}
+
+          {showChats&&<section className="exploreSection mobileExploreChats">
+            <div className="sectionHeading"><div><h2>Conversations</h2><small>Search your local Free AI history.</small></div><span className="pluginMeta">{visibleChats.length}</span></div>
+            <div className="toolList">
+              {visibleChats.map(chat=><MenuRow key={chat.id} icon={Bot} label={chat.title} sub={chat.modelName||chat.providerId||'Conversation'} onClick={()=>onOpenChat?.(chat)}/>)}
+              {!visibleChats.length&&<div className="pluginEmptyCard"><Bot size={22}/><b>No conversation matches</b><span>{query?'Try another search term.':'Your conversations will appear here.'}</span></div>}
+            </div>
+          </section>}
+        </div>
+        {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
+          onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+      </div>;
+    }
     return <div className="contentPage">
       <PageTop onBack={onBack} title="Explore"/>
       <div className="contentInner exploreInner">
         <div className="searchBar"><Search size={17}/><input placeholder="Search Free AI"/></div>
-        {!isNative&&<><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>}
-        <h3>{isNative?'Apps':'Provider connector hints'}</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+(isNative?'':' · unverified')}/>)}
+        <><h3>Desktop tools</h3><MenuRow icon={Monitor} label="Computer" sub="Control your desktop in Work mode"/><MenuRow icon={Globe2} label="Browser" sub="Browse and research inside Free AI"/></>
+        <h3>Provider connector hints</h3>{tools.slice(0,8).map(t=><MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · unverified'}/>)}
         <h3>Conversations</h3>{chats.slice(0,8).map(chat=><MenuRow key={chat.id} icon={Bot} label={chat.title} sub={chat.modelName}/>)}
       </div>
     </div>;
@@ -3851,7 +3964,7 @@ function SettingsView(props){
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
       {section==='Files'&&isWindowsDesktop&&<SimpleSettings title="Files" rows={[['Local folder access','Windows Work/Super AI · user-selected folder per conversation'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
-      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
+      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":isNative?"Discover app listings and review provider-managed capabilities. Account authorization and permissions remain with the provider or app connection.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
       {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Local repository workspace','Super AI · user-selected Git folder'],['Repository actions','Status, list, read, diff, and approval-gated writes']]}/>}
