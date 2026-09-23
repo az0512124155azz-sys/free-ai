@@ -10,7 +10,7 @@
     "dev:web": "vite --host 0.0.0.0",
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
     "dev:electron": "node scripts/prepare-branding.mjs && wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
-    "validate": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/research.cjs && node --check relay/server.mjs && node --check extension/background.js && node --check extension/content.js && node scripts/check-renderer-regressions.mjs && node scripts/check-android1-shell.mjs && node scripts/check-android1-runtime-qa.mjs && node scripts/check-android2-auth.mjs && node scripts/check-android2-runtime-auth.mjs && node scripts/check-windows6-integration.mjs && node scripts/check-windows7-qa.mjs && node scripts/check-api-transport.cjs",
+    "validate": "node --check electron/main.cjs && node --check electron/preload.cjs && node --check electron/research.cjs && node --check relay/server.mjs && node --check extension/background.js && node --check extension/content.js && node scripts/check-renderer-regressions.mjs && node scripts/check-android1-shell.mjs && node scripts/check-android1-runtime-qa.mjs && node scripts/check-android2-auth.mjs && node scripts/check-android2-runtime-auth.mjs && node scripts/check-android3-chat-composer.mjs && node scripts/check-windows6-integration.mjs && node scripts/check-windows7-qa.mjs && node scripts/check-api-transport.cjs",
     "build:web": "vite build",
     "desktop:dist": "npm run validate && node scripts/prepare-branding.mjs && npm run build:web && electron-builder --publish never",
     "relay": "node relay/server.mjs",
