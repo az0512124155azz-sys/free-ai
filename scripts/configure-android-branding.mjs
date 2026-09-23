@@ -78,6 +78,23 @@ for(const dirent of fs.readdirSync(res,{withFileTypes:true})){
   }
 }
 
+
+const manifestPath=path.resolve('android/app/src/main/AndroidManifest.xml');
+if(fs.existsSync(manifestPath)){
+  let manifest=fs.readFileSync(manifestPath,'utf8');
+  const activityRe=/<activity\b([^>]*\bandroid:name=["']\.MainActivity["'][^>]*)>/;
+  const match=manifest.match(activityRe);
+  if(!match)throw new Error('MainActivity declaration not found in AndroidManifest.xml');
+  let attrs=match[1];
+  if(/android:windowSoftInputMode=/.test(attrs)){
+    attrs=attrs.replace(/android:windowSoftInputMode=["'][^"']*["']/,'android:windowSoftInputMode="adjustResize"');
+  }else{
+    attrs+=' android:windowSoftInputMode="adjustResize"';
+  }
+  manifest=manifest.replace(activityRe,'<activity'+attrs+'>');
+  fs.writeFileSync(manifestPath,manifest,'utf8');
+}
+
 const stylesPath=path.join(res,'values','styles.xml');
 if(fs.existsSync(stylesPath)){
   let xml=fs.readFileSync(stylesPath,'utf8');

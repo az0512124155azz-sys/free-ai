@@ -37,6 +37,7 @@ has(styles,'.nativeMobileShell .mobileModeButton','Android tablet app bar must k
 ok(capacitor?.plugins?.SystemBars?.insetsHandling==='css','Capacitor SystemBars must inject CSS safe-area variables.');
 ok(capacitor?.plugins?.SystemBars?.hidden===false,'Android system bars must not start hidden.');
 has(branding,"['android:windowLayoutInDisplayCutoutMode','always']", 'Android 15/16 display cutout mode must use edge-to-edge compatible always mode.');
+has(branding,"android:windowSoftInputMode=\"adjustResize\"",'Android MainActivity must resize for the software keyboard, including large-screen tablets.');
 ok(!branding.includes("['android:statusBarColor','@android:color/transparent']"),'Legacy Android status bar color mutation must not return.');
 ok(!branding.includes("['android:navigationBarColor','@android:color/transparent']"),'Legacy Android navigation bar color mutation must not return.');
 
