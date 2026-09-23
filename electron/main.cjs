@@ -2093,6 +2093,25 @@ function publicApiConnection(c){
   };
 }
 
+function publicRelayProvider(provider){
+  if(!provider||typeof provider!=='object')return null;
+  return {
+    id:String(provider.id||''),
+    providerId:String(provider.providerId||''),
+    name:String(provider.name||''),
+    model:String(provider.model||''),
+    modelName:String(provider.modelName||''),
+    source:provider.source==='api'?'api':'browser',
+    connected:provider.connected!==false,
+    adapterReady:provider.adapterReady!==false,
+    effortLevels:Array.isArray(provider.effortLevels)?provider.effortLevels.filter(Boolean).slice(0,12):[],
+    effortControl:provider.effortControl||null,
+    activeEffort:provider.activeEffort||'default',
+    fileUpload:provider.fileUpload===true,
+    mcps:Array.isArray(provider.mcps)?provider.mcps.map(value=>String(value)).filter(Boolean).slice(0,64):[]
+  };
+}
+
 function status(){
   const extensionConnected=!!(extensionSocket&&extensionSocket.readyState===WebSocket.OPEN);
   return {
@@ -2121,7 +2140,21 @@ function sendStatus(){
   const s=status();
   if(win&&!win.isDestroyed()) win.webContents.send('bridge-status',s);
   if(relaySocket&&relaySocket.readyState===WebSocket.OPEN){
-    relaySocket.send(JSON.stringify({type:'providerStatus',...s}));
+    relaySocket.send(JSON.stringify({
+      type:'providerStatus',
+      desktopOnline:true,
+      relay:true,
+      extension:s.extension===true,
+      browserExtension:{
+        connected:s.browserExtension?.connected===true,
+        tabCount:Number(s.browserExtension?.tabCount)||0
+      },
+      remoteCapabilities:{
+        browser:{available:s.browserExtension?.connected===true},
+        computer:{available:s.computerUse?.available===true}
+      },
+      providers:s.providers.map(publicRelayProvider).filter(Boolean)
+    }));
   }
 }
 

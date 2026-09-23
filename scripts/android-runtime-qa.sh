@@ -136,6 +136,28 @@ settings_closed="$(qa_line audit)"
 require_token "$settings_closed" "settingsOpen=false"
 require_token "$settings_closed" "shell=true"
 
+qa_line openRemoteDesktop >/dev/null
+sleep 1
+remote_desktop="$(qa_line audit)"
+require_token "$remote_desktop" "settingsOpen=true"
+require_token "$remote_desktop" "settingsDetail=true"
+require_token "$remote_desktop" "settingsSection=Connections"
+require_token "$remote_desktop" "remoteDesktopSettings=true"
+require_token "$remote_desktop" "remoteBrowserLabel=true"
+require_token "$remote_desktop" "remoteComputerLabel=true"
+require_token "$remote_desktop" "remoteDesktopApiForm=false"
+require_token "$remote_desktop" "remotePairingKey=true"
+capture "06-remote-desktop"
+adb shell input keyevent 4
+sleep 1
+remote_back_to_list="$(qa_line audit)"
+require_token "$remote_back_to_list" "settingsOpen=true"
+require_token "$remote_back_to_list" "settingsList=true"
+adb shell input keyevent 4
+sleep 1
+remote_closed="$(qa_line audit)"
+require_token "$remote_closed" "settingsOpen=false"
+
 qa_line openApps >/dev/null
 sleep 1
 apps_page="$(qa_line audit)"
@@ -143,7 +165,7 @@ require_token "$apps_page" "appsPage=true"
 require_token "$apps_page" "appsDiscover=true"
 require_token "$apps_page" "appsSearch=true"
 require_token "$apps_page" "desktopAppControls=false"
-capture "06-apps"
+capture "07-apps"
 adb shell input keyevent 4
 sleep 1
 apps_closed="$(qa_line audit)"
@@ -157,7 +179,7 @@ require_token "$explore_page" "explorePage=true"
 require_token "$explore_page" "exploreApps=true"
 require_token "$explore_page" "exploreSearch=true"
 require_token "$explore_page" "desktopAppControls=false"
-capture "07-explore"
+capture "08-explore"
 adb shell input keyevent 4
 sleep 1
 explore_closed="$(qa_line audit)"
@@ -211,7 +233,7 @@ if [[ "$keyboard_offset_value" -le 0 && "$viewport_shrink" -le 80 ]]; then
   exit 1
 fi
 
-capture "08-keyboard"
+capture "09-keyboard"
 adb shell input keyevent 4
 sleep 1
 base="$(qa_line audit)"
@@ -240,7 +262,7 @@ for rotation in 1 2 3 0; do
     require_token "$rotated" "mobileNav=true"
     require_token "$rotated" "desktopNav=false"
     require_token "$rotated" "modelPicker=true"
-    capture "09-rotated"
+    capture "10-rotated"
     rotated_ok=1
     break
   fi
@@ -308,7 +330,7 @@ if [[ "$FORM_FACTOR" == "phone" ]]; then
   done
   require_token "$dictation_stopped" "dictationStopped=true"
   require_token "$dictation_stopped" "dictationFinalized=true"
-  capture "10-dictation-stopped"
+  capture "11-dictation-stopped"
 
   adb shell pm revoke "$PACKAGE" "$permission" >/dev/null 2>&1 || true
   adb shell pm set-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null
@@ -327,7 +349,7 @@ if [[ "$FORM_FACTOR" == "phone" ]]; then
   require_token "$dictation_denied" "dictationDenied=true"
   require_token "$dictation_denied" "dictationError=true"
   adb shell pidof "$PACKAGE" >/dev/null
-  capture "11-dictation-denied"
+  capture "12-dictation-denied"
 
   adb shell pm clear-permission-flags "$PACKAGE" "$permission" user-set user-fixed >/dev/null 2>&1 || true
   adb shell pm grant "$PACKAGE" "$permission" >/dev/null 2>&1 || true
@@ -348,6 +370,9 @@ adb shell pidof "$PACKAGE" >/dev/null
   echo "settings_detail=$settings_detail"
   echo "settings_back_to_list=$settings_back_to_list"
   echo "settings_closed=$settings_closed"
+  echo "remote_desktop=$remote_desktop"
+  echo "remote_back_to_list=$remote_back_to_list"
+  echo "remote_closed=$remote_closed"
   echo "apps_page=$apps_page"
   echo "apps_closed=$apps_closed"
   echo "explore_page=$explore_page"

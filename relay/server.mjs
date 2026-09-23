@@ -67,7 +67,15 @@ wss.on('connection',ws=>{
 
     if(ctx.role==='mobile'&&m.type==='getProviderStatus'){
       if(r.desktop)send(r.desktop,{type:'getProviderStatus'});
-      else send(ws,{type:'providerStatus',extension:false,relay:true,providers:[]});
+      else send(ws,{
+        type:'providerStatus',
+        desktopOnline:false,
+        extension:false,
+        relay:true,
+        browserExtension:{connected:false,tabCount:0},
+        remoteCapabilities:{browser:{available:false},computer:{available:false}},
+        providers:[]
+      });
       return;
     }
 
@@ -124,7 +132,15 @@ wss.on('connection',ws=>{
       }
       r.pending.clear();
       for(const mobile of r.mobiles){
-        send(mobile,{type:'providerStatus',extension:false,relay:true,providers:[]});
+        send(mobile,{
+          type:'providerStatus',
+          desktopOnline:false,
+          extension:false,
+          relay:true,
+          browserExtension:{connected:false,tabCount:0},
+          remoteCapabilities:{browser:{available:false},computer:{available:false}},
+          providers:[]
+        });
       }
     }else{
       r.mobiles.delete(ws);

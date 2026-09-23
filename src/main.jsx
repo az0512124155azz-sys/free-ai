@@ -402,7 +402,14 @@ function Root(){
 function App(){
   const [authReady,setAuthReady]=useState(false);
   const [session,setSession]=useState(null);
-  const [status,setStatus]=useState({extension:false,relay:false,providers:[]});
+  const [status,setStatus]=useState({
+    extension:false,
+    relay:false,
+    desktopOnline:false,
+    browserExtension:{connected:false,tabCount:0},
+    remoteCapabilities:{browser:{available:false},computer:{available:false}},
+    providers:[]
+  });
   const [selected,setSelected]=useState(null);
   const [parallelCount,setParallelCount]=useState(1);
   const [selectedTool,setSelectedTool]=useState(null);
@@ -730,7 +737,13 @@ function App(){
         'explorePage='+!!document.querySelector('.mobileExplorePage'),
         'exploreApps='+!!document.querySelector('.mobileExploreApps'),
         'exploreSearch='+!!document.querySelector('.mobileExploreSearch input'),
-        'desktopAppControls='+!!document.querySelector('.mobileAppsPage .mcpAddCard,.mobileAppsPage .directMcpGrid,.mobileExplorePage .directMcpGrid')
+        'desktopAppControls='+!!document.querySelector('.mobileAppsPage .mcpAddCard,.mobileAppsPage .directMcpGrid,.mobileExplorePage .directMcpGrid'),
+        'remoteDesktopSettings='+!!document.querySelector('.remoteDesktopSettings'),
+        'remoteDesktopOnline='+!!document.querySelector('.remoteDesktopSettings .connectionStatus.good'),
+        'remoteBrowserLabel='+!![...document.querySelectorAll('.remoteDesktopSettings .settingRow')].find(row=>row.textContent?.includes('Remote Browser')),
+        'remoteComputerLabel='+!![...document.querySelectorAll('.remoteDesktopSettings .settingRow')].find(row=>row.textContent?.includes('Remote Computer')),
+        'remoteDesktopApiForm='+!!document.querySelector('.remoteDesktopSettings .apiForm'),
+        'remotePairingKey='+!!document.querySelector('.remoteDesktopSettings input[type="password"]')
       ].join(';');
     };
     window.__FREEAI_ANDROID_QA__=(command='audit')=>{
@@ -763,6 +776,12 @@ function App(){
         setMobileNavOpen(false);
         setPage('explore');
       }
+      if(command==='openRemoteDesktop'){
+        setPage('chat');
+        setSettingsSection('Connections');
+        setMobileSettingsList(false);
+        setSettingsOpen(true);
+      }
       return audit();
     };
     return()=>{delete window.__FREEAI_ANDROID_QA__};
@@ -793,18 +812,41 @@ function App(){
 
   useEffect(()=>{
     if(isDesktop)return;
-    if(!settings.relayUrl||!settings.pairKey){setStatus({extension:false,relay:false,providers:[]});return}
+    const offlineStatus={
+      extension:false,
+      relay:false,
+      desktopOnline:false,
+      browserExtension:{connected:false,tabCount:0},
+      remoteCapabilities:{browser:{available:false},computer:{available:false}},
+      providers:[]
+    };
+    if(!settings.relayUrl||!settings.pairKey){setStatus(offlineStatus);return}
     let stopped=false,socket=null,retry=null;
     const connect=()=>{
       if(stopped)return;
       try{socket=new WebSocket(settings.relayUrl)}catch{retry=setTimeout(connect,3000);return}
-      socket.onopen=()=>socket.send(JSON.stringify({type:'hello',role:'mobile',key:settings.pairKey}));
+      socket.onopen=()=>{
+        setStatus(current=>({...current,relay:true,desktopOnline:false}));
+        socket.send(JSON.stringify({type:'hello',role:'mobile',key:settings.pairKey}));
+      };
       socket.onmessage=event=>{
         let m;try{m=JSON.parse(event.data)}catch{return}
-        if(m.type==='ready'){setStatus(m.providerStatus?{...m.providerStatus,relay:true}:s=>({...s,relay:true}));socket.send(JSON.stringify({type:'getProviderStatus'}))}
-        if(m.type==='providerStatus')setStatus({...m,relay:true});
+        if(m.type==='ready'){
+          const readyStatus=m.providerStatus&&typeof m.providerStatus==='object'
+            ? {...m.providerStatus,relay:true,desktopOnline:m.desktopOnline===true}
+            : {...offlineStatus,relay:true,desktopOnline:m.desktopOnline===true};
+          setStatus(readyStatus);
+          socket.send(JSON.stringify({type:'getProviderStatus'}));
+        }
+        if(m.type==='providerStatus')setStatus({
+          ...offlineStatus,
+          ...m,
+          relay:true,
+          desktopOnline:m.desktopOnline===true,
+          providers:Array.isArray(m.providers)?m.providers:[]
+        });
       };
-      socket.onclose=()=>{setStatus({extension:false,relay:false,providers:[]});if(!stopped)retry=setTimeout(connect,3000)};
+      socket.onclose=()=>{setStatus(offlineStatus);if(!stopped)retry=setTimeout(connect,3000)};
     };
     connect();
     return()=>{stopped=true;clearTimeout(retry);try{socket?.close()}catch{}};
@@ -3945,13 +3987,13 @@ function SettingsView(props){
       <div className="settingsSearch"><Search size={15}/><input value={settingsQuery} onChange={e=>setSettingsQuery(e.target.value)} placeholder="Search settings"/></div>
       {['personal','integrations','coding'].map(group=><div key={group} className="settingsGroup">
         <div className="settingsGroupLabel">{group==='personal'?'Personal':group==='integrations'?'Integrations':'Coding'}</div>
-        {visibleSettings.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{isNative&&label==='Plugins'?'Apps':label}</button>)}
+        {visibleSettings.filter(x=>x[0]===group).map(([_,label,Icon])=><button key={label} className={section===label?'active':''} onClick={()=>{setSection(label);setMobileList(false)}}><Icon size={15}/>{isNative&&label==='Plugins'?'Apps':isNative&&label==='Connections'?'Remote Desktop':label}</button>)}
       </div>)}
     </aside>
     <main className="settingsContent">
       <div className="settingsContentTop">
         <button className="mobileSettingsBack" onClick={()=>setMobileList(true)} aria-label="Back to settings"><ArrowLeft size={18}/></button>
-        <h1>{section}</h1>
+        <h1>{isNative&&section==='Connections'?'Remote Desktop':section}</h1>
         <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
       </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
@@ -3966,7 +4008,10 @@ function SettingsView(props){
       {section==='Files'&&isWindowsDesktop&&<SimpleSettings title="Files" rows={[['Local folder access','Windows Work/Super AI · user-selected folder per conversation'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":isNative?"Discover app listings and review provider-managed capabilities. Account authorization and permissions remain with the provider or app connection.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
-      {section==='Connections'&&<ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>}
+      {section==='Connections'&&(isNative
+        ? <RemoteDesktopSettings {...{status,settings,setSettings,saveSettings,connected}}/>
+        : <ConnectionsSettings {...{status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}}/>)
+      }
       {section==='Git'&&!isNative&&<SimpleSettings title="Git" rows={[['Local repository workspace','Super AI · user-selected Git folder'],['Repository actions','Status, list, read, diff, and approval-gated writes']]}/>}
       {section==='Environments'&&!isNative&&<SimpleSettings title="Environments" rows={[['Desktop runtime','Electron desktop'],['Browser bridge',status.extension?'Connected':'Disconnected']]}/>}
     </main>
@@ -4153,6 +4198,36 @@ function BrowserSettings({prefs,setPrefs,onBrowser,status}){
     {clearState&&<div className="settingsStatus">{clearState}</div>}
   </div>
 }
+function RemoteDesktopSettings({status,settings,setSettings,saveSettings,connected}){
+  const paired=!!settings.relayUrl&&!!settings.pairKey;
+  const relayConnected=status?.relay===true;
+  const desktopOnline=status?.desktopOnline===true;
+  const remoteBrowser=status?.remoteCapabilities?.browser?.available===true;
+  const remoteComputer=status?.remoteCapabilities?.computer?.available===true;
+  const canSave=/^wss?:\/\//i.test(settings.relayUrl.trim())&&settings.pairKey.trim().length>=32;
+  const connectionLabel=!paired?'Not paired':!relayConnected?'Relay offline':desktopOnline?'Desktop online':'Desktop offline';
+  return <div className="settingsPane remoteDesktopSettings">
+    <h3>Remote Desktop</h3>
+    <div className="settingBlock">
+      <SettingRow title="Connection status" desc="Android connects through the relay; desktop capabilities continue to run on your paired computer." control={<span className={'connectionStatus '+(desktopOnline?'good':'')}>{connectionLabel}</span>}/>
+      <label className="formLabel">Relay URL<input value={settings.relayUrl} onChange={e=>setSettings({...settings,relayUrl:e.target.value})} placeholder="wss://your-relay.example.com" inputMode="url" autoCapitalize="none" autoCorrect="off"/></label>
+      <label className="formLabel">Pairing API key<input type="password" value={settings.pairKey} onChange={e=>setSettings({...settings,pairKey:e.target.value})} placeholder="Paste the key generated on Desktop" autoCapitalize="none" autoCorrect="off" autoComplete="off"/></label>
+      <button className="primaryAction" onClick={saveSettings} disabled={!canSave}>Save pairing</button>
+      <div className="settingsStatus">The pairing key identifies this desktop connection. AI provider API keys stay encrypted on Desktop and are never sent to Android.</div>
+    </div>
+    <h3>Remote capabilities</h3>
+    <div className="settingBlock">
+      <SettingRow title="Remote Browser" desc="Browser automation runs on the paired desktop through its Chromium extension." control={<span className={'connectionStatus '+(remoteBrowser?'good':'')}>{desktopOnline?(remoteBrowser?'Available':'Unavailable'):'Offline'}</span>}/>
+      <SettingRow title="Remote Computer" desc="Computer control runs on the paired desktop; Android never presents it as a local device capability." control={<span className={'connectionStatus '+(remoteComputer?'good':'')}>{desktopOnline?(remoteComputer?'Available':'Unavailable'):'Offline'}</span>}/>
+    </div>
+    <h3>Remote models</h3>
+    <div className="settingBlock">
+      {connected.map(model=><div className="apiItem" key={(model.source||'browser')+'::'+model.id}><div><b>{modelLabel(model)}</b><small>{model.source==='api'?'Desktop API model':'Desktop browser model'}</small></div><span className={'connectionStatus '+(model.connected!==false?'good':'')}>{model.connected!==false?'Ready':'Offline'}</span></div>)}
+      {!connected.length&&<div className="settingsStatus">{desktopOnline?'No remote AI models are currently available.':'Pair and open Free AI Desktop to receive sanitized model metadata.'}</div>}
+    </div>
+  </div>
+}
+
 function ConnectionsSettings({status,settings,setSettings,saveSettings,connected,apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError}){
   return <div className="settingsPane">
     <h3>Desktop bridge</h3>
