@@ -58,25 +58,13 @@ adb logcat -c
 adb shell am broadcast -a "$ACTION" -p "$PACKAGE" --es command authStartGoogle >/dev/null
 
 requested="$(wait_for_tokens "status=startGoogle:started" "googleRequested=true")"
-capture "02-google-native-requested"
 
-adb shell dumpsys activity activities \
-  | grep -E 'mResumedActivity|topResumedActivity|mLastPausedActivity|Hist #' \
-  | head -n 60 > "$OUT/top-activities.txt" || true
-
-if grep -Eqi 'com\.android\.chrome|com\.google\.android\.apps\.chrome|org\.chromium\.chrome' "$OUT/top-activities.txt"; then
-  echo "Google runtime QA unexpectedly opened a browser instead of native Credential Manager."
-  cat "$OUT/top-activities.txt"
-  exit 1
-fi
-
-# The CI emulator intentionally has no pre-provisioned personal Google account.
-# If Credential Manager is displaying native UI, Back must be treated as a benign cancellation.
-# If the provider immediately reports no credentials, that is also an expected accountless-device outcome.
-adb shell input keyevent 4 || true
-
+# For the explicit product button we use the standard GetSignInWithGoogleOption path.
+# Give Credential Manager / Google Play services time to present the account UI before
+# capturing evidence or sending Back. Sending Back immediately can race the system UI.
+system_ui_seen=0
 outcome=""
-for _ in $(seq 1 30); do
+for _ in $(seq 1 20); do
   line="$(audit_line)"
   if [[ "$line" == *"googleStatus=cancelled"* && "$line" == *"googleCode=user_cancelled"* ]]; then
     outcome="$line"
@@ -95,8 +83,53 @@ for _ in $(seq 1 30); do
     echo "$line"
     exit 1
   fi
+
+  adb shell dumpsys activity activities \
+    | grep -E 'mResumedActivity|topResumedActivity|mLastPausedActivity|Hist #' \
+    | head -n 60 > "$OUT/top-activities.txt" || true
+
+  if grep -Eqi 'com\.android\.chrome|com\.google\.android\.apps\.chrome|org\.chromium\.chrome' "$OUT/top-activities.txt"; then
+    echo "Google runtime QA unexpectedly opened a browser instead of native Credential Manager."
+    cat "$OUT/top-activities.txt"
+    exit 1
+  fi
+
+  if grep -Eqi 'com\.google\.android\.gms|com\.google\.android\.gsf|com\.android\.settings|credentials|identity' "$OUT/top-activities.txt"; then
+    system_ui_seen=1
+    break
+  fi
   sleep 1
 done
+
+capture "02-google-native-requested"
+
+if [[ -z "$outcome" && "$system_ui_seen" == "1" ]]; then
+  adb shell input keyevent 4 || true
+fi
+
+if [[ -z "$outcome" ]]; then
+  for _ in $(seq 1 30); do
+    line="$(audit_line)"
+    if [[ "$line" == *"googleStatus=cancelled"* && "$line" == *"googleCode=user_cancelled"* ]]; then
+      outcome="$line"
+      break
+    fi
+    if [[ "$line" == *"googleStatus=error"* && "$line" == *"googleCode=no_credential"* ]]; then
+      outcome="$line"
+      break
+    fi
+    if [[ "$line" == *"googleStatus=error"* && "$line" == *"googleCode=account_reauth_failed"* ]]; then
+      outcome="$line"
+      break
+    fi
+    if [[ "$line" == *"googleStatus=error"* && "$line" == *"googleCode=google_config"* ]]; then
+      echo "Google Credential Manager reached a configuration error."
+      echo "$line"
+      exit 1
+    fi
+    sleep 1
+  done
+fi
 
 if [[ -z "$outcome" ]]; then
   echo "Google Credential Manager did not reach a recognized non-authenticated outcome."
