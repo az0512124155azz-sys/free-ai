@@ -93,16 +93,41 @@ function windowsAppInfo(){
   };
 }
 
+const WINDOWS_UPDATE_TIMEOUT_MS=15000;
+
+function trustedFreeAiReleaseUrl(value){
+  try{
+    const parsed=new URL(String(value||''));
+    if(parsed.protocol!=='https:'||parsed.hostname!=='github.com')return '';
+    if(!parsed.pathname.startsWith('/az0512124155azz-sys/free-ai/releases/'))return '';
+    return parsed.toString();
+  }catch{return ''}
+}
+
 async function checkForWindowsUpdates(){
   if(process.platform!=='win32')throw new Error('Update checks are currently available on Windows.');
-  const response=await net.fetch('https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest',{
-    headers:{'Accept':'application/vnd.github+json','User-Agent':'Free-AI-Desktop'}
-  });
-  if(!response.ok)throw new Error('Could not check GitHub Releases right now.');
-  const release=await response.json();
+  if(!net.isOnline())throw new Error('You appear to be offline. Connect to the internet and try again.');
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),WINDOWS_UPDATE_TIMEOUT_MS);
+  let response;
+  try{
+    response=await net.fetch('https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest',{
+      headers:{'Accept':'application/vnd.github+json','User-Agent':'Free-AI-Desktop'},
+      signal:controller.signal
+    });
+  }catch(error){
+    if(error?.name==='AbortError')throw new Error('Update check timed out. Check your internet connection and try again.');
+    throw new Error('Could not reach GitHub Releases. Check your internet connection and try again.');
+  }finally{
+    clearTimeout(timer);
+  }
+  if(!response.ok)throw new Error('Could not check GitHub Releases right now (HTTP '+response.status+').');
+  let release;
+  try{release=await response.json()}catch{throw new Error('GitHub Releases returned an unreadable response.')}
   const latestVersion=String(release?.tag_name||release?.name||'').replace(/^v/i,'');
   if(!latestVersion)throw new Error('The latest release did not include a version.');
-  const url=String(release?.html_url||'');
+  const url=trustedFreeAiReleaseUrl(release?.html_url);
+  if(!url)throw new Error('The latest release did not include a trusted Free AI GitHub release URL.');
   return {
     currentVersion:app.getVersion(),
     latestVersion,
