@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createClient} from '@supabase/supabase-js';
-import {Capacitor} from '@capacitor/core';
+import {Capacitor,SystemBars,SystemBarsStyle} from '@capacitor/core';
 import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
 import {Haptics,ImpactStyle} from '@capacitor/haptics';
@@ -28,6 +28,7 @@ const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey
 const isDesktop=!!window.desktopApi;
 const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
+const isAndroidNative=isNative&&Capacitor.getPlatform()==='android';
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
@@ -285,6 +286,12 @@ class MenuErrorBoundary extends React.Component{
   }
 }
 
+function MobileMenuGlyph({size=20}){
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+    <path d="M5 8h14M5 16h10" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round"/>
+  </svg>;
+}
+
 function ProjectMark({project,size=16}){
   const entry=projectIconOptions.find(([key])=>key===(project?.icon||'folder'))||projectIconOptions[0];
   const Icon=entry[2];
@@ -423,6 +430,66 @@ function App(){
     const {data:{subscription}}=supabase.auth.onAuthStateChange((_event,next)=>{setSession(next);setAuthReady(true)});
     return()=>subscription.unsubscribe();
   },[]);
+
+  useEffect(()=>{
+    if(!isAndroidNative)return;
+    const root=document.documentElement;
+    root.dataset.nativePlatform='android';
+    const visualViewport=window.visualViewport;
+    const updateKeyboardOffset=()=>{
+      const viewport=window.visualViewport;
+      const offset=viewport?Math.max(0,window.innerHeight-viewport.height-viewport.offsetTop):0;
+      root.style.setProperty('--keyboard-offset',offset+'px');
+      if(offset>80)root.setAttribute('data-keyboard-open','');
+      else root.removeAttribute('data-keyboard-open');
+    };
+    updateKeyboardOffset();
+    visualViewport?.addEventListener('resize',updateKeyboardOffset);
+    visualViewport?.addEventListener('scroll',updateKeyboardOffset);
+    return()=>{
+      visualViewport?.removeEventListener('resize',updateKeyboardOffset);
+      visualViewport?.removeEventListener('scroll',updateKeyboardOffset);
+      root.style.removeProperty('--keyboard-offset');
+      root.removeAttribute('data-keyboard-open');
+      delete root.dataset.nativePlatform;
+    };
+  },[]);
+
+  useEffect(()=>{
+    if(!isAndroidNative)return;
+    const scheme=window.matchMedia?.('(prefers-color-scheme: light)');
+    const applySystemBars=()=>{
+      const light=appPrefs.appearance==='light'||(appPrefs.appearance==='system'&&scheme?.matches);
+      SystemBars.setStyle({style:light?SystemBarsStyle.Light:SystemBarsStyle.Dark}).catch(()=>{});
+      SystemBars.show().catch(()=>{});
+    };
+    applySystemBars();
+    if(appPrefs.appearance==='system')scheme?.addEventListener?.('change',applySystemBars);
+    return()=>scheme?.removeEventListener?.('change',applySystemBars);
+  },[appPrefs.appearance]);
+
+  useEffect(()=>{
+    if(!isAndroidNative)return;
+    let handle;
+    CapacitorApp.addListener('backButton',()=>{
+      if(deleteChatTarget){setDeleteChatTarget(null);return}
+      if(projectDialogOpen){setProjectDialogOpen(false);return}
+      if(profileMenu){setProfileMenu(false);return}
+      if(responseMenuIndex!==null){setResponseMenuIndex(null);return}
+      if(chatMenuId){setChatMenuId(null);return}
+      if(recentsFilterOpen){setRecentsFilterOpen(false);return}
+      if(modelMenu){setModelMenu(false);return}
+      if(effortMenu){setEffortMenu(false);return}
+      if(plusMenu){setPlusMenu(false);return}
+      if(mobileModeMenu){setMobileModeMenu(false);return}
+      if(mobileNavOpen){setMobileNavOpen(false);return}
+      if(settingsOpen){setSettingsOpen(false);return}
+      if(sidePanel){setSidePanel(null);return}
+      if(page!=='chat'){setPage('chat');return}
+      CapacitorApp.exitApp().catch(()=>{});
+    }).then(value=>{handle=value}).catch(()=>{});
+    return()=>handle?.remove?.();
+  },[deleteChatTarget,projectDialogOpen,profileMenu,responseMenuIndex,chatMenuId,recentsFilterOpen,modelMenu,effortMenu,plusMenu,mobileModeMenu,mobileNavOpen,settingsOpen,sidePanel,page]);
 
   useEffect(()=>{
     if(!isDesktop)return;
@@ -1668,7 +1735,7 @@ function App(){
     : mode==='work'?'What should we work on?':messages.length?'':'Ready when you are.';
 
   return <div
-    className={'desktopShell '+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')+' '+(dragActive?'dragActive':'')}
+    className={'desktopShell '+(isAndroidNative?'nativeMobileShell ':'')+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')+' '+(dragActive?'dragActive':'')}
     onDragEnter={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();setDragActive(true)}}:undefined}
     onDragOver={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';setDragActive(true)}}:undefined}
     onDragLeave={isWindowsDesktop?e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragActive(false)}:undefined}
@@ -1814,7 +1881,7 @@ function App(){
     <main className="workspace">
       <header className="workspaceHeader">
         <div className="headerLeft">
-          <button className="headerIcon mobileNavTrigger" onClick={()=>setMobileNavOpen(true)} aria-label="Open navigation"><Menu size={18}/></button>
+          <button className="headerIcon mobileNavTrigger" onClick={()=>setMobileNavOpen(true)} aria-label="Open navigation"><MobileMenuGlyph size={20}/></button>
           {!sidebarOpen&&<button className="headerIcon desktopSidebarTrigger" onClick={()=>setSidebarOpen(true)} aria-label="Open sidebar"><PanelLeft size={18}/></button>}
           {isWindowsDesktop&&!sidebarOpen&&<DesktopProductSwitcher compact product={product} open={productMenu} setOpen={setProductMenu} onSelect={selectProduct}/>}
         </div>
