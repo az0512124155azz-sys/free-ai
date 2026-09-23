@@ -3930,7 +3930,7 @@ function Auth(){
         const login=await SocialLogin.login({
           provider:'google',
           options:{
-            style:'bottom',
+            style:'standard',
             filterByAuthorizedAccounts:false,
             scopes:['email','profile']
           }
