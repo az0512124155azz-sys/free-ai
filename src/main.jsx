@@ -2568,7 +2568,8 @@ function Composer(props){
         const session=nativeSpeechSession.current;
         updateAndroidDictationQaState({stopRequested:true});
         if(session){
-          await SpeechRecognition.forceStop?.({timeout:1200}).catch(()=>SpeechRecognition.stop().catch(()=>{}));
+          if(SpeechRecognition.forceStop)await SpeechRecognition.forceStop({timeout:1200}).catch(()=>SpeechRecognition.stop().catch(()=>{}));
+          else await SpeechRecognition.stop().catch(()=>{});
           updateAndroidDictationQaState({stopped:true});
           await finalizeNativeVoice(session,{stopped:true});
         }else{
@@ -2743,7 +2744,8 @@ function Composer(props){
       window.removeEventListener('freeai:stop-voice',stopHandler);
       if(isNative){
         nativeSpeechSession.current=0;
-        SpeechRecognition.forceStop?.({timeout:500}).catch(()=>SpeechRecognition.stop().catch(()=>{}));
+        if(SpeechRecognition.forceStop)SpeechRecognition.forceStop({timeout:500}).catch(()=>SpeechRecognition.stop().catch(()=>{}));
+        else SpeechRecognition.stop().catch(()=>{});
         SpeechRecognition.removeAllListeners().catch(()=>{});
       }else webRecognition.current?.abort?.();
     };
