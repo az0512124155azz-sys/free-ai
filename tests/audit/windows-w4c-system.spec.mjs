@@ -63,6 +63,13 @@ test('Windows W4C Connections Git Environments shortcuts audit',async()=>{
     await page.locator('.windowsDesktopRoot').waitFor({state:'visible'});
     const win=await app.browserWindow(page);
     await win.evaluate(w=>{w.setBounds({x:0,y:0,width:1440,height:900});w.show();w.focus()});
+    const nativeKeys=async sequence=>{
+      await win.evaluate(w=>{w.show();w.focus()});
+      execFileSync('powershell.exe',[
+        '-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-Command',
+        "Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 180; [System.Windows.Forms.SendKeys]::SendWait('"+sequence+"')"
+      ],{stdio:'ignore'});
+    };
     await page.addStyleTag({content:'*,*::before,*::after{animation:none!important;transition:none!important} input,textarea{caret-color:transparent!important}'});
 
     const record=async(name,fn,screenshot)=>{
@@ -136,7 +143,7 @@ test('Windows W4C Connections Git Environments shortcuts audit',async()=>{
     await record('Environments reports desktop runtime and browser bridge state',async()=>{
       await openSettings('Environments');
       await expect(page.getByText('Desktop runtime',{exact:true})).toBeVisible();
-      await expect(page.getByText('Electron desktop',{exact:true})).toBeVisible();
+      await expect(page.locator('.settingRow').filter({hasText:'Desktop runtime'}).first()).toContainText('Electron desktop');
       await expect(page.getByText('Browser bridge',{exact:true})).toBeVisible();
       await expect(page.getByText('Disconnected',{exact:true}).first()).toBeVisible();
       return 'Electron runtime and current extension bridge state surfaced';
@@ -145,7 +152,7 @@ test('Windows W4C Connections Git Environments shortcuts audit',async()=>{
 
     await record('Ctrl+N invokes native New chat accelerator',async()=>{
       await page.locator('.gptComposer textarea').fill('draft that should be cleared');
-      await page.keyboard.press('Control+N');
+      await nativeKeys('^n');
       await expect(page.locator('.gptComposer textarea')).toHaveValue('');
       await expect(page.getByText('What should we build?')).toBeVisible();
       return 'Ctrl+N cleared current draft via app New chat command';
@@ -153,23 +160,23 @@ test('Windows W4C Connections Git Environments shortcuts audit',async()=>{
 
     await record('Ctrl+Shift+S toggles sidebar',async()=>{
       const before=await page.locator('.gptSidebar').count();
-      await page.keyboard.press('Control+Shift+S');
+      await nativeKeys('^+s');
       await expect.poll(()=>page.locator('.gptSidebar').count()).toBe(before?0:1);
-      await page.keyboard.press('Control+Shift+S');
+      await nativeKeys('^+s');
       await expect.poll(()=>page.locator('.gptSidebar').count()).toBe(before);
       return 'Sidebar hidden and restored';
     },'07-shortcut-sidebar.png');
 
     await record('Ctrl+Shift+B toggles built-in Browser',async()=>{
-      await page.keyboard.press('Control+Shift+B');
+      await nativeKeys('^+b');
       await expect(page.locator('.browserPane')).toBeVisible({timeout:8000});
-      await page.keyboard.press('Control+Shift+B');
+      await nativeKeys('^+b');
       await expect(page.locator('.browserPane')).toHaveCount(0,{timeout:8000});
       return 'Browser pane opened and closed through native accelerator';
     },'08-shortcut-browser.png');
 
     await record('Ctrl+, opens Settings as documented',async()=>{
-      await page.keyboard.press('Control+,');
+      await nativeKeys('^,');
       if(await page.locator('.settingsScreen').count()===0){
         const menuInfo=await app.evaluate(({Menu})=>{
           const appMenu=Menu.getApplicationMenu();
