@@ -67,6 +67,13 @@ has(source,'function ModelMenu','Model picker is missing.');
 has(source,'function ResearchSetupDialog','Deep Research setup is missing.');
 has(source,'function ChatContextMenu','Chat management menu is missing.');
 
+// Windows W1 add-menu / Computer Use UX coverage.
+ok(!source.includes('label="Computer" sub="View or control your desktop"'),'Windows Add menu must not expose the retired manual Computer mirror.');
+ok(!source.includes("sidePanel==='computer'"),'Windows renderer must not mount a user-facing Computer screen-mirror panel.');
+ok(!source.includes('function ComputerPane('),'Retired Computer screen-mirror component must not ship in the renderer.');
+has(source,'Screenshots are used internally by the active AI task; no screen-mirror panel is shown','Computer Use settings must explain background agent control without a screen mirror.');
+has(source,"!(mode==='work'&&isWindowsDesktop&&showBottomPanel)",'Windows Work Add menu must hide actions already exposed in the visible bottom shortcut row.');
+
 // Windows 7.13 OAuth deep-link boundary coverage.
 has(main,"const AUTH_CALLBACK_URL='freeai://auth/callback';",'Desktop auth callback must use the exact registered callback URL.');
 has(main,'function isAuthCallbackUrl(value)','Desktop auth callback parser is missing.');
