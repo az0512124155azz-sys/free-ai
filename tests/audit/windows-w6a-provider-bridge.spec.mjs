@@ -141,8 +141,8 @@ test('Windows W6A provider bridge runtime',async()=>{
         const s=await page.evaluate(()=>window.desktopApi.getStatus());
         return {extension:s.extension,count:s.providers.filter(p=>p.source==='browser').length};
       },{timeout:10000}).toEqual({extension:true,count:3});
-      await expect(page.locator('.modelButton')).toContainText(/GPT-5\.6|ChatGPT/);
-      return 'Bridge connected with 2 ChatGPT tabs + 1 Claude tab';
+      await expect(page.locator('.modelButton')).toContainText('Select model');
+      return 'Bridge connected with 2 ChatGPT tabs + 1 Claude tab; no model is auto-selected';
     },'01-bridge-connected.png');
 
     await record('Model picker exposes tab-aware duplicate provider instances',async()=>{
@@ -153,7 +153,9 @@ test('Windows W6A provider bridge runtime',async()=>{
       await expect(chatgptRows).toHaveCount(2);
       await expect(picker).toContainText('2 matching tabs');
       await expect(picker.locator('.pickerRow').filter({hasText:'Claude Sonnet 4.5'})).toHaveCount(1);
-      return 'Duplicate model tabs remain separate routable instances';
+      await chatgptRows.first().click();
+      await expect(page.locator('.modelButton')).toContainText('GPT-5.6');
+      return 'Duplicate model tabs remain separate routable instances; first ChatGPT tab selected';
     },'02-model-picker-tabs.png');
 
     await record('Parallel instances control reaches All 2',async()=>{
