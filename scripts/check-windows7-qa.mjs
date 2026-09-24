@@ -258,7 +258,7 @@ has(main,"if(stopWorkTask(task.id))stopped++",'Renderer-loss cleanup must use th
 
 // Windows W5 native-shell regression coverage.
 has(main,"{label:'Settings',accelerator:'CmdOrCtrl+,',click:()=>win?.webContents.send('app-command','settings')}",'Native Windows Settings accelerator Ctrl+, is missing.');
-has(source,"if(command==='settings'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}",'Renderer Settings command handler is missing.');
+has(source,"if(command==='settings'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}",'Renderer Settings command handler must close compact overlays before opening Settings.');
 has(main,'function isBrowserNavigationAbort(error)','Browser navigation-abort classifier is missing.');
 has(main,"String(error?.code||'').toUpperCase()==='ERR_ABORTED'",'Browser navigation aborts must recognize ERR_ABORTED.');
 has(main,"if(isBrowserNavigationAbort(error))return;",'Superseded browser loadURL promises must not create stale page errors.');
