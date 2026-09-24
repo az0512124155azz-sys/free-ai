@@ -235,6 +235,41 @@ test('Windows W1 shell, sidebar, header and primary navigation audit',async()=>{
       return 'Help routed to project README URL';
     },'34-help-clicked.png');
 
+    await record('Plus menu in Chat',async()=>{
+      await navButton('New chat').click();
+      await page.getByRole('tab',{name:'Chat',exact:true}).click();
+      await page.getByRole('button',{name:'Add'}).click();
+      const menu=page.getByRole('menu',{name:'Add'});
+      await expect(menu).toBeVisible();
+      const labels=(await menu.getByRole('menuitem').allTextContents()).map(x=>x.trim()).filter(Boolean);
+      return 'Chat Add items: '+labels.join(' | ');
+    },'34a-plus-chat.png');
+
+    await record('Plus menu in Work',async()=>{
+      await page.getByRole('button',{name:'Add'}).click().catch(()=>{});
+      await page.getByRole('tab',{name:'Work',exact:true}).click();
+      await page.getByRole('button',{name:'Add'}).click();
+      const menu=page.getByRole('menu',{name:'Add'});
+      await expect(menu).toBeVisible();
+      const labels=(await menu.getByRole('menuitem').allTextContents()).map(x=>x.trim()).filter(Boolean);
+      return 'Work Add items: '+labels.join(' | ');
+    },'34b-plus-work.png');
+
+    await record('Computer item opens screen-mirror panel',async()=>{
+      const menu=page.getByRole('menu',{name:'Add'});
+      await expect(menu).toBeVisible();
+      await menu.getByRole('menuitem',{name:/Computer/}).click();
+      await expect(page.locator('.computerPane')).toBeVisible();
+      await expect(page.getByText('Computer use',{exact:true})).toBeVisible();
+      return 'Computer opens a side panel with captured-screen preview and manual click/type controls';
+    },'34c-computer-panel.png');
+
+    await record('Close Computer panel',async()=>{
+      await page.locator('.computerPane .paneTabs button').click();
+      await expect(page.locator('.computerPane')).toHaveCount(0);
+      return 'Computer panel closed';
+    },'34d-computer-closed.png');
+
     await record('Dictate button',async()=>{
       await navButton('New chat').click();
       await page.locator('.voiceButton').click();
