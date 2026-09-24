@@ -1,0 +1,51 @@
+name: Windows W4C System Audit
+
+on:
+  push:
+    branches: [audit/windows-w4c-system]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows_w4c:
+    name: Windows W4C Connections Git Shortcuts
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install pinned Playwright Electron driver
+        run: npm install --no-save --no-package-lock @playwright/test@1.63.0
+      - name: Build auth-independent Windows renderer
+        run: npm run build:web
+        env:
+          VITE_VISUAL_TEST: '1'
+      - name: Run Windows W4C audit
+        continue-on-error: true
+        run: npx playwright test tests/audit/windows-w4c-system.spec.mjs --workers=1 --reporter=list
+      - name: Upload Windows W4C evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-windows-w4c-audit
+          path: artifacts/windows-w4c/**
+          if-no-files-found: error
+      - name: Fail on real W4C failures
+        if: always()
+        shell: pwsh
+        run: |
+          $file = 'artifacts/windows-w4c/results.json'
+          if (-not (Test-Path $file)) { throw 'Windows W4C result file was not produced.' }
+          $rows = Get-Content $file -Raw | ConvertFrom-Json
+          $failed = @($rows | Where-Object { $_.status -eq 'FAIL' })
+          if ($failed.Count -gt 0) {
+            $failed | ConvertTo-Json -Depth 6 | Write-Host
+            throw "Windows W4C found $($failed.Count) real failure(s)."
+          }
+          Write-Host 'Windows W4C passed.'
