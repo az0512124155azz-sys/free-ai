@@ -109,7 +109,8 @@ test('Windows W7A security and failure recovery runtime',async()=>{
       const bad=picker.locator('.pickerRow').filter({hasText:'Broken Adapter'});
       const good=picker.locator('.pickerRow').filter({hasText:'Healthy Adapter'});
       await expect(bad).toBeDisabled();
-      await expect(bad).toContainText('Provider UI contract changed');
+      await expect(bad).toHaveAttribute('title','Provider UI contract changed');
+      await expect(bad).toContainText('adapter unavailable');
       await expect(good).toBeEnabled();
       return 'Broken adapter disabled; healthy adapter remains routable';
     },'02-adapter-health.png');
