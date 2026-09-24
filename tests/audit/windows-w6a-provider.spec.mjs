@@ -164,8 +164,9 @@ test('Windows W6A App settings and provider bridge audit',async()=>{
       await page.locator('.modelButton').click();
       const picker=page.getByRole('listbox',{name:'Select model'});
       await expect(picker).toBeVisible();
-      await expect(picker.getByRole('option',{name:/GPT QA/})).toHaveCount(2);
+      await expect(picker.locator('.pickerRow')).toHaveCount(2);
       await expect(picker).toContainText('2 matching tabs');
+      await picker.locator('.pickerRow').first().click();
       const parallel=picker.getByLabel('Parallel model instances');
       await expect(parallel).toBeVisible();
       await expect(parallel.locator('option')).toHaveCount(2);
@@ -213,9 +214,10 @@ test('Windows W6A App settings and provider bridge audit',async()=>{
 
     await record('Parallel chat routes to both exact provider instances',async()=>{
       // Return first tab to the same model group, then choose All 2.
-      await page.locator('.modelButton').click();
-      const picker=page.getByRole('listbox',{name:'Select model'});
-      await page.getByLabel('Provider model').selectOption('GPT QA');
+      let picker=page.getByRole('listbox',{name:'Select model'});
+      if(await picker.count()===0)await page.locator('.modelButton').click();
+      picker=page.getByRole('listbox',{name:'Select model'});
+      await picker.getByLabel('Provider model').selectOption('GPT QA');
       await expect(page.locator('.modelButton')).toContainText('GPT QA',{timeout:5000});
       if(await picker.count()===0)await page.locator('.modelButton').click();
       const parallel=page.getByLabel('Parallel model instances');
@@ -242,7 +244,7 @@ test('Windows W6A App settings and provider bridge audit',async()=>{
       },{timeout:8000}).toEqual({extension:false,count:2,connected:[false,false]});
       await page.locator('.modelButton').click();
       const picker=page.getByRole('listbox',{name:'Select model'});
-      await expect(picker.getByRole('option',{name:/GPT QA/})).toHaveCount(2);
+      await expect(picker.locator('.pickerRow')).toHaveCount(2);
       await expect(picker).toContainText('reconnecting');
       return 'Two remembered provider rows stayed visible as reconnecting';
     },'09-bridge-reconnecting.png');
