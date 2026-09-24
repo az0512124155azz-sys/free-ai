@@ -1,0 +1,59 @@
+name: Windows W3 Chat Audit
+
+on:
+  push:
+    branches: [audit/windows-w3-chat]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows_w3:
+    name: Windows W3 Chat Audit
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install pinned Playwright Electron driver
+        run: npm install --no-save --no-package-lock @playwright/test@1.63.0
+
+      - name: Build auth-independent Windows renderer
+        run: npm run build:web
+        env:
+          VITE_VISUAL_TEST: '1'
+
+      - name: Run Windows W3 chat audit
+        continue-on-error: true
+        run: npx playwright test tests/audit/windows-w3-chat.spec.mjs --workers=1 --reporter=list
+
+      - name: Upload Windows W3 screenshots and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-windows-w3-audit
+          path: artifacts/windows-w3/**
+          if-no-files-found: error
+
+      - name: Fail if W3 contains real UI failures
+        if: always()
+        shell: pwsh
+        run: |
+          $file = 'artifacts/windows-w3/results.json'
+          if (-not (Test-Path $file)) { throw 'Windows W3 result file was not produced.' }
+          $rows = Get-Content $file -Raw | ConvertFrom-Json
+          $failed = @($rows | Where-Object { $_.status -eq 'FAIL' })
+          if ($failed.Count -gt 0) {
+            $failed | ConvertTo-Json -Depth 6 | Write-Host
+            throw "Windows W3 found $($failed.Count) real UI failure(s)."
+          }
+          Write-Host 'Windows W3 audit finished without real UI failures.'
