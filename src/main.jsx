@@ -836,6 +836,7 @@ function App(){
     });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
+      if(command==='settings'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
       if(command==='about'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
       if(command==='open-computer'){setSettingsOpen(false);setSidePanel(null);setProduct('free');setMode('work');setPage('chat')}
