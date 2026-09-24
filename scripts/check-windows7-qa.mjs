@@ -256,6 +256,14 @@ has(main,"win.webContents.on('render-process-gone',(_event,details)=>",'Main ren
 has(main,"stopRendererOwnedWork('main renderer process '+String(details?.reason||'stopped'))",'Renderer crash must stop renderer-owned Work tasks.');
 has(main,"if(stopWorkTask(task.id))stopped++",'Renderer-loss cleanup must use the normal Work Stop path so prompts and approvals are cancelled.');
 
+// Windows W5 native-shell regression coverage.
+has(main,"{label:'Settings',accelerator:'CmdOrCtrl+,',click:()=>win?.webContents.send('app-command','settings')}",'Native Windows Settings accelerator Ctrl+, is missing.');
+has(source,"if(command==='settings'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}",'Renderer Settings command handler is missing.');
+has(main,'function isBrowserNavigationAbort(error)','Browser navigation-abort classifier is missing.');
+has(main,"String(error?.code||'').toUpperCase()==='ERR_ABORTED'",'Browser navigation aborts must recognize ERR_ABORTED.');
+has(main,"if(isBrowserNavigationAbort(error))return;",'Superseded browser loadURL promises must not create stale page errors.');
+has(main,"if(!isBrowserNavigationAbort(error)&&process.platform==='win32'&&activeBrowserTabId)",'Explicit Browser navigate must ignore superseded ERR_ABORTED rejections.');
+
 // Windows 7.9 secure API transport coverage.
 has(main,"apiTransportUrl(connection.baseUrl,connection.apiKey)",'API connection save path must validate credential transport.');
 has(main,"const base=apiTransportUrl(cfg.baseUrl,cfg.apiKey);",'API chat send path must revalidate credential transport.');
