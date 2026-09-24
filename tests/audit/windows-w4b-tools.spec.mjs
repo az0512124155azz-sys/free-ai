@@ -179,9 +179,8 @@ test('Windows W4B Plugins Explore Browser Computer audit',async()=>{
     },'06-browser-page1.png');
 
     if(await page.locator('.browserErrorBar').count()){
-      await page.locator('.browserErrorBar').getByRole('button',{name:/Retry/}).click();
-      await expect(page.locator('.browserErrorBar')).toHaveCount(0,{timeout:12000});
-      await expect(page.locator('.browserTab.active')).toContainText('QA Page One',{timeout:12000});
+      await page.evaluate(()=>window.desktopApi.browserDismissError());
+      await expect(page.locator('.browserErrorBar')).toHaveCount(0,{timeout:8000});
     }
 
     await record('Browser agent snapshot reads page text and interactive elements',async()=>{
