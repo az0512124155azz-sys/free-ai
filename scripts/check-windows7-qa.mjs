@@ -46,8 +46,8 @@ has(main,'function windowsInitialWindowBounds','DPI-aware first-launch window si
 has(main,"screen.getPrimaryDisplay()?.workArea",'First-launch window must use the primary display work area in DIP.');
 has(main,'const usableWidth=Math.max(480','First-launch width floor is missing.');
 has(main,'const usableHeight=Math.max(360','First-launch height floor is missing.');
-has(main,'minWidth:Math.min(640,width)','Windows minimum width must never exceed its fitted initial width.');
-has(main,'minHeight:Math.min(480,height)','Windows minimum height must never exceed its fitted initial height.');
+has(main,'minWidth:Math.min(500,width)','Windows minimum width must support common Windows 11 Snap zones and never exceed its fitted initial width.');
+has(main,'minHeight:Math.min(420,height)','Windows minimum height must expose the compact responsive layout and never exceed its fitted initial height.');
 has(main,'...initialWindowBounds','BrowserWindow is not using the fitted initial bounds.');
 has(main,"win.once('ready-to-show'","First launch should still avoid renderer flash.");
 has(main,"title:'Free AI'",'Windows title is missing.');
@@ -66,6 +66,13 @@ has(source,'function SettingsView','Settings UI is missing.');
 has(source,'function ModelMenu','Model picker is missing.');
 has(source,'function ResearchSetupDialog','Deep Research setup is missing.');
 has(source,'function ChatContextMenu','Chat management menu is missing.');
+
+// Windows W1 add-menu / Computer Use UX coverage.
+ok(!source.includes('label="Computer" sub="View or control your desktop"'),'Windows Add menu must not expose the retired manual Computer mirror.');
+ok(!source.includes("sidePanel==='computer'"),'Windows renderer must not mount a user-facing Computer screen-mirror panel.');
+ok(!source.includes('function ComputerPane('),'Retired Computer screen-mirror component must not ship in the renderer.');
+has(source,'Screenshots are used internally by the active AI task; no screen-mirror panel is shown','Computer Use settings must explain background agent control without a screen mirror.');
+has(source,"!(mode==='work'&&isWindowsDesktop&&showBottomPanel)",'Windows Work Add menu must hide actions already exposed in the visible bottom shortcut row.');
 
 // Windows 7.13 OAuth deep-link boundary coverage.
 has(main,"const AUTH_CALLBACK_URL='freeai://auth/callback';",'Desktop auth callback must use the exact registered callback URL.');
@@ -248,6 +255,14 @@ has(main,"stopRendererOwnedWork('main renderer started a document reload/navigat
 has(main,"win.webContents.on('render-process-gone',(_event,details)=>",'Main renderer crash lifecycle handler is missing.');
 has(main,"stopRendererOwnedWork('main renderer process '+String(details?.reason||'stopped'))",'Renderer crash must stop renderer-owned Work tasks.');
 has(main,"if(stopWorkTask(task.id))stopped++",'Renderer-loss cleanup must use the normal Work Stop path so prompts and approvals are cancelled.');
+
+// Windows W5 native-shell regression coverage.
+has(main,"{label:'Settings',accelerator:'CmdOrCtrl+,',click:()=>win?.webContents.send('app-command','settings')}",'Native Windows Settings accelerator Ctrl+, is missing.');
+has(source,"if(command==='settings'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}",'Renderer Settings command handler must close compact overlays before opening Settings.');
+has(main,'function isBrowserNavigationAbort(error)','Browser navigation-abort classifier is missing.');
+has(main,"String(error?.code||'').toUpperCase()==='ERR_ABORTED'",'Browser navigation aborts must recognize ERR_ABORTED.');
+has(main,"if(isBrowserNavigationAbort(error))return;",'Superseded browser loadURL promises must not create stale page errors.');
+has(main,"if(!isBrowserNavigationAbort(error)&&process.platform==='win32'&&activeBrowserTabId)",'Explicit Browser navigate must ignore superseded ERR_ABORTED rejections.');
 
 // Windows 7.9 secure API transport coverage.
 has(main,"apiTransportUrl(connection.baseUrl,connection.apiKey)",'API connection save path must validate credential transport.');

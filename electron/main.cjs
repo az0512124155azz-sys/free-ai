@@ -156,6 +156,7 @@ function installAppMenu(){
       label:'File',
       submenu:[
         {label:'New chat',accelerator:'CmdOrCtrl+N',click:()=>win?.webContents.send('app-command','new-chat')},
+        {label:'Settings',accelerator:'CmdOrCtrl+,',click:()=>win?.webContents.send('app-command','settings')},
         {type:'separator'},
         process.platform==='darwin'?{role:'close'}:{role:'quit'}
       ]
@@ -187,6 +188,12 @@ function setWindowChromeTheme({color,symbolColor}={}){
   if(!Object.keys(options).length)return false;
   win.setTitleBarOverlay(options);
   return true;
+}
+
+function isBrowserNavigationAbort(error){
+  return Number(error?.errno)===-3
+    ||String(error?.code||'').toUpperCase()==='ERR_ABORTED'
+    ||/\bERR_ABORTED\b/.test(String(error?.message||''));
 }
 
 function activeBrowserEntry(){
@@ -912,6 +919,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
         });
         if(details.disposition==='background-tab'&&details.url&&details.url!=='about:blank'){
           popup.view.webContents.loadURL(details.url,popupLoadOptions(details)).catch(error=>{
+            if(isBrowserNavigationAbort(error))return;
             if(browserTabs.has(popup.id))browserErrors.set(popup.id,{
               type:'load',
               description:String(error?.message||'This page could not be loaded.'),
@@ -1024,6 +1032,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   }
   if(!skipLoad){
     wc.loadURL(initialUrl).catch(error=>{
+      if(isBrowserNavigationAbort(error))return;
       if(process.platform==='win32')browserErrors.set(id,{
         type:'load',
         description:String(error?.message||'This page could not be loaded.'),
@@ -3800,8 +3809,8 @@ function windowsInitialWindowBounds(){
   const y=Math.round((Number(workArea?.y)||0)+Math.max(0,((Number(workArea?.height)||height)-height)/2));
   return {
     x,y,width,height,
-    minWidth:Math.min(640,width),
-    minHeight:Math.min(480,height)
+    minWidth:Math.min(500,width),
+    minHeight:Math.min(420,height)
   };
 }
 
@@ -4192,7 +4201,7 @@ ipcMain.handle('browser:navigate',async(_e,input)=>{
   try{
     await view.webContents.loadURL(target);
   }catch(error){
-    if(process.platform==='win32'&&activeBrowserTabId)browserErrors.set(activeBrowserTabId,{
+    if(!isBrowserNavigationAbort(error)&&process.platform==='win32'&&activeBrowserTabId)browserErrors.set(activeBrowserTabId,{
       type:'load',
       description:String(error?.message||'This page could not be loaded.'),
       url:target
