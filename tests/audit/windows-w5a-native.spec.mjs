@@ -97,8 +97,8 @@ test('Windows W5A native shell responsive dialogs shortcuts',async()=>{
     await record('Windows window exposes usable native minimum sizing',async()=>{
       const info=await win.evaluate(w=>({bounds:w.getBounds(),minimum:w.getMinimumSize(),visible:w.isVisible()}));
       expect(info.visible).toBe(true);
-      expect(info.minimum[0]).toBeLessThanOrEqual(640);
-      expect(info.minimum[1]).toBeLessThanOrEqual(480);
+      expect(info.minimum[0]).toBeLessThanOrEqual(500);
+      expect(info.minimum[1]).toBeLessThanOrEqual(420);
       expect(info.bounds.width).toBeGreaterThanOrEqual(info.minimum[0]);
       expect(info.bounds.height).toBeGreaterThanOrEqual(info.minimum[1]);
       return JSON.stringify(info);
@@ -108,7 +108,8 @@ test('Windows W5A native shell responsive dialogs shortcuts',async()=>{
       ['wide',1440,900],
       ['medium',1000,700],
       ['compact',640,520],
-      ['minimum',640,480]
+      ['snap',500,480],
+      ['minimum',500,420]
     ]){
       await record('Responsive layout '+name+' '+width+'x'+height,async()=>{
         await win.evaluate((w,size)=>{w.setSize(size.width,size.height);w.setPosition(0,0);w.show();w.focus()},{width,height});
