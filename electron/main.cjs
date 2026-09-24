@@ -3985,6 +3985,20 @@ ipcMain.handle('shell:saveTextFile',async(_e,payload={})=>{
   await fs.promises.writeFile(result.filePath,content,'utf8');
   return {saved:true,filePath:result.filePath};
 });
+ipcMain.handle('shell:saveDataFile',async(_e,payload={})=>{
+  const content=String(payload.content||'');
+  const rawName=String(payload.defaultName||'free-ai-export.json').replace(/[<>:"/\\|?*\x00-\x1F]/g,'_').trim()||'free-ai-export.json';
+  const defaultName=rawName.toLowerCase().endsWith('.json')?rawName:rawName+'.json';
+  const result=await dialog.showSaveDialog(win,{
+    title:'Export Free AI data',
+    defaultPath:path.join(app.getPath('documents'),defaultName),
+    filters:[{name:'JSON',extensions:['json']}],
+    properties:['showOverwriteConfirmation']
+  });
+  if(result.canceled||!result.filePath)return {saved:false};
+  await fs.promises.writeFile(result.filePath,content,'utf8');
+  return {saved:true,filePath:result.filePath};
+});
 ipcMain.handle('research:exportReport',(_e,payload={})=>exportResearchReport(win,payload));
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',(_e,options={})=>{sendExtension({type:'scanProviders',probeModels:!!options.probeModels,probeTools:!!options.probeTools});return status()});
