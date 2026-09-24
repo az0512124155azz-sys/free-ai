@@ -33,6 +33,7 @@ for(const platform of ['win','mac','linux'])ok(pkg?.build?.[platform]?.icon==='b
 
 has(source,'function SettingsView','Settings integration is missing.');
 has(source,'function WindowsAppSettings','Windows app settings are missing.');
+has(source,"{section==='App'&&isWindowsDesktop&&<WindowsAppSettings/>}",'Windows App settings navigation must render WindowsAppSettings.');
 has(source,'Check for updates','Update-check UI is missing.');
 has(main,"https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest",'Update check is not using the official GitHub Releases feed.');
 has(source,'function AppearanceSettings','Appearance settings are missing.');
@@ -78,10 +79,17 @@ has(source,'isAgentThread','Child-agent chat persistence is missing.');
 has(source,'parentChatId','Agent parent linkage is missing.');
 
 has(source,'function ChatContextMenu','Chat context menu is missing.');
+has(source,"if(model?.source==='api')return model?.name||model?.modelName||model?.model",'API model display names must take precedence over raw model IDs.');
+has(source,'function desktopIpcErrorMessage','Desktop IPC validation errors must be normalized for user-facing forms.');
+has(source,'const generationChatId=saveCurrentChat(withUser,model','Normal chat generation must reuse the initial chat ID for final/error saves.');
+has(source,'const parallelChatId=saveCurrentChat(withUser,selected)','Parallel generation must reuse the initial chat ID for final saves.');
 has(source,'Export chat','Chat export action is missing.');
 has(source,'function DeleteChatDialog','Delete confirmation is missing.');
 has(preload,'saveTextFile','Desktop Save As bridge for chat export is missing.');
 has(main,"ipcMain.handle('shell:saveTextFile'",'Desktop Save As handler for chat export is missing.');
+has(preload,'saveDataFile','Desktop Save As bridge for local data export is missing.');
+has(main,"ipcMain.handle('shell:saveDataFile'",'Desktop Save As handler for local data export is missing.');
+has(source,"window.desktopApi?.saveDataFile",'Windows data export must use the native desktop Save As bridge.');
 
 has(source,'webSearchEnabled','Web Search state is missing.');
 has(source,'function MessageSources','Source cards are missing.');
