@@ -117,11 +117,22 @@ test('Windows W1 shell, sidebar, header and primary navigation audit',async()=>{
       return 'Sidebar search filtered recents';
     },'18-search-filtered.png');
 
-    await record('Search chats closes',async()=>{
+    await record('Search chats closes and clears active filter',async()=>{
       await page.getByRole('button',{name:'Search chats'}).click();
       await expect(page.getByPlaceholder('Search chats')).toHaveCount(0);
-      return 'Search field closed';
+      await expect(page.getByText('Sample chat',{exact:true})).toBeVisible();
+      await expect(page.getByText('Sample work',{exact:true})).toBeVisible();
+      return 'Search field closed and all recents restored';
     },'19-search-closed.png');
+
+    if(await page.getByPlaceholder('Search chats').count()===0){
+      await page.getByRole('button',{name:'Search chats'}).click();
+    }
+    const cleanupSearch=page.getByPlaceholder('Search chats');
+    if(await cleanupSearch.count()){
+      await cleanupSearch.fill('');
+      await page.getByRole('button',{name:'Search chats'}).click();
+    }
 
     const navButton=label=>page.locator('.desktopPrimaryNav button').filter({hasText:label}).first();
 
@@ -141,7 +152,7 @@ test('Windows W1 shell, sidebar, header and primary navigation audit',async()=>{
     await record('Explore navigation',async()=>{
       await navButton('Explore').click();
       await expect(page.locator('.contentPage').first()).toBeVisible();
-      await expect(page.getByText('Explore',{exact:true}).first()).toBeVisible();
+      await expect(page.getByRole('heading',{name:'Explore',exact:true})).toBeVisible();
       return 'Explore page opened';
     },'22-explore.png');
 
