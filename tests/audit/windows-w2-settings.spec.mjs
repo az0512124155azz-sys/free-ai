@@ -76,7 +76,7 @@ test('Windows W2 settings audit',async()=>{
     }
     async function section(label){
       await openSettings();
-      const button=page.locator('.settingsNav button').filter({hasText:label}).first();
+      const button=page.locator('.settingsNav').getByRole('button',{name:label,exact:true});
       await expect(button).toBeVisible();
       await button.click();
       await expect(page.locator('.settingsContentTop h1')).toHaveText(label);
@@ -172,13 +172,22 @@ test('Windows W2 settings audit',async()=>{
 
     await record('Data controls: Export',async()=>{
       await section('Data controls');
-      const [download]=await Promise.all([
-        page.waitForEvent('download'),
-        page.getByRole('button',{name:'Export',exact:true}).click()
-      ]);
-      expect(download.suggestedFilename()).toBe('free-ai-export.json');
-      await download.saveAs(path.join(out,'free-ai-export.json'));
-      return 'free-ai-export.json downloaded';
+      const exportPath=path.join(out,'free-ai-export.json');
+      await app.evaluate(({session},savePath)=>{
+        globalThis.__FREEAI_W2_EXPORT__={seen:false,filename:'',state:''};
+        session.defaultSession.once('will-download',(_event,item)=>{
+          globalThis.__FREEAI_W2_EXPORT__.seen=true;
+          globalThis.__FREEAI_W2_EXPORT__.filename=String(item.getFilename?.()||'');
+          item.setSavePath(savePath);
+          item.once('done',(_e,state)=>{globalThis.__FREEAI_W2_EXPORT__.state=String(state||'')});
+        });
+      },exportPath);
+      await page.getByRole('button',{name:'Export',exact:true}).click();
+      await expect.poll(()=>app.evaluate(()=>globalThis.__FREEAI_W2_EXPORT__?.seen===true)).toBe(true);
+      await expect.poll(()=>app.evaluate(()=>globalThis.__FREEAI_W2_EXPORT__?.state||'')).toBe('completed');
+      const exported=JSON.parse(await fs.readFile(exportPath,'utf8'));
+      expect(exported.product).toBe('Free AI');
+      return 'free-ai-export.json downloaded through Electron default session';
     },'11-data-export.png');
 
     await record('Data controls: Clear confirmation cancel',async()=>{
@@ -210,7 +219,7 @@ test('Windows W2 settings audit',async()=>{
 
     await record('Keyboard shortcuts section',async()=>{
       await section('Keyboard shortcuts');
-      for(const text of ['Ctrl+N','Ctrl+Shift+B','Ctrl+,'])await expect(page.getByText(text,{exact:true})).toBeVisible();
+      for(const text of ['Ctrl+N','Ctrl+Shift+B','Ctrl+,'])await expect(page.locator('.valuePill').filter({hasText:text}).first()).toBeVisible();
       return 'All documented shortcuts visible';
     },'15-keyboard-shortcuts.png');
 
@@ -300,11 +309,17 @@ test('Windows W2 settings audit',async()=>{
       await page.getByPlaceholder('Base URL').fill('http://127.0.0.1:17893/v1');
       await page.getByPlaceholder('Model ID').fill('qa-model');
       await page.getByRole('button',{name:'Add API model'}).click();
-      await expect(page.getByText('QA Local Model',{exact:true})).toBeVisible();
-      const row=page.locator('.apiItem').filter({hasText:'QA Local Model'});
+      const row=page.locator('.apiItem').filter({hasText:'qa-model'}).first();
+      await expect(row).toBeVisible();
+      const rowText=String(await row.textContent()||'');
+      if(!rowText.includes('QA Local Model')){
+        failResult('Connections: Display name is honored','Display name "QA Local Model" was saved but the UI renders the Model ID "qa-model" instead.');
+      }else{
+        results.push({name:'Connections: Display name is honored',status:'PASS',detail:'Saved display name is shown'});
+      }
       await row.getByRole('button',{name:'Remove'}).click();
-      await expect(page.getByText('QA Local Model',{exact:true})).toHaveCount(0);
-      return 'Local API model can be stored and removed';
+      await expect(row).toHaveCount(0);
+      return 'API model stored and removed successfully';
     },'25-connections-api-model.png');
 
     await record('Git section',async()=>{
