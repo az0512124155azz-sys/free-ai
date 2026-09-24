@@ -105,9 +105,11 @@ test('Windows known W2/W3 regressions are fixed',async()=>{
       await page.getByRole('button',{name:'Close settings'}).click();
       await page.locator('.modelButton').click();
       const picker=page.getByRole('listbox',{name:'Select model'});
-      await expect(picker.getByRole('option',{name:/QA Display Name/})).toBeVisible();
-      await expect(picker).not.toContainText('qa-model-id');
-      await picker.getByRole('option',{name:/QA Display Name/}).click();
+      const row=picker.locator('.pickerRow').filter({hasText:'QA Display Name'}).first();
+      await expect(row).toBeVisible();
+      await expect(row.locator('.pickerText b')).toHaveText('QA Display Name');
+      await expect(row.locator('.pickerText small')).toContainText('qa-model-id');
+      await row.click();
       await expect(page.locator('.modelButton')).toContainText('QA Display Name');
       return 'Display name wins over raw API model ID';
     },'03-api-display-name.png');
@@ -131,6 +133,10 @@ test('Windows known W2/W3 regressions are fixed',async()=>{
       await app.evaluate(({dialog},target)=>{
         dialog.showSaveDialog=()=>Promise.resolve({canceled:false,filePath:target});
       },savePath);
+      expect(await page.evaluate(()=>typeof window.desktopApi?.saveDataFile)).toBe('function');
+      const probe=await page.evaluate(()=>window.desktopApi.saveDataFile({defaultName:'probe.json',content:'{"probe":true}'}));
+      expect(probe?.saved).toBe(true);
+      expect(JSON.parse(await fs.readFile(savePath,'utf8')).probe).toBe(true);
       await openSettings('Data controls');
       await page.getByRole('button',{name:'Export',exact:true}).click();
       await expect.poll(async()=>{
