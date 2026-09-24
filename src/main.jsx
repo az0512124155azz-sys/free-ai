@@ -461,7 +461,6 @@ function App(){
   const [attachments,setAttachments]=useState([]);
   const [attachmentError,setAttachmentError]=useState('');
   const [dragActive,setDragActive]=useState(false);
-  const [screens,setScreens]=useState([]);
   const [workTask,setWorkTask]=useState(null);
   const [repositoryWorkspace,setRepositoryWorkspace]=useState(null);
   const [localFolderWorkspace,setLocalFolderWorkspace]=useState(null);
@@ -3901,102 +3900,6 @@ function FilePane({file,onClose}){
       {file?.kind==='archive'&&<div className="paneEmpty"><Archive size={38}/><b>Archive previews aren't supported yet</b><span>{isWindowsDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
       {file?.kind==='binary'&&<div className="paneEmpty"><File size={38}/><b>Preview unavailable</b><span>{isWindowsDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
     </div>
-  </aside>
-}
-
-function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose}){
-  const previewOnly=desktopPlatform==='linux';
-  const [loading,setLoading]=useState(false);
-  const [lastPoint,setLastPoint]=useState(null);
-  const [typeText,setTypeText]=useState('');
-  const [pendingAction,setPendingAction]=useState(null);
-  const [controlError,setControlError]=useState('');
-
-  async function refresh(){
-    if(!isDesktop)return;setLoading(true);
-    try{setScreens(await window.desktopApi.captureScreens())}catch{setScreens([])}finally{setLoading(false)}
-  }
-  useEffect(()=>{refresh()},[]);
-
-  async function executeAction(action){
-    setControlError('');
-    try{
-      if(isWindowsDesktop){
-        const viewport={width:action.viewportWidth,height:action.viewportHeight};
-        const x=Math.round(action.nx*Math.max(1,viewport.width-1));
-        const y=Math.round(action.ny*Math.max(1,viewport.height-1));
-        let result=await window.desktopApi.computerPerformAction({
-          displayId:action.displayId,
-          viewport,
-          action:{type:'click',button:'left',x,y}
-        });
-        if(action.text){
-          result=await window.desktopApi.computerPerformAction({
-            displayId:action.displayId,
-            viewport,
-            action:{type:'type',text:action.text}
-          });
-        }
-        if(Array.isArray(result?.screens))setScreens(result.screens);
-      }else{
-        if(action.text)await window.desktopApi.computerClickAndType(action);
-        else await window.desktopApi.computerClick(action);
-        setTimeout(refresh,500);
-      }
-      setLastPoint(action);
-      setPendingAction(null);
-    }catch(e){setControlError(e?.message||'Computer action failed.')}
-  }
-
-  async function clickScreen(e,screen){
-    if(screen?.interactive===false||screen?.displayId===null||screen?.displayId===undefined){
-      setControlError('This screen is preview-only because Windows did not provide a reliable display mapping. Refresh Computer Use after reconnecting or reconfiguring the display.');
-      return;
-    }
-    const rect=e.currentTarget.getBoundingClientRect();
-    const action={
-      displayId:screen.displayId,
-      nx:(e.clientX-rect.left)/rect.width,
-      ny:(e.clientY-rect.top)/rect.height,
-      viewportWidth:Number(screen.width)||800,
-      viewportHeight:Number(screen.height)||450,
-      text:typeText||''
-    };
-    if(['ask','read','low'].includes(approvalMode)){setPendingAction(action);return}
-    await executeAction(action);
-  }
-
-  const label=previewOnly?'Preview only':approvalMode==='low'?'Allow low-risk':approvalMode==='read'?'Allow reads':'Always ask';
-  return <aside className="sidePane computerPane">
-    <div className="paneTabs"><div className="browserTab"><Monitor size={14}/><span>Computer</span></div><button onClick={onClose}><X size={16}/></button></div>
-    <div className="computerToolbar">
-      <div><b>Computer use</b><small>{label}</small></div>
-      {!previewOnly&&<select className="computerPermissionSelect" value={approvalMode} onChange={e=>setApprovalMode(e.target.value)}>
-        <option value="ask">Always ask</option>
-        <option value="read">Allow reads</option>
-        <option value="low">Allow low-risk</option>
-      </select>}
-      <button onClick={refresh}><RefreshCw className={loading?'spin':''} size={15}/>Refresh</button>
-    </div>
-    {!previewOnly&&<div className="computerType"><input value={typeText} onChange={e=>setTypeText(e.target.value)} placeholder="Optional text to type after clicking"/><small>{typeText?'Click a point to propose a click + type action.':'Click a point to propose a mouse action.'}</small></div>}
-    {previewOnly&&<div className="computerPreviewNotice">Linux supports screen preview here. Use the built-in browser for interactive web tasks.</div>}
-    {pendingAction&&<div className="approvalPrompt">
-      <ShieldCheck size={18}/><div><b>Approve this computer action?</b><small>{pendingAction.text?'Click the selected point and type the prepared text.':'Click the selected point.'}</small></div>
-      <button onClick={()=>setPendingAction(null)}>Cancel</button>
-      <button className="approveAction" onClick={()=>executeAction(pendingAction)}>Approve</button>
-    </div>}
-    {controlError&&<div className="computerError">{controlError}</div>}
-    <div className="computerScreens">
-      {screens.map(screen=>{
-        const screenPreviewOnly=previewOnly||screen.interactive===false;
-        return <div className={'computerScreen '+(screenPreviewOnly?'previewOnly':'')} key={screen.id}>
-          <img src={screen.thumbnail} alt={screen.name} onClick={screenPreviewOnly?undefined:e=>clickScreen(e,screen)}/>
-          <span>{screen.name}{screen.interactive===false&&isWindowsDesktop?' · Preview only (display mapping unavailable)':''}</span>
-        </div>;
-      })}
-      {!screens.length&&!loading&&<div className="paneEmpty"><Monitor size={34}/><b>No screen preview available</b></div>}
-    </div>
-    {lastPoint&&<div className="controlStatus"><MousePointer2 size={13}/>Last action completed</div>}
   </aside>
 }
 
