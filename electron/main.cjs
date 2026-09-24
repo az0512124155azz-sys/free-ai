@@ -3809,8 +3809,8 @@ function windowsInitialWindowBounds(){
   const y=Math.round((Number(workArea?.y)||0)+Math.max(0,((Number(workArea?.height)||height)-height)/2));
   return {
     x,y,width,height,
-    minWidth:Math.min(640,width),
-    minHeight:Math.min(480,height)
+    minWidth:Math.min(500,width),
+    minHeight:Math.min(420,height)
   };
 }
 
