@@ -128,7 +128,7 @@ test('Windows W5A native shell responsive dialogs shortcuts',async()=>{
       await page.getByRole('button',{name:'Open navigation'}).click();
       await expect(page.locator('.gptSidebar.mobileOpen')).toBeVisible();
       let v=await layout();expect(v.overflow).toBe(false);
-      await page.getByRole('button',{name:'Close navigation'}).click();
+      await page.locator('.mobileCloseNav').click();
       await expect(page.locator('.gptSidebar.mobileOpen')).toHaveCount(0);
       v=await layout();expect(v.overflow).toBe(false);
       return 'Compact drawer opened and closed cleanly';
@@ -158,7 +158,7 @@ test('Windows W5A native shell responsive dialogs shortcuts',async()=>{
       await expect(settings).toBeVisible({timeout:8000});
       await expect(page.locator('.settingsContentTop h1')).toHaveText('General');
       await shot(page,'05-settings-shortcut-open.png');
-      await nativeKeys('{ESC}');
+      await page.keyboard.press('Escape');
       await expect(settings).toHaveCount(0,{timeout:8000});
       return 'Ctrl+, -> Settings General -> Escape close';
     },'06-settings-shortcut-closed.png');
