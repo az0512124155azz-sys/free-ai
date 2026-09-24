@@ -160,7 +160,7 @@ test('Windows W3 real chat audit',async()=>{
       const picker=page.getByRole('listbox',{name:'Select model'});
       await picker.getByRole('option',{name:/qa-alt/i}).click();
       await expect(page.locator('.modelButton')).toContainText('qa-alt');
-      await page.locator('.modelButton').click();
+      if(await page.getByRole('listbox',{name:'Select model'}).count()===0)await page.locator('.modelButton').click();
       await page.getByRole('listbox',{name:'Select model'}).getByRole('option',{name:/qa-stream/i}).click();
       await expect(page.locator('.modelButton')).toContainText('qa-stream');
       return 'qa-alt -> qa-stream';
@@ -185,6 +185,12 @@ test('Windows W3 real chat audit',async()=>{
       await expect(page.locator('.chatMessage.assistant .messageBody').last()).toContainText('QA response 1 for hello-stream');
       return 'Completed streamed response';
     },'05-stream-complete.png');
+
+    await record('New chat creates exactly one Recent entry',async()=>{
+      const count=await page.locator('.recentRow').filter({hasText:'hello-stream'}).count();
+      if(count!==1)throw new Error('Expected one "hello-stream" Recent entry, found '+count+'. Initial and final saves are creating duplicate chat records.');
+      return 'One Recent entry created';
+    },'05b-recents-single.png');
 
     await record('Copy response copies real text',async()=>{
       const response=String(await page.locator('.chatMessage.assistant .messageBody').last().textContent()||'');
@@ -300,7 +306,8 @@ test('Windows W3 real chat audit',async()=>{
       return 'menu-chat.md saved with both sides of conversation';
     },'16-chat-exported.png');
 
-    await record('Delete chat requires confirmation and removes chat',async()=>{
+    await record('Delete chat removes the selected record',async()=>{
+      const before=await page.evaluate(()=>JSON.parse(localStorage.getItem('freeai.chats.free')||'[]').filter(chat=>chat.title==='menu-chat').length);
       const row=page.locator('.recentRow').filter({hasText:'menu-chat'}).first();
       await row.getByRole('button',{name:'More options for menu-chat'}).click();
       await page.getByRole('menuitem',{name:/Delete chat/}).click();
@@ -308,8 +315,9 @@ test('Windows W3 real chat audit',async()=>{
       await expect(dialog).toBeVisible();
       await shot(page,'17-delete-confirm.png');
       await dialog.getByRole('button',{name:'Delete',exact:true}).click();
-      await expect(page.locator('.recentRow').filter({hasText:'menu-chat'})).toHaveCount(0);
-      return 'Confirmed deletion removed chat from Recents';
+      const after=await page.evaluate(()=>JSON.parse(localStorage.getItem('freeai.chats.free')||'[]').filter(chat=>chat.title==='menu-chat').length);
+      expect(after).toBe(Math.max(0,before-1));
+      return 'Selected chat record removed; any remaining duplicate is tracked by the separate Recent-duplication failure';
     },'18-chat-deleted.png');
 
     await fs.writeFile(path.join(out,'server-requests.json'),JSON.stringify(requests,null,2));
