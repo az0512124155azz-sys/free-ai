@@ -771,7 +771,15 @@ function App(){
         'remoteBrowserLabel='+!![...document.querySelectorAll('.remoteDesktopSettings .settingRow')].find(row=>row.textContent?.includes('Remote Browser')),
         'remoteComputerLabel='+!![...document.querySelectorAll('.remoteDesktopSettings .settingRow')].find(row=>row.textContent?.includes('Remote Computer')),
         'remoteDesktopApiForm='+!!document.querySelector('.remoteDesktopSettings .apiForm'),
-        'remotePairingKey='+!!document.querySelector('.remoteDesktopSettings input[type="password"]')
+        'remotePairingKey='+!!document.querySelector('.remoteDesktopSettings input[type="password"]'),
+        'plusOpen='+!!document.querySelector('.plusPicker'),
+        'plusItems='+[...document.querySelectorAll('.plusPicker .menuRow b')].map(node=>String(node.textContent||'').trim().replace(/[;|]/g,'_')).filter(Boolean).join('|'),
+        'modeMenu='+!!document.querySelector('.mobileModeMenu'),
+        'modeLabel='+String(document.querySelector('.mobileModeButton span')?.textContent||'').trim().replace(/[;|]/g,'_'),
+        'profileOpen='+!!document.querySelector('.profileMenu'),
+        'remoteQuick='+!![...document.querySelectorAll('.mobileExperienceRail button')].find(button=>button.textContent?.includes('Remote')),
+        'appsQuick='+!![...document.querySelectorAll('.mobileExperienceRail button')].find(button=>button.textContent?.includes('Apps')),
+        'exploreQuick='+!![...document.querySelectorAll('.mobileExperienceRail button')].find(button=>button.textContent?.includes('Explore'))
       ].join(';');
     };
     window.__FREEAI_ANDROID_QA__=(command='audit')=>{
@@ -787,6 +795,29 @@ function App(){
       }
       if(command==='openDrawer')document.querySelector('.mobileNavTrigger')?.click();
       if(command==='openModel')document.querySelector('.mobileModelTrigger')?.click();
+      if(command==='openAdd')document.querySelector('.plusCircle')?.click();
+      if(command==='openModeMenu')document.querySelector('.mobileModeButton')?.click();
+      if(command==='selectWork'){
+        const button=[...document.querySelectorAll('.mobileModeMenu button')].find(item=>item.textContent?.trim()==='Work');
+        button?.click();
+      }
+      if(command==='selectChat'){
+        const button=[...document.querySelectorAll('.mobileModeMenu button')].find(item=>item.textContent?.trim()==='Chat');
+        button?.click();
+      }
+      if(command==='openProfile')document.querySelector('.profileButton')?.click();
+      if(command==='openRemoteQuick'){
+        const button=[...document.querySelectorAll('.mobileExperienceRail button')].find(item=>item.textContent?.includes('Remote'));
+        button?.click();
+      }
+      if(command==='openAppsQuick'){
+        const button=[...document.querySelectorAll('.mobileExperienceRail button')].find(item=>item.textContent?.includes('Apps'));
+        button?.click();
+      }
+      if(command==='openExploreQuick'){
+        const button=[...document.querySelectorAll('.mobileExperienceRail button')].find(item=>item.textContent?.includes('Explore'));
+        button?.click();
+      }
       if(command==='focusComposer'){
         const field=document.querySelector('.gptComposer textarea');
         field?.focus();
