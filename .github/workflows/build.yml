@@ -356,6 +356,8 @@ jobs:
       matrix:
         include:
           - form_factor: phone
+            profile: pixel_5
+          - form_factor: large-phone
             profile: pixel_7_pro
           - form_factor: tablet
             profile: pixel_tablet
