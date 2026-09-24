@@ -839,7 +839,7 @@ function App(){
       if(command==='new-chat')newChat();
       if(command==='about'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
-      if(command==='open-computer'){setSettingsOpen(false);setSidePanel('computer')}
+      if(command==='open-computer'){setSettingsOpen(false);setSidePanel(null);setProduct('free');setMode('work');setPage('chat')}
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
     });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
@@ -2311,7 +2311,6 @@ function App(){
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
-                onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                 onPlugins={openPluginsPage}
               />
             </div>
@@ -2373,7 +2372,6 @@ function App(){
                 superTeamKeys={superTeamKeys} setSuperTeamKeys={keys=>{const next=[...new Set(keys)];setSuperTeamKeys(next);localStorage.setItem('freeai.super.team',JSON.stringify(next))}}
                 mcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={toggleMcpConnection}
                 onBrowser={openBrowser}
-                  onComputer={()=>{setPlusMenu(false);setSidePanel('computer')}}
                   onPlugins={openPluginsPage}
                 />
               </div>
@@ -2422,11 +2420,6 @@ function App(){
       onClose={()=>setSidePanel(null)}
     />}
     {sidePanel==='file'&&<FilePane file={selectedFile} onClose={()=>setSidePanel(null)}/>}
-    {sidePanel==='computer'&&<ComputerPane
-      screens={screens} setScreens={setScreens} approvalMode={appPrefs.approvalMode||'ask'}
-      setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
-      onClose={()=>setSidePanel(null)}
-    />}
 
     {deleteChatTarget&&<DeleteChatDialog chat={deleteChatTarget} onClose={()=>setDeleteChatTarget(null)} onConfirm={deleteChat}/>}
     {researchSetupOpen&&pendingResearch&&<ResearchSetupDialog
@@ -2444,7 +2437,6 @@ function App(){
       saveSettings={saveSettings} connected={connected} mcpConnections={mcpConnections} apiDraft={apiDraft} setApiDraft={setApiDraft}
       addApiConnection={addApiConnection} removeApiConnection={removeApiConnection} apiError={apiError}
       onExportData={exportLocalData} onClearHistory={clearLocalHistory}
-      onComputer={()=>{setSettingsOpen(false);setSidePanel('computer')}}
       onPlugins={()=>{setSettingsOpen(false);openPluginsPage()}}
       onBrowser={()=>{setSettingsOpen(false);openBrowser()}}
     />}
@@ -2622,7 +2614,7 @@ function Composer(props){
     parallelCount=1,setParallelCount,effort,setEffort,effortMenu,setEffortMenu,plusMenu,setPlusMenu,webSearchEnabled=false,onToggleWebSearch,deepResearchEnabled=false,onToggleDeepResearch,fileRef,photoRef,cameraRef,mcpTools,selectedTool,setSelectedTool,
     product,voiceLanguage,showBottomPanel,spellCheckEnabled,hapticsEnabled,approvalMode,setApprovalMode,workTask,onWorkApproval,onWorkProject,onWorkAgent,
     repositoryWorkspace,onChooseRepository,onClearRepository,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder,superTeamKeys=[],setSuperTeamKeys,
-    mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onComputer,onPlugins
+    mcpConnections=[],selectedMcpIds=[],onToggleMcp,onBrowser,onPlugins
   }=props;
   const [listening,setListening]=useState(false);
   const [dictationError,setDictationError]=useState('');
@@ -2902,8 +2894,8 @@ function Composer(props){
         <div className="menuAnchor">
           <button className="plusCircle" aria-label="Add" aria-haspopup="menu" aria-expanded={plusMenu} disabled={busy} onClick={()=>!busy&&setPlusMenu(v=>!v)}><Plus size={20}/></button>
           {plusMenu&&<PlusMenu
-            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onComputer={onComputer} onPlugins={onPlugins}
-            tools={mcpTools} setSelectedTool={tool=>{if(tool&&webSearchEnabled)onToggleWebSearch?.();if(tool&&deepResearchEnabled)onToggleDeepResearch?.();setSelectedTool(tool)}} mode={mode}
+            fileRef={fileRef} photoRef={photoRef} cameraRef={cameraRef} onBrowser={onBrowser} onPlugins={onPlugins}
+            tools={mcpTools} setSelectedTool={tool=>{if(tool&&webSearchEnabled)onToggleWebSearch?.();if(tool&&deepResearchEnabled)onToggleDeepResearch?.();setSelectedTool(tool)}} mode={mode} showBottomPanel={showBottomPanel}
             webSearchEnabled={webSearchEnabled} onToggleWebSearch={onToggleWebSearch}
             deepResearchEnabled={deepResearchEnabled} onToggleDeepResearch={onToggleDeepResearch}
             directMcpConnections={mcpConnections} selectedMcpIds={selectedMcpIds} onToggleMcp={onToggleMcp}
@@ -3125,7 +3117,7 @@ function WorkTaskStatus({task,onApproval,onOpenProject,onOpenAgent}){
   </div>
 }
 
-function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,tools,setSelectedTool,mode,webSearchEnabled=false,onToggleWebSearch,deepResearchEnabled=false,onToggleDeepResearch,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder}){
+function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onPlugins,tools,setSelectedTool,mode,showBottomPanel=true,webSearchEnabled=false,onToggleWebSearch,deepResearchEnabled=false,onToggleDeepResearch,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,localFolderWorkspace,onChooseLocalFolder,onClearLocalFolder}){
   return <div className="floatingMenu plusPicker" role="menu" aria-label="Add">
     <div className="floatingTitle">Add</div>
     {isNative?<>
@@ -3135,9 +3127,9 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
     </>:!(mode==='work'&&isWindowsDesktop)&&<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
     {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Globe2} label="Search the web" sub={webSearchEnabled?'Live Search is enabled for the next message':'Use the selected browser AI’s live Search tool and return sources'} active={webSearchEnabled} onClick={onToggleWebSearch}/>}
     {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Sparkles} label="Deep research" sub={deepResearchEnabled?'Deep Research is enabled for the next message':'Review a plan first; browser models use native research and API models can use configured Free AI retrieval'} active={deepResearchEnabled} onClick={onToggleDeepResearch}/>}
-    {!isNative&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
+    {!isNative&&!(mode==='work'&&isWindowsDesktop&&showBottomPanel)&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
-    {mode==='work'&&isWindowsDesktop&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
+    {mode==='work'&&isWindowsDesktop&&!showBottomPanel&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
     {mode==='work'&&isWindowsDesktop&&<>
       <div className="floatingTitle section">Direct MCP apps</div>
       {directMcpConnections.length===0
@@ -3159,8 +3151,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onComputer,onPlugins,too
     {tools.length===0?<div className="menuEmpty compact">No provider-managed connector hints detected.</div>:tools.slice(0,10).map(t=>
       <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · provider-managed, unverified'} onClick={mode==='work'&&isWindowsDesktop?undefined:()=>setSelectedTool(t)}/>
     )}
-    <MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>
-    {!isNative&&<MenuRow icon={Monitor} label="Computer" sub="View or control your desktop" onClick={onComputer}/>} 
+    {!(mode==='work'&&isWindowsDesktop&&showBottomPanel)&&<MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>} 
   </div>
 }
 
@@ -4010,7 +4001,7 @@ function ComputerPane({screens,setScreens,approvalMode,setApprovalMode,onClose})
 }
 
 function SettingsView(props){
-  const {section,setSection,mobileList,setMobileList,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onComputer,onPlugins,onBrowser}=props;
+  const {section,setSection,mobileList,setMobileList,onClose,session,prefs,setPrefs,status,settings,setSettings,saveSettings,connected,mcpConnections=[],apiDraft,setApiDraft,addApiConnection,removeApiConnection,apiError,onExportData,onClearHistory,onPlugins,onBrowser}=props;
   const [settingsQuery,setSettingsQuery]=useState('');
   const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Files','Configuration','Browser','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>
@@ -4042,7 +4033,11 @@ function SettingsView(props){
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
-      {section==='Computer use'&&!isNative&&<IntegrationSettings icon={Monitor} title="Computer use" text={desktopPlatform==='linux'?'Preview your Linux desktop. Interactive desktop-app control is not enabled on Linux.':'Preview and control your desktop from Work or Super AI.'} status={desktopPlatform==='linux'?'Preview only':normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask'} action={onComputer}/>}
+      {section==='Computer use'&&!isNative&&<SimpleSettings title="Computer use" rows={[
+        ['Availability',desktopPlatform==='linux'?'Desktop interaction is not enabled on Linux':'Available to Work and Super AI on this computer'],
+        ['Screen handling',desktopPlatform==='linux'?'No interactive desktop control':'Screenshots are used internally by the active AI task; no screen-mirror panel is shown'],
+        ['Approvals',normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask']
+      ]}/>}
       {section==='Files'&&isWindowsDesktop&&<SimpleSettings title="Files" rows={[['Local folder access','Windows Work/Super AI · user-selected folder per conversation'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":isNative?"Discover app listings and review provider-managed capabilities. Account authorization and permissions remain with the provider or app connection.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
