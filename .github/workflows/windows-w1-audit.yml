@@ -1,0 +1,69 @@
+name: Windows W1 UI Audit
+
+on:
+  push:
+    branches: [audit/windows-w1-ui]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows_w1_audit:
+    name: Windows W1 UI Audit
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Install pinned Playwright Electron driver
+        run: npm install --no-save --no-package-lock @playwright/test@1.63.0
+
+      - name: Build production auth renderer
+        run: npm run build:web
+
+      - name: Audit Windows auth entry
+        continue-on-error: true
+        run: npx playwright test tests/audit/windows-w1-auth.spec.mjs --workers=1 --reporter=list
+
+      - name: Build auth-independent Windows shell renderer
+        run: npm run build:web
+        env:
+          VITE_VISUAL_TEST: '1'
+
+      - name: Audit Windows W1 shell
+        continue-on-error: true
+        run: npx playwright test tests/audit/windows-w1-shell.spec.mjs --workers=1 --reporter=list
+
+      - name: Upload Windows W1 screenshots and results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-windows-w1-audit
+          path: artifacts/windows-w1/**
+          if-no-files-found: error
+
+      - name: Fail if W1 contains real UI failures
+        if: always()
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem artifacts/windows-w1/*-results.json -ErrorAction SilentlyContinue
+          if (-not $files) { throw 'Windows W1 audit result files were not produced.' }
+          $failed = @()
+          foreach ($file in $files) {
+            $rows = Get-Content $file.FullName -Raw | ConvertFrom-Json
+            $failed += @($rows | Where-Object { $_.status -eq 'FAIL' })
+          }
+          if ($failed.Count -gt 0) {
+            $failed | ConvertTo-Json -Depth 6 | Write-Host
+            throw "Windows W1 found $($failed.Count) real UI failure(s)."
+          }
+          Write-Host 'Windows W1 audit finished without real UI failures. BLOCKED items remain explicitly reported.'
