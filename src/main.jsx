@@ -213,7 +213,13 @@ function modelProviderId(model){
   return String(model?.providerId||model?.id||'').split(':')[0];
 }
 function modelLabel(model){
+  if(model?.source==='api')return model?.name||model?.modelName||model?.model||'Select model';
   return model?.modelName||model?.model||model?.name||providerNames[modelProviderId(model)]||'Select model';
+}
+function desktopIpcErrorMessage(error,fallback='Something went wrong.'){
+  const raw=String(error?.message||error||'').trim();
+  const cleaned=raw.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/i,'').trim();
+  return cleaned||fallback;
 }
 function modelKey(model){
   return model?(String(model.source||'browser')+'::'+String(model.id||'')):'';
@@ -1612,7 +1618,8 @@ function App(){
     const userAttachmentMeta=activeAttachments.map(attachmentMeta);
     const attachmentContext=inlineTextParts.join('\n\n');
     const withUser=[...messages,{role:'user',text:userText,attachments:userAttachmentMeta,attachmentContext}];
-    setMessages(withUser);saveCurrentChat(withUser,selected);
+    const parallelChatId=saveCurrentChat(withUser,selected);
+    setMessages(withUser);
 
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
@@ -1663,7 +1670,7 @@ function App(){
         return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
       });
       const next=[...withUser,...responses];
-      setMessages(next);saveCurrentChat(next,selected);
+      setMessages(next);saveCurrentChat(next,selected,{chatId:parallelChatId||undefined});
       for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
       setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current);
     }finally{
@@ -1726,7 +1733,8 @@ function App(){
     const directAgentMeta=currentChatMeta?.isAgentThread
       ? {isAgentThread:true,parentChatId:currentChatMeta.parentChatId,agentId:currentChatMeta.agentId,agentRole:currentChatMeta.agentRole,taskId:currentChatMeta.taskId,detachedFromTask:true}
       : {};
-    setMessages(initial);saveCurrentChat(withUser,model,{mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
+    const generationChatId=saveCurrentChat(withUser,model,{mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
+    setMessages(initial);
     try{
       const projectInstructions=activeProject?String(activeProject.instructions||'').trim():'';
       const globalInstructions=appPrefs.customizationEnabled?String(appPrefs.customInstructions||'').trim():'';
@@ -1782,7 +1790,7 @@ function App(){
         ? (result?.research||{status:'complete',mode:'provider-native',title:userText.slice(0,96)||'Research report',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'},completedAt:new Date().toISOString()})
         : null;
       const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch,research:researchMeta}];
-      setMessages(next);saveCurrentChat(next,model);
+      setMessages(next);saveCurrentChat(next,model,{chatId:generationChatId||undefined,mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
       if(chatAttachmentPlatform&&!retryContext){
         for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
         setAttachments([]);setSelectedFile(null);setSidePanel(current=>current==='file'?null:current)
@@ -1790,7 +1798,7 @@ function App(){
     }catch(e){
       if(requestId&&cancelledRequestRef.current===requestId)return;
       const next=[...withUser,{role:'error',text:e?.message||String(e)}];
-      setMessages(next);saveCurrentChat(next,model);
+      setMessages(next);saveCurrentChat(next,model,{chatId:generationChatId||undefined,mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
     }finally{
       if(activeRequestRef.current===requestId)activeRequestRef.current=null;
       if(activeRemoteRequestRef.current?.id===requestId)activeRemoteRequestRef.current=null;
@@ -1908,7 +1916,7 @@ function App(){
   async function addApiConnection(){
     if(!isDesktop)return;setApiError('');
     try{await window.desktopApi.addApiConnection(apiDraft);setApiDraft({name:'',baseUrl:'',model:'',apiKey:''})}
-    catch(e){setApiError(e?.message||String(e))}
+    catch(e){setApiError(desktopIpcErrorMessage(e,'Could not add API model.'))}
   }
   async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
   async function addMcpConnection(){
@@ -1963,8 +1971,13 @@ function App(){
       projects:readJSON('freeai.projects',[]),
       preferences:appPrefs
     };
-    const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+    const json=JSON.stringify(payload,null,2);
+    const blob=new Blob([json],{type:'application/json'});
     const file=new File([blob],'free-ai-export.json',{type:'application/json'});
+    if(isWindowsDesktop&&window.desktopApi?.saveDataFile){
+      await window.desktopApi.saveDataFile({defaultName:'free-ai-export.json',content:json});
+      return;
+    }
     if(isNative&&navigator.share){
       try{await navigator.share({files:[file],title:'Free AI data export'});return}catch(e){if(e?.name==='AbortError')return}
     }
@@ -3930,6 +3943,7 @@ function SettingsView(props){
         <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
       </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
+      {section==='App'&&isWindowsDesktop&&<WindowsAppSettings/>}
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
