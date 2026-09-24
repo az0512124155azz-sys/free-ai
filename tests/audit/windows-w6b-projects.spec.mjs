@@ -145,8 +145,9 @@ test('Windows W6B Master project and child agent chat audit',async()=>{
       const label=String(await first.textContent()||'');
       await first.click();
       await expect(page.locator('.conversationView')).toBeVisible();
-      await expect(page.locator('.chatMessage')).toHaveCount(2,{timeout:8000});
-      await expect(page.locator('.chatMessage.assistant .messageBody').last()).toContainText('Specialist evidence');
+      await expect(page.locator('.chatMessage')).toHaveCount(4,{timeout:8000});
+      await expect(page.locator('.chatMessage.assistant .messageBody').first()).toContainText('Specialist evidence');
+      await expect(page.locator('.chatMessage.assistant .messageBody').last()).toContainText('Review from');
       return label.replace(/\s+/g,' ').trim();
     },'05-agent-chat.png');
 
@@ -154,9 +155,12 @@ test('Windows W6B Master project and child agent chat audit',async()=>{
       await page.locator('.gptComposer textarea').fill('agent-followup');
       await page.getByRole('button',{name:'Send message'}).click();
       await expect(page.locator('.chatMessage.assistant .messageBody').last()).toContainText('Independent agent follow-up',{timeout:12000});
+      await expect.poll(()=>page.evaluate(()=>{
+        const agents=JSON.parse(localStorage.getItem('freeai.chats.super')||'[]').filter(c=>c.isAgentThread);
+        return agents.some(c=>c.detachedFromTask===true);
+      }),{timeout:8000}).toBe(true);
       const agents=await page.evaluate(()=>JSON.parse(localStorage.getItem('freeai.chats.super')||'[]').filter(c=>c.isAgentThread));
       const detached=agents.find(c=>c.detachedFromTask===true);
-      expect(detached).toBeTruthy();
       expect(detached.messages.some(m=>String(m.text||'').includes('agent-followup'))).toBe(true);
       expect(detached.messages.some(m=>String(m.text||'').includes('Independent agent follow-up'))).toBe(true);
       return detached.id+' detachedFromTask=true';
