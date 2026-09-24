@@ -138,6 +138,7 @@ test('Windows W5A native shell responsive dialogs shortcuts',async()=>{
     await record('New Project dialog fits compact Windows viewport',async()=>{
       await page.getByRole('button',{name:'Open navigation'}).click();
       await page.getByRole('button',{name:'New project',exact:true}).click();
+      await expect(page.locator('.gptSidebar.mobileOpen')).toHaveCount(0);
       const dialog=page.locator('.projectDialog');
       await expect(dialog).toBeVisible();
       const box=await dialog.boundingBox();
@@ -157,6 +158,7 @@ test('Windows W5A native shell responsive dialogs shortcuts',async()=>{
       await nativeKeys('^,');
       const settings=page.locator('.settingsScreen');
       await expect(settings).toBeVisible({timeout:8000});
+      await expect(page.locator('.gptSidebar.mobileOpen')).toHaveCount(0);
       await expect(page.locator('.settingsContentTop h1')).toHaveText('General');
       await shot(page,'05-settings-shortcut-open.png');
       await page.locator('.settingsScreen .backToApp').click();
