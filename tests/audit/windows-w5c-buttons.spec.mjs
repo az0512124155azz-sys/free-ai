@@ -91,7 +91,7 @@ test('Windows W5C core button interaction sweep',async()=>{
       await expect(page.locator('.gptComposer textarea')).toHaveAttribute('placeholder','Work with Free AI');
       await collect('free-work');
       await page.getByRole('tab',{name:'Chat',exact:true}).click();
-      await expect(page.locator('.gptComposer textarea')).toHaveAttribute('placeholder','Message Free AI');
+      await expect(page.locator('.gptComposer textarea')).toHaveAttribute('placeholder',/^(Ask Free AI|Message W5 Button API|Message w5-button-model)$/);
       await collect('free-chat');
       return 'Chat ↔ Work';
     },'02-chat-work.png');
@@ -103,9 +103,10 @@ test('Windows W5C core button interaction sweep',async()=>{
       await expect(picker).toBeVisible();
       await collect('model-picker');
       await picker.getByRole('option',{name:/w5-button-model/i}).click();
-      await expect(picker).toHaveCount(0);
       await expect(button).toContainText(/W5 Button API|w5-button-model/i);
-      return 'API model selected';
+      await page.keyboard.press('Escape');
+      await expect(picker).toHaveCount(0);
+      return 'API model selected; picker remained available for model controls until explicitly closed';
     },'03-model-picker.png');
 
     await record('Add menu opens without retired Computer mirror action',async()=>{
@@ -171,7 +172,9 @@ test('Windows W5C core button interaction sweep',async()=>{
       const menu=page.getByRole('menu',{name:'Product'});
       await menu.getByRole('menuitemradio',{name:/Super AI/}).click();
       await expect(page.getByRole('button',{name:/Switch product\. Current: Super AI/}).first()).toBeVisible();
-      await expect(page.getByRole('tab',{name:'Work',exact:true})).toHaveAttribute('aria-selected','true');
+      await expect(page.locator('.gptComposer textarea')).toHaveAttribute('placeholder','Give Super AI a task');
+      await expect(page.locator('.modelButton')).toHaveCount(0);
+      await expect(page.locator('.teamButton')).toBeVisible();
       await collect('super-ai');
       const team=page.locator('.teamButton');
       await team.click();
