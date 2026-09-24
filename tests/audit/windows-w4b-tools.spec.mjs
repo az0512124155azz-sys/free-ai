@@ -170,8 +170,19 @@ test('Windows W4B Plugins Explore Browser Computer audit',async()=>{
       await expect(page.locator('.browserPane')).toBeVisible();
       await expect(page.getByRole('textbox',{name:'Address and search'})).toHaveValue(/127\.0\.0\.1:17920\/page1/);
       await expect(page.locator('.browserTab.active')).toContainText('QA Page One',{timeout:12000});
-      return 'Browser WebContentsView loaded QA Page One';
+      if(await page.locator('.browserErrorBar').count()){
+        const errorText=String(await page.locator('.browserErrorBar').textContent()||'');
+        if(/ERR_ABORTED|-3/i.test(errorText))throw new Error('A superseded initial navigation left a stale ERR_ABORTED error even though QA Page One loaded successfully. This also suppresses automatic Site Tools scanning.');
+        throw new Error('Browser showed an error after the page loaded: '+errorText);
+      }
+      return 'Browser WebContentsView loaded QA Page One without stale navigation error';
     },'06-browser-page1.png');
+
+    if(await page.locator('.browserErrorBar').count()){
+      await page.locator('.browserErrorBar').getByRole('button',{name:/Retry/}).click();
+      await expect(page.locator('.browserErrorBar')).toHaveCount(0,{timeout:12000});
+      await expect(page.locator('.browserTab.active')).toContainText('QA Page One',{timeout:12000});
+    }
 
     await record('Browser agent snapshot reads page text and interactive elements',async()=>{
       const snapshot=await page.evaluate(()=>window.desktopApi.browserUseBuiltInSnapshot());
@@ -184,6 +195,7 @@ test('Windows W4B Plugins Explore Browser Computer audit',async()=>{
     },'07-browser-agent-ui.png');
 
     await record('Browser Site Tools discovers and runs page WebMCP tool',async()=>{
+      await page.evaluate(()=>window.desktopApi.browserRefreshSiteTools());
       await expect(page.getByTitle('1 site tool')).toBeVisible({timeout:12000});
       await page.getByTitle('1 site tool').click();
       const panel=page.locator('.siteToolsPanel');
