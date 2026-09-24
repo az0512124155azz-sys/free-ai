@@ -1,0 +1,72 @@
+name: Windows W7B Release Readiness Audit
+
+on:
+  push:
+    branches: [audit/windows-w7b-release-readiness]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows_w7b:
+    name: Windows W7B Release Package and Visual
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Validate complete app and Windows 7 release guards
+        run: npm run validate
+      - name: Install pinned Playwright driver
+        run: npm install --no-save --no-package-lock @playwright/test@1.63.0
+      - name: Build deterministic Windows visual renderer
+        run: npm run build:web
+        env:
+          VITE_VISUAL_TEST: '1'
+      - name: Compare committed Windows visual baseline
+        run: npx playwright test --config=playwright.windows.config.mjs
+      - name: Build Windows NSIS installer
+        run: npm run desktop:dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Run installed-app lifecycle smoke
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts/windows-w7b | Out-Null
+          & ./scripts/windows7-installer-smoke.ps1 *>&1 | Tee-Object -FilePath artifacts/windows-w7b/installer-smoke.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Record release manifest
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release/Free-AI-Windows-*.exe | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+          if (-not $installer) { throw 'Windows installer was not produced.' }
+          $hash = Get-FileHash $installer.FullName -Algorithm SHA256
+          $sig = Get-AuthenticodeSignature $installer.FullName
+          $manifest = [ordered]@{
+            file = $installer.Name
+            sizeBytes = $installer.Length
+            sha256 = $hash.Hash
+            signatureStatus = [string]$sig.Status
+            signerSubject = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { '' }
+            electronVersion = (Get-Content package.json -Raw | ConvertFrom-Json).devDependencies.electron
+            productVersion = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content artifacts/windows-w7b/release-manifest.json -Encoding utf8
+          Copy-Item tests/visual/baselines/windows-main-shell.png artifacts/windows-w7b/windows-main-shell-baseline.png
+          $manifest | ConvertTo-Json -Depth 5 | Write-Host
+          if ($installer.Length -lt 10000000) { throw 'Windows installer is unexpectedly small.' }
+      - name: Upload W7B release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-windows-w7b-audit
+          path: |
+            artifacts/windows-w7b/**
+            artifacts/windows-visual/**
+            release/Free-AI-Windows-*.exe
+          if-no-files-found: error
