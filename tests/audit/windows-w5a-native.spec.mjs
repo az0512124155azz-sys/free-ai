@@ -159,7 +159,7 @@ test('Windows W5A native shell responsive dialogs shortcuts',async()=>{
       await expect(settings).toBeVisible({timeout:8000});
       await expect(page.locator('.settingsContentTop h1')).toHaveText('General');
       await shot(page,'05-settings-shortcut-open.png');
-      await page.getByRole('button',{name:'Close settings'}).click();
+      await page.locator('.settingsScreen .backToApp').click();
       await expect(settings).toHaveCount(0,{timeout:8000});
       return 'Ctrl+, opened Settings General; native Close settings returned to app';
     },'06-settings-shortcut-closed.png');
