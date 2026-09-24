@@ -46,8 +46,8 @@ has(main,'function windowsInitialWindowBounds','DPI-aware first-launch window si
 has(main,"screen.getPrimaryDisplay()?.workArea",'First-launch window must use the primary display work area in DIP.');
 has(main,'const usableWidth=Math.max(480','First-launch width floor is missing.');
 has(main,'const usableHeight=Math.max(360','First-launch height floor is missing.');
-has(main,'minWidth:Math.min(640,width)','Windows minimum width must never exceed its fitted initial width.');
-has(main,'minHeight:Math.min(480,height)','Windows minimum height must never exceed its fitted initial height.');
+has(main,'minWidth:Math.min(500,width)','Windows minimum width must support common Windows 11 Snap zones and never exceed its fitted initial width.');
+has(main,'minHeight:Math.min(420,height)','Windows minimum height must expose the compact responsive layout and never exceed its fitted initial height.');
 has(main,'...initialWindowBounds','BrowserWindow is not using the fitted initial bounds.');
 has(main,"win.once('ready-to-show'","First launch should still avoid renderer flash.");
 has(main,"title:'Free AI'",'Windows title is missing.');
