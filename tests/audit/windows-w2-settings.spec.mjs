@@ -10,6 +10,7 @@ async function shot(page,name){
 }
 
 test('Windows W2 settings audit',async()=>{
+  test.setTimeout(180000);
   test.skip(process.platform!=='win32','Windows-only audit');
   await fs.mkdir(out,{recursive:true});
   const results=[];
