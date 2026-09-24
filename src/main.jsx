@@ -836,8 +836,8 @@ function App(){
     });
     const offCommand=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat')newChat();
-      if(command==='settings'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
-      if(command==='about'){stopActiveWorkTask();setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
+      if(command==='settings'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
+      if(command==='about'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
       if(command==='open-browser')openBrowser();
       if(command==='open-computer'){setSettingsOpen(false);setSidePanel(null);setProduct('free');setMode('work');setPage('chat')}
       if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
@@ -2162,7 +2162,7 @@ function App(){
       <div className="sidebarScroll">
         {isWindowsDesktop&&product==='free'?<>
           <div className="sidebarGroupTitle">Projects</div>
-          <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
+          <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setMobileNavOpen(false);setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
             <Plus size={15}/><span>New project</span>
           </button>
           {visibleProjects.length===0?<div className="sidebarEmpty projectEmpty">No projects yet</div>:visibleProjects.map(project=>
@@ -2213,7 +2213,7 @@ function App(){
         </>:<>
           {isWindowsDesktop&&product==='super'&&<>
             <div className="sidebarGroupTitle">Projects</div>
-            <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setProjectDraft({name:'',icon:'sparkles',color:'purple'});setProjectDialogOpen(true)}}>
+            <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setMobileNavOpen(false);setProjectDraft({name:'',icon:'sparkles',color:'purple'});setProjectDialogOpen(true)}}>
               <Plus size={15}/><span>New project</span>
             </button>
             {visibleProjects.length===0
@@ -2249,7 +2249,7 @@ function App(){
         </button>
         {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
-        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setMobileSettingsList(true);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
+        {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setMobileNavOpen(false);setMobileSettingsList(true);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
       </div>
     </aside>}
     {mobileNavOpen&&<button className="mobileNavScrim" aria-label="Close navigation" onClick={()=>setMobileNavOpen(false)}/>}
