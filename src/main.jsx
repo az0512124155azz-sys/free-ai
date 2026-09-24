@@ -1975,8 +1975,7 @@ function App(){
     const blob=new Blob([json],{type:'application/json'});
     const file=new File([blob],'free-ai-export.json',{type:'application/json'});
     if(isWindowsDesktop&&window.desktopApi?.saveDataFile){
-      await window.desktopApi.saveDataFile({defaultName:'free-ai-export.json',content:json});
-      return;
+      return await window.desktopApi.saveDataFile({defaultName:'free-ai-export.json',content:json});
     }
     if(isNative&&navigator.share){
       try{await navigator.share({files:[file],title:'Free AI data export'});return}catch(e){if(e?.name==='AbortError')return}
@@ -4102,14 +4101,25 @@ function PersonalizationSettings({prefs,setPrefs}){
 }
 function DataControlsSettings({onExportData,onClearHistory}){
   const [confirmClear,setConfirmClear]=useState(false);
+  const [exportState,setExportState]=useState('');
+  async function exportData(){
+    setExportState('Exporting…');
+    try{
+      const result=await onExportData?.();
+      setExportState(result?.saved===false?'Export cancelled':'Data exported');
+    }catch(error){
+      setExportState(desktopIpcErrorMessage(error,'Could not export Free AI data.'));
+    }
+  }
   return <div className="settingsPane">
     <h3>Local data</h3>
     <div className="settingBlock">
-      <SettingRow title="Export Free AI data" desc="Export locally stored chats and preferences as JSON." control={<button className="settingsInlineButton" onClick={onExportData}>Export</button>}/>
+      <SettingRow title="Export Free AI data" desc="Export locally stored chats and preferences as JSON." control={<button className="settingsInlineButton" onClick={exportData} disabled={exportState==='Exporting…'}>Export</button>}/>
       <SettingRow title="Clear local chat history" desc="Delete locally stored Free AI and Super AI chats on this device." control={confirmClear
         ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={()=>{onClearHistory();setConfirmClear(false)}}>Clear</button></span>
         : <button className="settingsInlineButton dangerText" onClick={()=>setConfirmClear(true)}>Clear…</button>}/>
     </div>
+    {exportState&&<div className="settingsStatus">{exportState}</div>}
   </div>
 }
 function ConfigurationSettings({prefs,setPrefs}){
