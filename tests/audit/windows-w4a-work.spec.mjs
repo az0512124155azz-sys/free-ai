@@ -196,15 +196,11 @@ test('Windows W4A Work and Super AI audit',async()=>{
 
     await record('Super AI removes manual model picker and shows automatic team count',async()=>{
       await newChat();
-      const switcher=page.locator('.desktopProductSwitcher').first();
-      await switcher.getByRole('button').first().click();
-      const menu=page.getByRole('menu',{name:/product/i});
-      if(await menu.count()){
-        await menu.getByRole('menuitem',{name:/Super AI/}).click();
-      }else{
-        const superButton=page.getByText('Super AI',{exact:true}).last();
-        await superButton.click();
-      }
+      const switchButton=page.getByRole('button',{name:/Switch product\. Current: Free AI/}).first();
+      await switchButton.click();
+      const menu=page.getByRole('menu',{name:'Product'});
+      await expect(menu).toBeVisible();
+      await menu.getByRole('menuitemradio',{name:/Super AI/}).click();
       await expect(page.locator('.teamButton')).toContainText('All AI · 3',{timeout:8000});
       await expect(page.locator('.modelButton')).toHaveCount(0);
       await page.locator('.teamButton').click();
