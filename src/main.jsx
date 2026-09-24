@@ -1972,11 +1972,11 @@ function App(){
       preferences:appPrefs
     };
     const json=JSON.stringify(payload,null,2);
-    const blob=new Blob([json],{type:'application/json'});
-    const file=new File([blob],'free-ai-export.json',{type:'application/json'});
     if(isWindowsDesktop&&window.desktopApi?.saveDataFile){
       return await window.desktopApi.saveDataFile({defaultName:'free-ai-export.json',content:json});
     }
+    const blob=new Blob([json],{type:'application/json'});
+    const file=new globalThis.File([blob],'free-ai-export.json',{type:'application/json'});
     if(isNative&&navigator.share){
       try{await navigator.share({files:[file],title:'Free AI data export'});return}catch(e){if(e?.name==='AbortError')return}
     }
