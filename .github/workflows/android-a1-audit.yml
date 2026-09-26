@@ -34,15 +34,40 @@ jobs:
           script: |
             const fs=require('fs');
             const repo=context.repo;
+            const target=process.env.AUDIT_TARGET;
             const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
-            if(main.object.sha!==process.env.AUDIT_TARGET)throw new Error('Main moved; re-audit before running');
+            if(main.object.sha!==target)throw new Error('Main moved; re-audit before running');
             const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:36273360567});
             const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:10916353076});
-            if(run.head_sha!==process.env.AUDIT_TARGET||run.conclusion!=='success')throw new Error('Unexpected product build');
-            if(artifact.workflow_run.id!==run.id||artifact.workflow_run.head_sha!==run.head_sha||artifact.name!=='free-ai-android-runtime-qa'||artifact.expired)throw new Error('Unexpected QA APK');
+            // A failed sibling Google test must not invalidate a successfully produced APK.
+            // Keep the source run immutable; this is not approval of the whole main build.
+            if(run.id!==36273360567||run.head_sha!==target||run.head_branch!=='main'||run.event!=='push'||run.workflow_id!==363617952||run.status!=='completed'||run.run_attempt!==1||!['success','failure'].includes(run.conclusion))throw new Error('Unexpected product build provenance');
+            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108491355363});
+            if(build.id!==108491355363||build.run_id!==run.id||build.run_attempt!==run.run_attempt||build.head_sha!==target||build.name!=='android'||build.status!=='completed'||build.conclusion!=='success')throw new Error('Android APK-producing job did not complete successfully for the exact source run');
+            for(const name of ['Build APK','Build runtime QA APKs','Upload Android runtime QA APK']){
+              const steps=(build.steps||[]).filter(step=>step.name===name);
+              if(steps.length!==1||steps[0].status!=='completed'||steps[0].conclusion!=='success')throw new Error('Required APK-producing step did not succeed: '+name);
+            }
+            if(artifact.id!==10916353076||artifact.workflow_run?.id!==run.id||artifact.workflow_run?.head_sha!==target||artifact.workflow_run?.head_branch!=='main'||artifact.name!=='free-ai-android-runtime-qa'||artifact.expired!==false)throw new Error('Unexpected QA APK');
             if(artifact.digest!=='sha256:bc72cb5e6ce0c891a88932f66a3bf2af8c0b6be3e095f8e412f38d4b1d066118')throw new Error('Artifact digest changed');
+            // Record the separate Google result honestly; never turn it into a UI-audit PASS.
+            const {data:google}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108491833138});
+            if(google.id!==108491833138||google.run_id!==run.id||google.run_attempt!==run.run_attempt||google.head_sha!==target||google.name!=='Android Google Credential Manager runtime')throw new Error('Unexpected Google job provenance');
+            const jobResult=job=>({id:job.id,name:job.name,status:job.status,conclusion:job.conclusion,url:job.html_url});
+            const provenance={
+              targetSha:run.head_sha,workflowSha:context.sha,sourceRun:run.id,
+              sourceRunStatus:run.status,sourceRunConclusion:run.conclusion,sourceRunAttempt:run.run_attempt,
+              androidBuild:jobResult(build),googleAuth:jobResult(google),
+              artifactId:artifact.id,digest:artifact.digest,
+              mode:'Auth-independent QA APK, native adb UI-tree-derived taps, no product patch',
+              device:'Android API 36 Pixel 5',
+              scope:'APK provenance prerequisite only; Google failure remains tracked in issue #137'
+            };
             fs.mkdirSync('artifacts/android-a1-77ffab72',{recursive:true});
-            fs.writeFileSync('artifacts/android-a1-77ffab72/provenance.json',JSON.stringify({targetSha:run.head_sha,workflowSha:context.sha,sourceRun:run.id,artifactId:artifact.id,digest:artifact.digest,mode:'Auth-independent QA APK, native adb UI-tree-derived taps, no product patch',device:'Android API 36 Pixel 5'},null,2));
+            fs.writeFileSync('artifacts/android-a1-77ffab72/provenance.json',JSON.stringify(provenance,null,2));
+            core.info('Source run '+run.id+': '+run.status+'/'+run.conclusion+'; Android APK job '+build.id+': '+build.conclusion);
+            core.info('Separate Google job '+google.id+': '+google.status+'/'+google.conclusion);
+            if(google.conclusion!=='success')core.warning('Google Credential Manager remains '+google.conclusion+' in source run '+run.id+' (issue #137); the focused UI audit does not clear it.');
       - name: Download immutable current-main QA APK
         uses: actions/download-artifact@v4
         with:
