@@ -35,15 +35,14 @@ async function startSite(){
 }
 
 // Compare against the visible CHAT COLUMN, not just the outer window.
-// Hit testing also detects controls covered by renderer overlays. Normal click()
-// and observed UI/IPC results below supplement it for the native Browser pane.
+// Hit testing detects renderer overlays. Normal click() and observed UI/IPC
+// results below supplement it for the real native Browser pane.
 async function composerProblems(page){
   return page.evaluate(()=>{
     const pane=document.querySelector('.chatStage');
     const composer=document.querySelector('.gptComposer');
     if(!pane||!composer)return ['Missing chat column or composer'];
-    const p=pane.getBoundingClientRect();
-    const c=composer.getBoundingClientRect();
+    const p=pane.getBoundingClientRect(),c=composer.getBoundingClientRect();
     const issues=[];
     const left=Math.max(0,p.left),right=Math.min(innerWidth,p.right);
     const top=Math.max(0,p.top),bottom=Math.min(innerHeight,p.bottom);
@@ -125,7 +124,14 @@ test('Windows Browser split keeps Composer controls visible and clickable',async
     };
     const openBrowser=async()=>{
       await page.evaluate(target=>window.desktopApi.browserOpen({url:target,forceNavigate:true,bounds:{x:700,y:100,width:350,height:580}}),url);
-      await page.locator('.workActions button').filter({hasText:'Browser'}).click();
+      const shortcut=page.locator('.workActions button').filter({hasText:'Browser'});
+      if(await shortcut.count()){
+        await shortcut.click();
+      }else{
+        // Open from Chat without switching experience and discarding its history.
+        await page.getByRole('button',{name:'Add',exact:true}).click();
+        await page.getByRole('menu',{name:'Add',exact:true}).getByRole('menuitem',{name:/^Browser/}).click();
+      }
       await expect(page.locator('.browserPane')).toBeVisible();
       await expect(page.locator('.browserTab.active')).toContainText('Composer Pane QA');
     };
@@ -166,7 +172,7 @@ test('Windows Browser split keeps Composer controls visible and clickable',async
     await inspect('sidebar-hidden');
     await addMenu();
     await chooseModel();
-    await page.getByTitle('Show sidebar',{exact:true}).click();
+    await page.getByRole('button',{name:'Open sidebar',exact:true}).click();
     await expect(page.locator('.desktopShell')).not.toHaveClass(/sidebarHidden/);
     await inspect('sidebar-restored');
     await win.evaluate(w=>w.maximize());
@@ -179,9 +185,8 @@ test('Windows Browser split keeps Composer controls visible and clickable',async
 
     for(const mode of ['work','chat']){
       await page.locator('.recentItem').filter({hasText:'Pane history '+mode}).click();
-      await page.getByRole('tab',{name:'Work',exact:true}).click();
+      await expect(page.getByRole('tab',{name:mode==='work'?'Work':'Chat',exact:true})).toHaveAttribute('aria-selected','true');
       await openBrowser();
-      await page.getByRole('tab',{name:mode==='work'?'Work':'Chat',exact:true}).click();
       await expect(page.locator('.gptComposer.compact')).toBeVisible();
       await page.locator('.gptComposer textarea').fill('Pane layout '+mode+' message');
       await chooseModel();
