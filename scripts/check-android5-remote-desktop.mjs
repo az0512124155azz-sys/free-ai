@@ -24,6 +24,10 @@ has(source,"AI provider API keys stay encrypted on Desktop and are never sent to
 has(source,"desktopOnline:m.desktopOnline===true",'Mobile relay state must preserve actual desktop online/offline state.');
 has(source,"remoteCapabilities:{browser:{available:false},computer:{available:false}}",'Mobile must default remote capabilities to unavailable when disconnected.');
 has(source,"if(command==='openRemoteDesktop')",'Android runtime QA must open the Remote Desktop surface.');
+has(source,"{isNative&&!(isAndroidNative&&product==='super')&&<MobileConversationPicker",'Android Super AI/Remote must not expose manual model selection while Free AI native keeps its picker.');
+if(source.includes("{isNative&&<MobileConversationPicker"))fail('Unscoped native model picker would re-expose manual model selection in Android Super AI.');
+has(source,"{!(product==='super'&&isAndroidNative)&&<>",'Android Super AI/Remote must hide the Windows-only repository control group.');
+has(source,"product==='super'?(repositoryWorkspace?.name||'Choose repository'):'Free AI Workspace'",'Non-Android repository/project navigation must remain present.');
 has(source,"remoteDesktopApiForm=",'Android runtime audit must detect accidental desktop API credential controls.');
 
 has(desktop,'function publicRelayProvider(provider)','Desktop must sanitize model metadata before sending it through the relay.');

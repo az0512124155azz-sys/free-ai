@@ -2235,11 +2235,13 @@ function App(){
                 </button>)
             }
           </>}
-          <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
-          <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
-            {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
-            {product==='super'?(repositoryWorkspace?.name||'Choose repository'):'Free AI Workspace'}
-          </button>
+          {!(product==='super'&&isAndroidNative)&&<>
+            <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
+            <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
+              {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
+              {product==='super'?(repositoryWorkspace?.name||'Choose repository'):'Free AI Workspace'}
+            </button>
+          </>}
           <div className="sidebarGroupTitle">Recents</div>
           {visibleChats.length===0?<div className="sidebarEmpty">{sidebarSearch?'No matching chats':'No chats yet'}</div>:visibleChats.map(chat=>
             <div className={'recentRow '+(currentChatId===chat.id?'active':'')} key={chat.id}>
@@ -2293,7 +2295,7 @@ function App(){
       </header>
 
       {page==='chat'&&<section className="chatStage">
-        {isNative&&<MobileConversationPicker
+        {isNative&&!(isAndroidNative&&product==='super')&&<MobileConversationPicker
           connected={connected} selected={selected} choose={model=>{setSelected(model);setModelMenu(false)}}
           open={modelMenu} setOpen={setModelMenu} effort={effort} setEffort={setEffort}
         />}
