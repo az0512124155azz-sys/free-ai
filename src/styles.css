@@ -956,3 +956,68 @@ html[data-native-platform="android"][data-keyboard-open] .nativeMobileShell .wor
   .nativeMobileShell .contentInner{width:min(860px,calc(100% - 40px))}
   .nativeMobileShell .mobileTopModelPanel{left:50%;right:auto;width:min(560px,calc(100vw - 32px));transform:translateX(-50%)}
 }
+
+/* Windows split panes: size against the chat column, never the viewport.
+   Keep the no-panel shell baseline and native-mobile layouts unchanged. */
+@media (min-width:761px){
+  .windowsDesktopRoot .desktopShell.hasSidePanel .emptyChat,
+  .windowsDesktopRoot .desktopShell.hasSidePanel .conversationComposer{
+    min-width:0;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .gptComposer{
+    width:100%;
+    min-width:0;
+    max-width:768px;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .gptComposer.workComposer{
+    max-width:820px;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom{
+    position:relative;
+    flex-wrap:wrap;
+    row-gap:6px;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerLeft,
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerRight{
+    max-width:100%;
+    flex-wrap:wrap;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerRight{
+    margin-left:auto;
+    justify-content:flex-end;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom .menuAnchor{
+    position:static;
+    min-width:0;
+    max-width:100%;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .modelButton,
+  .windowsDesktopRoot .desktopShell.hasSidePanel .teamButton{
+    max-width:100%;
+  }
+  /* Menus use the full controls row as their containing block, not
+     a small model/Add button that may be next to either pane edge. */
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom .floatingMenu{
+    max-width:100%;
+    max-height:min(440px,45vh);
+    bottom:calc(100% + 8px);
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom .plusPicker,
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom .permissionPicker{
+    left:0;
+    right:auto;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom .modelPicker,
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom .teamPicker,
+  .windowsDesktopRoot .desktopShell.hasSidePanel .composerBottom .effortPicker{
+    left:auto;
+    right:0;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .workActions{
+    flex-wrap:wrap;
+  }
+  .windowsDesktopRoot .desktopShell.hasSidePanel .workActions button{
+    max-width:100%;
+    overflow-wrap:anywhere;
+  }
+}
