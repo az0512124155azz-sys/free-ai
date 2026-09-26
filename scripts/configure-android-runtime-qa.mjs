@@ -14,7 +14,6 @@ import android.content.Context;
 import android.content.IntentFilter;
 import android.content.pm.ApplicationInfo;
 import android.os.Build;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.WindowInsets;
@@ -34,9 +33,7 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
     private BroadcastReceiver qaReceiver;
     private final Handler qaHandler = new Handler(Looper.getMainLooper());
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+    private void configureRuntimeQa() {
         if (!isQaDebuggable()) return;
 
         qaReceiver = new BroadcastReceiver() {
@@ -119,6 +116,24 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
 if(!source.includes('private static final String QA_ACTION')){
   if(!source.includes(classAnchor))throw new Error('MainActivity class anchor not found.');
   source=source.replace(classAnchor,classAnchor+qaBlock);
+}
+
+const onCreateAnchor='        super.onCreate(savedInstanceState);\n';
+const qaInitCall='        configureRuntimeQa();\n';
+if(!source.includes(qaInitCall)){
+  const onCreateAnchors=source.split(onCreateAnchor).length-1;
+  if(onCreateAnchors!==1){
+    throw new Error('Runtime QA expected exactly one existing MainActivity onCreate super call; found '+onCreateAnchors+'.');
+  }
+  source=source.replace(onCreateAnchor,onCreateAnchor+qaInitCall);
+}
+
+const onCreateDefinitions=source.match(/\b(?:public|protected)\s+void\s+onCreate\(Bundle savedInstanceState\)\s*\{/g)||[];
+if(onCreateDefinitions.length!==1){
+  throw new Error('Runtime QA requires exactly one MainActivity onCreate(Bundle); found '+onCreateDefinitions.length+'.');
+}
+if((source.split(qaInitCall).length-1)!==1){
+  throw new Error('Runtime QA initialization must be called exactly once from MainActivity onCreate.');
 }
 
 fs.writeFileSync(mainActivity,source,'utf8');

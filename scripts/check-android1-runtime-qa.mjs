@@ -27,6 +27,11 @@ has(bridge,'Context.RECEIVER_EXPORTED','ADB runtime QA receiver must be callable
 has(bridge,'window.__FREEAI_ANDROID_QA__','Native QA bridge must invoke the renderer audit hook.');
 has(bridge,'InputMethodManager.SHOW_IMPLICIT','Runtime QA must explicitly exercise the soft keyboard.');
 has(bridge,'WindowInsets.Type.ime()','Runtime QA must measure the IME with Android WindowInsets.');
+has(bridge,'private void configureRuntimeQa()','Runtime QA must augment the generated activity through a helper instead of declaring another lifecycle callback.');
+has(bridge,"const qaInitCall='        configureRuntimeQa();\\n';",'Runtime QA must inject its helper call into the existing MainActivity onCreate.');
+has(bridge,'onCreateDefinitions.length!==1','Runtime QA generation must reject duplicate MainActivity onCreate(Bundle) methods.');
+has(bridge,"Runtime QA initialization must be called exactly once from MainActivity onCreate.",'Runtime QA generation must reject duplicate helper initialization.');
+ok(!bridge.includes('protected void onCreate(Bundle savedInstanceState)'),'Runtime QA instrumentation must not declare a second MainActivity onCreate(Bundle).');
 
 has(smoke,'adb install -r "$APK"','Runtime QA must install the generated APK.');
 has(smoke,'require_token "$initial" "shell=true"','Runtime QA must prove the Android shell rendered.');
