@@ -1,4 +1,4 @@
-name: Android A1 UI Audit
+name: Android A1 Work Add Device Verification
 
 on:
   push:
@@ -11,312 +11,271 @@ permissions:
   actions: read
 
 concurrency:
-  group: android-a1-exact-main-audit
+  group: android-a1-pr138-work-add-device
   cancel-in-progress: false
 
 env:
-  AUDIT_TARGET: 77ffab72d32482db83dfff56302403a8b5ff81a8
+  AUDIT_TARGET: e09bdfba8764599a5e2d4ce52bd4673c8b3ff957
+  SOURCE_RUN: '36276018212'
+  SOURCE_ARTIFACT: '10917258023'
 
 jobs:
-  android_a1:
-    name: Android A1 exact-main native UI audit
+  work_add:
+    name: PR138 Work Add on Android 16 Pixel 5
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
-      - name: Check out exact product main, never the old audit product
+      - name: Check out exact PR product commit
         uses: actions/checkout@v4
         with:
-          ref: 77ffab72d32482db83dfff56302403a8b5ff81a8
+          ref: ${{ env.AUDIT_TARGET }}
           persist-credentials: false
-      - name: Verify exact APK provenance
+
+      - name: Verify exact PR APK provenance
         uses: actions/github-script@v7
         with:
           script: |
             const fs=require('fs');
             const repo=context.repo;
             const target=process.env.AUDIT_TARGET;
-            const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
-            if(main.object.sha!==target)throw new Error('Main moved; re-audit before running');
-            const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:36273360567});
-            const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:10916353076});
-            // A failed sibling Google test must not invalidate a successfully produced APK.
-            // Keep the source run immutable; this is not approval of the whole main build.
-            if(run.id!==36273360567||run.head_sha!==target||run.head_branch!=='main'||run.event!=='push'||run.workflow_id!==363617952||run.status!=='completed'||run.run_attempt!==1||!['success','failure'].includes(run.conclusion))throw new Error('Unexpected product build provenance');
-            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108491355363});
-            if(build.id!==108491355363||build.run_id!==run.id||build.run_attempt!==run.run_attempt||build.head_sha!==target||build.name!=='android'||build.status!=='completed'||build.conclusion!=='success')throw new Error('Android APK-producing job did not complete successfully for the exact source run');
-            for(const name of ['Build APK','Build runtime QA APKs','Upload Android runtime QA APK']){
-              const steps=(build.steps||[]).filter(step=>step.name===name);
-              if(steps.length!==1||steps[0].status!=='completed'||steps[0].conclusion!=='success')throw new Error('Required APK-producing step did not succeed: '+name);
+            const runId=Number(process.env.SOURCE_RUN);
+            const artifactId=Number(process.env.SOURCE_ARTIFACT);
+
+            const {data:pr}=await github.rest.pulls.get({...repo,pull_number:138});
+            if(pr.state!=='open'||pr.merged||pr.head.sha!==target||pr.base.ref!=='main'){
+              throw new Error('PR #138 moved or is no longer the expected open PR');
             }
-            if(artifact.id!==10916353076||artifact.workflow_run?.id!==run.id||artifact.workflow_run?.head_sha!==target||artifact.workflow_run?.head_branch!=='main'||artifact.name!=='free-ai-android-runtime-qa'||artifact.expired!==false)throw new Error('Unexpected QA APK');
-            if(artifact.digest!=='sha256:bc72cb5e6ce0c891a88932f66a3bf2af8c0b6be3e095f8e412f38d4b1d066118')throw new Error('Artifact digest changed');
-            // Record the separate Google result honestly; never turn it into a UI-audit PASS.
-            const {data:google}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108491833138});
-            if(google.id!==108491833138||google.run_id!==run.id||google.run_attempt!==run.run_attempt||google.head_sha!==target||google.name!=='Android Google Credential Manager runtime')throw new Error('Unexpected Google job provenance');
-            const jobResult=job=>({id:job.id,name:job.name,status:job.status,conclusion:job.conclusion,url:job.html_url});
-            const provenance={
-              targetSha:run.head_sha,workflowSha:context.sha,sourceRun:run.id,
-              sourceRunStatus:run.status,sourceRunConclusion:run.conclusion,sourceRunAttempt:run.run_attempt,
-              androidBuild:jobResult(build),googleAuth:jobResult(google),
-              artifactId:artifact.id,digest:artifact.digest,
-              mode:'Auth-independent QA APK, native adb UI-tree-derived taps, no product patch',
+            const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
+            if(main.object.sha!=='77ffab72d32482db83dfff56302403a8b5ff81a8'){
+              throw new Error('main moved; device verification must be re-audited');
+            }
+
+            const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:runId});
+            if(run.id!==runId||run.head_sha!==target||run.head_branch!=='android/a1-work-add-cleanup'||
+               run.event!=='pull_request'||run.workflow_id!==363617952||run.status!=='completed'||
+               run.conclusion!=='success'||run.run_attempt!==1){
+              throw new Error('Unexpected successful PR build provenance');
+            }
+
+            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108498809654});
+            if(build.run_id!==run.id||build.head_sha!==target||build.name!=='android'||
+               build.status!=='completed'||build.conclusion!=='success'){
+              throw new Error('Exact Android APK-producing job is not successful');
+            }
+            for(const name of ['Validate JavaScript','Build APK','Build runtime QA APKs','Upload Android runtime QA APK']){
+              const steps=(build.steps||[]).filter(step=>step.name===name);
+              if(steps.length!==1||steps[0].status!=='completed'||steps[0].conclusion!=='success'){
+                throw new Error('Required Android step did not succeed: '+name);
+              }
+            }
+
+            const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:artifactId});
+            if(artifact.id!==artifactId||artifact.name!=='free-ai-android-runtime-qa'||artifact.expired||
+               artifact.workflow_run?.id!==run.id||artifact.workflow_run?.head_sha!==target){
+              throw new Error('Unexpected QA APK artifact');
+            }
+            if(artifact.digest!=='sha256:33979f69882afde58bbbd08dbc94fafca9725b09538ef2a375841e80d5180cef'){
+              throw new Error('QA APK artifact digest changed');
+            }
+
+            fs.mkdirSync('artifacts/android-a1-pr138',{recursive:true});
+            fs.writeFileSync('artifacts/android-a1-pr138/provenance.json',JSON.stringify({
+              pr:138,targetSha:target,mainSha:main.object.sha,sourceRun:run.id,
+              sourceRunConclusion:run.conclusion,androidBuildJob:build.id,
+              artifactId:artifact.id,artifactDigest:artifact.digest,
               device:'Android API 36 Pixel 5',
-              scope:'APK provenance prerequisite only; Google failure remains tracked in issue #137'
-            };
-            fs.mkdirSync('artifacts/android-a1-77ffab72',{recursive:true});
-            fs.writeFileSync('artifacts/android-a1-77ffab72/provenance.json',JSON.stringify(provenance,null,2));
-            core.info('Source run '+run.id+': '+run.status+'/'+run.conclusion+'; Android APK job '+build.id+': '+build.conclusion);
-            core.info('Separate Google job '+google.id+': '+google.status+'/'+google.conclusion);
-            if(google.conclusion!=='success')core.warning('Google Credential Manager remains '+google.conclusion+' in source run '+run.id+' (issue #137); the focused UI audit does not clear it.');
-      - name: Download immutable current-main QA APK
+              scope:'Work Add device verification only'
+            },null,2));
+
+      - name: Download immutable PR QA APK
         uses: actions/download-artifact@v4
         with:
-          artifact-ids: '10916353076'
-          run-id: 36273360567
+          artifact-ids: '10917258023'
+          run-id: 36276018212
           github-token: ${{ github.token }}
           path: runtime-artifacts
-      - name: Prepare audit-only native driver
+
+      - name: Prepare focused native driver
         shell: bash
         run: |
-          cat > "$RUNNER_TEMP/android-a1-native.py" <<'PY'
-          import hashlib, json, os, pathlib, re, subprocess, time, traceback, uuid
+          cat > "$RUNNER_TEMP/android-work-add.py" <<'PY'
+          import hashlib, json, pathlib, re, subprocess, time, uuid
           import xml.etree.ElementTree as ET
-          OUT=pathlib.Path('artifacts/android-a1-77ffab72')
+
+          OUT=pathlib.Path('artifacts/android-a1-pr138')
           OUT.mkdir(parents=True,exist_ok=True)
           PACKAGE='com.freeai.mobile'
           rows=[]
           serials=[line.split()[0] for line in subprocess.check_output(['adb','devices'],text=True).splitlines()[1:] if line.endswith('\tdevice')]
-          if len(serials)!=1: raise RuntimeError('Expected one emulator: '+repr(serials))
+          if len(serials)!=1: raise RuntimeError('Expected exactly one emulator: '+repr(serials))
           SERIAL=serials[0]
-          def adb(*args,binary=False):
-              return subprocess.check_output(['adb','-s',SERIAL,*args],timeout=25,text=not binary)
-          def norm(value): return ' '.join(value.split()).strip()
-          # Capture only newly requested UI trees; never parse a shared previous dump.
-          CASE='setup'
-          CAPTURE_SEQUENCE=0
-          LAST_DUMP=None
-          class UiDumpUnavailable(RuntimeError):
-              pass
+          capture_seq=0
+          last_xml=None
 
-          def capture_command(folder,phase,args,deadline):
-              remaining=deadline-time.monotonic()
-              if remaining<=0: raise UiDumpUnavailable('UI capture deadline exhausted before '+phase)
-              command=['adb','-s',SERIAL,*args]
-              metadata={'command':command,'timeoutSeconds':min(12.0,remaining)}
-              stdout,stderr=b'',b''
-              try:
-                  result=subprocess.run(command,capture_output=True,timeout=metadata['timeoutSeconds'],check=False)
-                  stdout,stderr=result.stdout,result.stderr
-                  metadata['returncode']=result.returncode
-                  return result
-              except subprocess.TimeoutExpired as exc:
-                  stdout,stderr=exc.stdout or b'',exc.stderr or b''
-                  metadata['timedOut']=True
-                  raise UiDumpUnavailable('adb '+phase+' timed out') from exc
-              except OSError as exc:
-                  metadata['error']=str(exc)
-                  raise UiDumpUnavailable('adb '+phase+' unavailable: '+str(exc)) from exc
-              finally:
-                  if phase=='read': (folder/'raw.xml').write_bytes(stdout)
-                  (folder/(phase+'.stdout')).write_bytes(stdout)
-                  (folder/(phase+'.stderr')).write_bytes(stderr)
-                  (folder/(phase+'.json')).write_text(json.dumps(metadata,indent=2))
+          def adb(*args,binary=False,timeout=25):
+              return subprocess.check_output(['adb','-s',SERIAL,*args],timeout=timeout,text=not binary)
+
+          def norm(value):
+              return ' '.join(str(value or '').split()).strip()
+
+          def labels_for(node):
+              return [norm(node.get('text','')),norm(node.get('content-desc',''))]
+
+          def visible_enabled(node):
+              if node.get('enabled')=='false': return False
+              bounds=list(map(int,re.findall(r'\d+',node.get('bounds',''))))
+              return len(bounds)==4 and bounds[2]>bounds[0] and bounds[3]>bounds[1]
+
+          def action_nodes(nodes,title):
+              prefix=title+' '
+              found=[]
+              for node in nodes:
+                  if not visible_enabled(node): continue
+                  values=[v for v in labels_for(node) if v]
+                  if any(v==title or v.startswith(prefix) for v in values):
+                      found.append(node)
+              return found
 
           def dump(name,deadline=None):
-              global CAPTURE_SEQUENCE,LAST_DUMP
-              LAST_DUMP=None
-              end=time.monotonic()+25 if deadline is None else deadline
-              CAPTURE_SEQUENCE+=1
-              safe=lambda value: re.sub(r'[^A-Za-z0-9_-]','_',value)[:80] or 'unnamed'
-              capture=OUT/'ui-dumps'/safe(CASE)/(safe(name)+'-'+str(CAPTURE_SEQUENCE)+'-'+uuid.uuid4().hex)
-              capture.mkdir(parents=True,exist_ok=False)
-              last_error='No fresh UI tree before deadline'
+              nonlocal_dummy=None
+              global capture_seq,last_xml
+              end=deadline or (time.monotonic()+25)
+              capture_seq+=1
+              rootdir=OUT/'ui-dumps'/f'{capture_seq:02d}-{name}-{uuid.uuid4().hex}'
+              rootdir.mkdir(parents=True,exist_ok=False)
+              last='no fresh UI hierarchy'
               for attempt in range(1,6):
                   if time.monotonic()>=end: break
-                  folder=capture/('attempt-'+str(attempt))
+                  folder=rootdir/f'attempt-{attempt}'
                   folder.mkdir()
-                  remote='/sdcard/freeai-a1-'+uuid.uuid4().hex+'.xml'
-                  meta={'case':CASE,'name':name,'attempt':attempt,'remotePath':remote,'accepted':False}
-                  (folder/'raw.xml').write_bytes(b'')
+                  remote=f'/sdcard/freeai-pr138-{uuid.uuid4().hex}.xml'
                   try:
-                      # A unique path plus explicit absence verification rules out old XML.
-                      removed=capture_command(folder,'remove',['shell','rm','-f',remote],end)
-                      if removed.returncode!=0: raise UiDumpUnavailable('Could not remove capture target')
-                      absent=capture_command(folder,'absence',['shell','test','!','-e',remote],end)
-                      if absent.returncode!=0: raise UiDumpUnavailable('Capture target is not provably absent')
-                      generated=capture_command(folder,'dump',['shell','uiautomator','dump',remote],end)
-                      # Preserve partial/invalid bytes as evidence, never as a usable tree.
-                      read=capture_command(folder,'read',['exec-out','cat',remote],end)
-                      raw=read.stdout
-                      (folder/'raw.xml').write_bytes(raw)
-                      diagnostics=(generated.stdout+b'\n'+generated.stderr).decode('utf-8',errors='replace')
-                      if generated.returncode!=0 or read.returncode!=0:
-                          raise UiDumpUnavailable('UI dump or XML read failed')
+                      subprocess.run(['adb','-s',SERIAL,'shell','rm','-f',remote],check=False,capture_output=True,timeout=8)
+                      gen=subprocess.run(['adb','-s',SERIAL,'shell','uiautomator','dump',remote],check=False,capture_output=True,timeout=12)
+                      read=subprocess.run(['adb','-s',SERIAL,'exec-out','cat',remote],check=False,capture_output=True,timeout=8)
+                      (folder/'dump.stdout').write_bytes(gen.stdout)
+                      (folder/'dump.stderr').write_bytes(gen.stderr)
+                      (folder/'raw.xml').write_bytes(read.stdout)
+                      diagnostics=(gen.stdout+b'\n'+gen.stderr).decode('utf-8',errors='replace')
+                      if gen.returncode or read.returncode: raise RuntimeError('dump/read command failed')
                       if re.search(r'ERROR:|null root node|could not get idle state',diagnostics,re.I):
-                          raise UiDumpUnavailable('UIAutomator reported an unsuccessful capture')
-                      if not re.search(r'^UI hier(?:chary|archy) dumped to: '+re.escape(remote)+r'\s*$',diagnostics,re.M):
-                          raise UiDumpUnavailable('No success acknowledgement for this unique capture path')
-                      if not raw.strip(): raise UiDumpUnavailable('Empty XML dump')
-                      if b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
-                          raise UiDumpUnavailable('Unexpected XML declarations')
-                      try: root=ET.fromstring(raw)
-                      except (ET.ParseError,ValueError,LookupError) as exc:
-                          raise UiDumpUnavailable('Malformed XML: '+str(exc)) from exc
-                      nodes=list(root.iter('node'))
-                      if root.tag!='hierarchy' or not nodes:
-                          raise UiDumpUnavailable('Missing hierarchy root or UI nodes')
-                      if time.monotonic()>=end: raise UiDumpUnavailable('UI capture completed after deadline')
-                      LAST_DUMP=str((folder/'raw.xml').relative_to(OUT))
-                      meta.update(accepted=True,xml=LAST_DUMP,sha256=hashlib.sha256(raw).hexdigest(),nodeCount=len(nodes))
-                      (folder/'labels.json').write_text(json.dumps(sorted(labels(nodes)),ensure_ascii=False,indent=2))
+                          raise RuntimeError('UIAutomator reported capture failure')
+                      if not read.stdout.strip(): raise RuntimeError('empty XML')
+                      tree=ET.fromstring(read.stdout)
+                      nodes=list(tree.iter('node'))
+                      if tree.tag!='hierarchy' or not nodes: raise RuntimeError('invalid hierarchy')
+                      last_xml=str((folder/'raw.xml').relative_to(OUT))
+                      (folder/'accepted.json').write_text(json.dumps({
+                        'accepted':True,'name':name,'attempt':attempt,'remotePath':remote,
+                        'sha256':hashlib.sha256(read.stdout).hexdigest(),'nodeCount':len(nodes)
+                      },indent=2))
                       return nodes
-                  except (UiDumpUnavailable,ET.ParseError) as exc:
-                      last_error=str(exc)
-                      meta['error']=last_error
-                  finally:
-                      (folder/'result.json').write_text(json.dumps(meta,indent=2))
-                  remaining=end-time.monotonic()
-                  if remaining>0 and attempt<5: time.sleep(min(0.5,remaining))
-              raise UiDumpUnavailable(last_error+'; evidence: '+str(capture))
+                  except Exception as exc:
+                      last=str(exc)
+                      (folder/'rejected.txt').write_text(last)
+                      if time.monotonic()<end: time.sleep(0.5)
+              raise RuntimeError('Fresh UI tree unavailable for '+name+': '+last)
 
-          def labels(nodes):
-              return set(norm(n.get(k,'')) for n in nodes for k in ['text','content-desc'])-{''}
-          def match(nodes,text):
-              for n in nodes:
-                  if text in [norm(n.get('text','')),norm(n.get('content-desc',''))] and n.get('enabled')!='false':
-                      b=list(map(int,re.findall(r'\d+',n.get('bounds',''))))
-                      if len(b)==4 and b[2]>b[0] and b[3]>b[1]: return n,b
-              return None
-          def wait_text(text,name,seconds=25):
+          def find(nodes,title):
+              matches=action_nodes(nodes,title)
+              if not matches: return None
+              node=matches[0]
+              b=list(map(int,re.findall(r'\d+',node.get('bounds',''))))
+              return node,b
+
+          def wait_text(title,name,seconds=30):
               end=time.monotonic()+seconds
-              last_error='Target absent in fresh XML'
               while time.monotonic()<end:
-                  try:
-                      nodes=dump(name,deadline=end)
-                      if match(nodes,text): return nodes
-                      last_error='Target absent in fresh XML'
-                  except UiDumpUnavailable as exc:
-                      last_error=str(exc)
-                  remaining=end-time.monotonic()
-                  if remaining>0: time.sleep(min(0.5,remaining))
-              raise RuntimeError('UI target not found: '+text+'; '+last_error)
-          def tap(text,name):
-              nodes=wait_text(text,name+'-before')
-              node,(x1,y1,x2,y2)=match(nodes,text)
-              entry={'case':CASE,'xml':LAST_DUMP,'target':text,'bounds':node.get('bounds'),'serial':SERIAL,'center':[(x1+x2)//2,(y1+y2)//2]}
-              with (OUT/'taps.jsonl').open('a') as f: f.write(json.dumps(entry)+'\n')
-              adb('shell','input','tap',str(entry['center'][0]),str(entry['center'][1]))
-              time.sleep(0.7)
-          def shot(name):
+                  nodes=dump(name,deadline=end)
+                  if find(nodes,title): return nodes
+                  time.sleep(0.5)
+              raise RuntimeError('UI target not found: '+title)
+
+          def tap(title,name):
+              nodes=wait_text(title,name+'-before')
+              node,(x1,y1,x2,y2)=find(nodes,title)
+              x,y=(x1+x2)//2,(y1+y2)//2
+              with (OUT/'taps.jsonl').open('a') as f:
+                  f.write(json.dumps({'target':title,'xml':last_xml,'bounds':node.get('bounds'),'center':[x,y]})+'\n')
+              adb('shell','input','tap',str(x),str(y))
+              time.sleep(0.8)
+
+          def screenshot(name):
               (OUT/(name+'.png')).write_bytes(adb('exec-out','screencap','-p',binary=True))
               return dump(name)
-          def back():
-              adb('shell','input','keyevent','4')
-              time.sleep(0.7)
+
           def record(name,status,detail):
               rows.append({'name':name,'status':status,'detail':detail})
               (OUT/'results.json').write_text(json.dumps(rows,indent=2,ensure_ascii=False))
               print(status,name,detail,flush=True)
-          def launch():
-              adb('shell','am','force-stop',PACKAGE)
-              adb('shell','am','start','-W','-n',PACKAGE+'/.MainActivity')
-              wait_text('Open navigation','ready',40)
-          def signature(nodes):
-              return sorted((n.get('text',''),n.get('content-desc',''),n.get('bounds',''),n.get('clickable','')) for n in nodes if n.get('package')==PACKAGE)
-          def run_case(name,fn):
-              global CASE
-              previous_case=CASE
-              CASE=name
-              try: fn()
-              except Exception as exc:
-                  record(name,'BLOCKED',str(exc))
-                  (OUT/(name+'-exception.txt')).write_text(traceback.format_exc())
-                  try: shot(name+'-blocked')
-                  except Exception: pass
-              finally:
-                  CASE=previous_case
+
           apk=next(pathlib.Path('runtime-artifacts').rglob('free-ai-runtime-qa.apk'))
           (OUT/'apk-sha256.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'\n')
-          (OUT/'device.txt').write_text(adb('shell','getprop','ro.build.version.release')+adb('shell','getprop','ro.build.version.sdk')+adb('shell','wm','size'))
+          (OUT/'device.txt').write_text(
+              adb('shell','getprop','ro.build.version.release')+
+              adb('shell','getprop','ro.build.version.sdk')+
+              adb('shell','wm','size')
+          )
           adb('install','-r',str(apk))
-          (OUT/'resolved-activity.txt').write_text(adb('shell','cmd','package','resolve-activity','--brief',PACKAGE))
           adb('logcat','-c')
-          def work_case():
-              launch()
-              wait_text('Free AI \u00b7 Chat','chat-ready')
-              shot('01-main-ready')
-              record('Initial native screen','PASS','Chat header and Open navigation in native tree; inspect screenshot for splash')
-              tap('Add','chat-add')
-              wait_text('Files','chat-add-open')
-              chat=shot('02-chat-add')
-              record('Chat Add opens','PASS',', '.join(sorted(labels(chat))))
-              back()
-              tap('Free AI \u00b7 Chat','mode-menu')
-              wait_text('Work','mode-menu-open')
-              shot('03-mode-menu')
-              tap('Work','select-work')
-              wait_text('Free AI \u00b7 Work','work-ready')
-              shot('04-work')
-              tap('Add','work-add')
-              wait_text('Files','work-add-open')
-              work=shot('05-work-add')
-              duplicate={'Files','Attach files'}.issubset(labels(work))
-              record('Work duplicate file actions','FAIL' if duplicate else 'PASS',', '.join(sorted(labels(work))))
-              back()
-          def remote_case():
-              launch()
-              tap('Open navigation','open-drawer')
-              wait_text('Remote','drawer-ready')
-              shot('06-drawer')
-              tap('Remote','remote-shortcut')
-              wait_text('Open navigation','remote-ready')
-              time.sleep(1)
-              remote=shot('07-remote')
-              if 'Remote' not in labels(remote): raise RuntimeError('Remote header not found after shortcut')
-              record('Remote shortcut','PASS','Remote header visible after native tap')
-              visible=bool(match(remote,'Select model'))
-              record('Remote automatic-team UI','FAIL' if visible else 'PASS','Select model remains visible' if visible else 'No Select model action visible; live team execution not tested')
-              if visible:
-                  tap('Select model','remote-model')
-                  shot('08-remote-model-picker')
-                  back()
-              tap('Open navigation','remote-drawer')
-              before=shot('09-remote-drawer')
-              if not match(before,'Choose repository'):
-                  scroll=[n for n in before if n.get('scrollable')=='true' and n.get('package')==PACKAGE]
-                  if scroll:
-                      b=list(map(int,re.findall(r'\d+',scroll[0].get('bounds',''))))
-                      if len(b)==4:
-                          x=(b[0]+b[2])//2
-                          adb('shell','input','swipe',str(x),str(b[3]-100),str(x),str(b[1]+150),'300')
-                          before=shot('09-remote-drawer-scrolled')
-              if match(before,'Choose repository'):
-                  record('Remote repository action visibility','FAIL','Windows-only Choose repository is present and enabled in Android drawer')
-                  tap('Choose repository','repository-action')
-                  after=shot('10-after-choose-repository')
-                  time.sleep(2)
-                  later=shot('11-after-choose-repository-wait')
-                  unchanged=signature(before)==signature(after)==signature(later)
-                  record('Repository action outcome','FAIL' if unchanged else 'BLOCKED','No UI change or picker after native tap' if unchanged else 'UI changed; inspect trees before classification')
+          adb('shell','am','force-stop',PACKAGE)
+          adb('shell','am','start','-W','-n',PACKAGE+'/.MainActivity')
+          wait_text('Open navigation','launch-ready',40)
+
+          wait_text('Free AI · Chat','chat-ready')
+          screenshot('01-chat')
+          tap('Free AI · Chat','mode-menu')
+          wait_text('Work','mode-menu-open')
+          screenshot('02-mode-menu')
+          tap('Work','select-work')
+          wait_text('Free AI · Work','work-ready')
+          screenshot('03-work')
+          tap('Add','open-work-add')
+          wait_text('Files','work-add-open')
+          nodes=screenshot('04-work-add')
+
+          expected={}
+          for title in ['Camera','Photos','Files']:
+              matches=action_nodes(nodes,title)
+              expected[title]=len(matches)
+              if len(matches)!=1:
+                  record(title+' action','FAIL','expected exactly one visible enabled action, found '+str(len(matches)))
               else:
-                  record('Remote repository action visibility','PASS','No Choose repository action found after scroll where available')
-          try:
-              run_case('work',work_case)
-              run_case('remote',remote_case)
-          finally:
-              (OUT/'logcat.txt').write_text(adb('logcat','-d','-s','FreeAIAndroidQA:I','AndroidRuntime:E','Capacitor/Console:E','*:S'))
-              (OUT/'crash.txt').write_text(adb('logcat','-b','crash','-d'))
-              (OUT/'results.json').write_text(json.dumps(rows,indent=2,ensure_ascii=False))
-          raise SystemExit(1 if any(r['status']!='PASS' for r in rows) else 0)
+                  record(title+' action','PASS','exactly one visible enabled action')
+
+          attach=action_nodes(nodes,'Attach files')
+          if attach:
+              record('Attach files absent','FAIL','found '+str(len(attach))+' visible enabled Attach files action(s)')
+          else:
+              record('Attach files absent','PASS','no visible enabled Attach files action')
+
+          visible_labels=sorted({
+              value for node in nodes if visible_enabled(node)
+              for value in labels_for(node) if value
+          })
+          (OUT/'work-add-labels.json').write_text(json.dumps(visible_labels,indent=2,ensure_ascii=False))
+          (OUT/'work-add-summary.json').write_text(json.dumps({
+              'Camera':expected.get('Camera',0),'Photos':expected.get('Photos',0),
+              'Files':expected.get('Files',0),'Attach files':len(attach),
+              'acceptedXml':last_xml
+          },indent=2))
+
+          (OUT/'logcat.txt').write_text(adb('logcat','-d'))
+          (OUT/'crash.txt').write_text(adb('logcat','-b','crash','-d'))
+
+          if any(row['status']!='PASS' for row in rows):
+              raise SystemExit(1)
           PY
-          python3 -m py_compile "$RUNNER_TEMP/android-a1-native.py"
+          python3 -m py_compile "$RUNNER_TEMP/android-work-add.py"
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Audit main APK on Android 16 Pixel 5
-        id: audit
+
+      - name: Verify Work Add on Android 16 Pixel 5
+        id: verify
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -330,23 +289,31 @@ jobs:
           disable-spellchecker: true
           enable-hw-keyboard: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: python3 "$RUNNER_TEMP/android-a1-native.py"
-      - name: Upload provenance, UI trees, taps, native screenshots and results
+          script: python3 "$RUNNER_TEMP/android-work-add.py"
+
+      - name: Upload focused Work Add evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: free-ai-android-a1-main-77ffab72
-          path: artifacts/android-a1-77ffab72/**
+          name: free-ai-pr138-android-work-add-device
+          path: artifacts/android-a1-pr138/**
           if-no-files-found: error
-      - name: Enforce audit outcomes without masking blockers
+
+      - name: Enforce focused device result
         if: always()
         env:
-          AUDIT_OUTCOME: ${{ steps.audit.outcome }}
+          VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
-          test "$AUDIT_OUTCOME" = success
+          test "$VERIFY_OUTCOME" = success
           python3 - <<'PY'
           import json
-          r=json.load(open('artifacts/android-a1-77ffab72/results.json'))
-          assert r and all(row['status']=='PASS' for row in r),r
+          rows=json.load(open('artifacts/android-a1-pr138/results.json'))
+          assert len(rows)==4,rows
+          assert all(row['status']=='PASS' for row in rows),rows
+          summary=json.load(open('artifacts/android-a1-pr138/work-add-summary.json'))
+          assert summary['Camera']==1,summary
+          assert summary['Photos']==1,summary
+          assert summary['Files']==1,summary
+          assert summary['Attach files']==0,summary
           PY
           git diff --exit-code -- src electron tests scripts package.json
