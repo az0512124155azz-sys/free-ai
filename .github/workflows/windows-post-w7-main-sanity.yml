@@ -1,0 +1,112 @@
+name: Windows Post-W7 Main Sanity
+
+on:
+  push:
+    branches: [audit/windows-post-w7-main-sanity-3f3c1e2]
+    paths: [.github/workflows/windows-post-w7-main-sanity.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-post-w7-main-sanity-3f3c1e2
+  cancel-in-progress: false
+
+env:
+  FREEAI_SANITY_TARGET: 3f3c1e2b63ce15d00c34aac4ad5040d1f4b95b60
+
+jobs:
+  windows_main_sanity:
+    name: Windows exact-main runtime sanity
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact merged main, not the audit branch
+        uses: actions/checkout@v4
+        with:
+          ref: 3f3c1e2b63ce15d00c34aac4ad5040d1f4b95b60
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify provenance before running tests
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:FREEAI_SANITY_TARGET) { throw 'Wrong checkout SHA' }
+          New-Item -ItemType Directory -Force artifacts/windows-post-w7-main-sanity | Out-Null
+          [ordered]@{
+            targetSha = $actual
+            workflowSha = $env:GITHUB_SHA
+            runId = $env:GITHUB_RUN_ID
+            operatingSystem = [System.Environment]::OSVersion.VersionString
+            runtime = 'Native Windows Electron; isolated temporary profiles'
+            authentication = 'VITE_VISUAL_TEST renderer; no real account or API keys'
+            scope = 'Main sanity only; no product changes, merge, tag, or release'
+          } | ConvertTo-Json | Set-Content artifacts/windows-post-w7-main-sanity/provenance.json
+          Write-Host "Testing exact merged main: $actual"
+      - name: Install app dependencies
+        run: npm install --no-audit --no-fund
+      - name: Install pinned Playwright Electron driver
+        run: npm install --no-save --no-package-lock --no-audit --no-fund @playwright/test@1.63.0
+      - name: Validate existing source and native regression guards
+        run: npm run validate
+      - name: Build auth-independent test renderer
+        run: npm run build:web
+        env:
+          VITE_VISUAL_TEST: '1'
+      - name: Windows shell visual baseline and Search Chats regression
+        id: visual
+        continue-on-error: true
+        run: npx playwright test --config=playwright.windows.config.mjs --workers=1
+      - name: Windows native, Chat Work, Settings, Model Picker, Browser, Super AI and restart
+        id: interaction
+        if: ${{ !cancelled() && steps.visual.outcome != 'skipped' }}
+        continue-on-error: true
+        run: npx playwright test tests/audit/windows-w5a-native.spec.mjs tests/audit/windows-w5b-restart.spec.mjs tests/audit/windows-w5c-buttons.spec.mjs tests/audit/windows-known-fixes.spec.mjs --workers=1 --reporter=list --output=artifacts/windows-post-w7-main-sanity/runner
+      - name: Summarize and enforce every required test result
+        if: always()
+        shell: pwsh
+        env:
+          VISUAL_OUTCOME: ${{ steps.visual.outcome }}
+          INTERACTION_OUTCOME: ${{ steps.interaction.outcome }}
+        run: |
+          $failed = @()
+          $summary = @()
+          foreach ($file in @('artifacts/windows-w5a/results.json', 'artifacts/windows-w5b/results.json', 'artifacts/windows-w5c/results.json', 'artifacts/windows-known-fixes/results.json')) {
+            if (-not (Test-Path $file)) { $failed += "Missing results: $file"; continue }
+            $rows = @(Get-Content $file -Raw | ConvertFrom-Json)
+            if ($rows.Count -eq 0) { $failed += "Empty results: $file" }
+            foreach ($row in $rows) {
+              $summary += [ordered]@{ suite=$file; name=$row.name; status=$row.status; detail=$row.detail }
+              if ($row.status -ne 'PASS') { $failed += "$($row.name): $($row.status)" }
+            }
+          }
+          if ($env:VISUAL_OUTCOME -ne 'success') { $failed += "Visual/Search step: $env:VISUAL_OUTCOME" }
+          if ($env:INTERACTION_OUTCOME -ne 'success') { $failed += "Interaction step: $env:INTERACTION_OUTCOME" }
+          git diff --exit-code -- src electron tests scripts package.json playwright.windows.config.mjs
+          if ($LASTEXITCODE -ne 0) { $failed += 'Tracked product/test sources changed during audit' }
+          New-Item -ItemType Directory -Force artifacts/windows-post-w7-main-sanity | Out-Null
+          [ordered]@{
+            targetSha=$env:FREEAI_SANITY_TARGET
+            visual=$env:VISUAL_OUTCOME
+            interaction=$env:INTERACTION_OUTCOME
+            checks=$summary
+            failures=$failed
+          } | ConvertTo-Json -Depth 8 | Set-Content artifacts/windows-post-w7-main-sanity/summary.json
+          $summary | Format-Table suite,name,status -AutoSize
+          if ($failed.Count -gt 0) { throw ($failed -join "`n") }
+          Write-Host 'PASS: exact-main Windows visual, Search Chats, and runtime sanity.'
+      - name: Upload main-sanity provenance, results and original screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-windows-post-w7-main-sanity-3f3c1e2
+          path: |
+            artifacts/windows-post-w7-main-sanity/**
+            artifacts/windows-visual/**
+            artifacts/windows-w5a/**
+            artifacts/windows-w5b/**
+            artifacts/windows-w5c/**
+            artifacts/windows-known-fixes/**
+          if-no-files-found: error
