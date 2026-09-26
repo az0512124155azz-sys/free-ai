@@ -29,33 +29,10 @@ if(!source.includes(extraImports)){
 }
 
 const classAnchor='public class MainActivity extends BridgeActivity implements ModifiedMainActivityForSocialLoginPlugin {\n';
-const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FREEAI_RUNTIME_QA";
+const qaFieldsAndMethods=`    private static final String QA_ACTION = "com.freeai.mobile.FREEAI_RUNTIME_QA";
     private static final String QA_TAG = "FreeAIAndroidQA";
     private BroadcastReceiver qaReceiver;
     private final Handler qaHandler = new Handler(Looper.getMainLooper());
-
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        if (!isQaDebuggable()) return;
-
-        qaReceiver = new BroadcastReceiver() {
-            @Override
-            public void onReceive(Context context, Intent intent) {
-                String command = intent == null ? "audit" : intent.getStringExtra("command");
-                String email = intent == null ? null : intent.getStringExtra("email");
-                String password = intent == null ? null : intent.getStringExtra("password");
-                runQaCommand(command == null ? "audit" : command, email, password);
-            }
-        };
-
-        IntentFilter filter = new IntentFilter(QA_ACTION);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(qaReceiver, filter, Context.RECEIVER_EXPORTED);
-        } else {
-            registerReceiver(qaReceiver, filter);
-        }
-    }
 
     @Override
     public void onDestroy() {
@@ -118,7 +95,34 @@ const qaBlock=`    private static final String QA_ACTION = "com.freeai.mobile.FR
 
 if(!source.includes('private static final String QA_ACTION')){
   if(!source.includes(classAnchor))throw new Error('MainActivity class anchor not found.');
-  source=source.replace(classAnchor,classAnchor+qaBlock);
+
+  const onCreateSignature='protected void onCreate(Bundle savedInstanceState) {';
+  const superOnCreate='        super.onCreate(savedInstanceState);';
+  if(!source.includes(onCreateSignature))throw new Error('MainActivity onCreate hook not found.');
+  if((source.split(superOnCreate).length-1)!==1)throw new Error('Expected exactly one super.onCreate(savedInstanceState) call.');
+
+  const qaOnCreateSetup=`
+        if (!isQaDebuggable()) return;
+
+        qaReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String command = intent == null ? "audit" : intent.getStringExtra("command");
+                String email = intent == null ? null : intent.getStringExtra("email");
+                String password = intent == null ? null : intent.getStringExtra("password");
+                runQaCommand(command == null ? "audit" : command, email, password);
+            }
+        };
+
+        IntentFilter filter = new IntentFilter(QA_ACTION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(qaReceiver, filter, Context.RECEIVER_EXPORTED);
+        } else {
+            registerReceiver(qaReceiver, filter);
+        }`;
+
+  source=source.replace(classAnchor,classAnchor+qaFieldsAndMethods);
+  source=source.replace(superOnCreate,superOnCreate+qaOnCreateSetup);
 }
 
 fs.writeFileSync(mainActivity,source,'utf8');
