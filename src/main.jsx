@@ -2151,7 +2151,7 @@ function App(){
               </div>}
             </div>}
         <div className="brandActions">
-          <button title="Search chats" aria-label="Search chats" onClick={()=>setSidebarSearchOpen(v=>!v)}><Search size={16}/></button>
+          <button title="Search chats" aria-label="Search chats" aria-expanded={sidebarSearchOpen} onClick={()=>{if(isWindowsDesktop)setSidebarSearch('');setSidebarSearchOpen(v=>!v)}}><Search size={16}/></button>
           <button className="mobileCloseNav" title="Close navigation" onClick={()=>setMobileNavOpen(false)}><X size={17}/></button>
         </div>
       </div>
