@@ -4,6 +4,7 @@ const source=fs.readFileSync('src/main.jsx','utf8');
 const styles=fs.readFileSync('src/styles.css','utf8');
 const capacitor=JSON.parse(fs.readFileSync('capacitor.config.json','utf8'));
 const branding=fs.readFileSync('scripts/configure-android-branding.mjs','utf8');
+const socialLogin=fs.readFileSync('scripts/configure-android-social-login.mjs','utf8');
 
 function fail(message){
   console.error('Android 1 shell regression failed: '+message);
@@ -28,6 +29,7 @@ has(styles,'.nativeMobileShell .gptSidebar{','Android drawer must remain off-can
 has(styles,'.nativeMobileShell .desktopPrimaryNav','Android native shell must hide desktop primary navigation.');
 has(styles,'.nativeMobileShell .mobileNavTrigger{display:grid}','Android app bar navigation trigger is missing.');
 has(styles,'.nativeMobileShell .mobileConversationPicker{display:flex}','Android conversation model picker must remain at the top of the conversation.');
+has(styles,'.nativeMobileShell .workspaceHeader{height:52px;grid-template-columns:1fr auto 1fr;padding:0 8px;flex:none;z-index:140}','Android native app header must stay above the conversation picker so Chat/Work menus cannot render behind it.');
 has(styles,'bottom:max(8px,calc(var(--safe-bottom) + var(--keyboard-offset)))','Android composer must account for bottom safe area and keyboard offset.');
 has(styles,'@media(min-width:761px){','Android tablet adaptation is missing.');
 has(styles,'.nativeMobileShell .gptComposer','Android tablet composer sizing is missing.');
@@ -42,6 +44,9 @@ ok(
   'Android 15/16 display cutout mode must use edge-to-edge compatible always mode.'
 );
 has(branding,"android:windowSoftInputMode=\"adjustResize\"",'Android MainActivity must resize for the software keyboard, including large-screen tablets.');
+has(socialLogin,'import androidx.activity.EdgeToEdge;','Generated Android MainActivity must import AndroidX edge-to-edge support.');
+has(socialLogin,'public void onCreate(Bundle savedInstanceState)','Generated Android MainActivity must configure edge-to-edge during onCreate.');
+has(socialLogin,'EdgeToEdge.enable(this);','Generated Android MainActivity must enable edge-to-edge so the themed web surface draws behind system bars.');
 ok(!branding.includes("['android:statusBarColor','@android:color/transparent']"),'Legacy Android status bar color mutation must not return.');
 ok(!branding.includes("['android:navigationBarColor','@android:color/transparent']"),'Legacy Android navigation bar color mutation must not return.');
 
