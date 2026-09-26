@@ -1,4 +1,4 @@
-name: Android A1 Work Add Device Verification
+name: Android A1 Work Add Main Sanity
 
 on:
   push:
@@ -11,27 +11,27 @@ permissions:
   actions: read
 
 concurrency:
-  group: android-a1-pr138-work-add-device
+  group: android-a1-main-4f46bdb7-work-add
   cancel-in-progress: false
 
 env:
-  AUDIT_TARGET: e09bdfba8764599a5e2d4ce52bd4673c8b3ff957
-  SOURCE_RUN: '36276018212'
-  SOURCE_ARTIFACT: '10917258023'
+  AUDIT_TARGET: 4f46bdb703fc48b94ff06260f368bb4f64a3fc04
+  SOURCE_RUN: '36276862931'
+  SOURCE_ARTIFACT: '10917149415'
 
 jobs:
   work_add:
-    name: PR138 Work Add on Android 16 Pixel 5
+    name: Main Work Add on Android 16 Pixel 5
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
-      - name: Check out exact PR product commit
+      - name: Check out exact main product commit
         uses: actions/checkout@v4
         with:
           ref: ${{ env.AUDIT_TARGET }}
           persist-credentials: false
 
-      - name: Verify exact PR APK provenance
+      - name: Verify exact main APK provenance
         uses: actions/github-script@v7
         with:
           script: |
@@ -41,23 +41,19 @@ jobs:
             const runId=Number(process.env.SOURCE_RUN);
             const artifactId=Number(process.env.SOURCE_ARTIFACT);
 
-            const {data:pr}=await github.rest.pulls.get({...repo,pull_number:138});
-            if(pr.state!=='open'||pr.merged||pr.head.sha!==target||pr.base.ref!=='main'){
-              throw new Error('PR #138 moved or is no longer the expected open PR');
-            }
             const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
-            if(main.object.sha!=='77ffab72d32482db83dfff56302403a8b5ff81a8'){
+            if(main.object.sha!==target){
               throw new Error('main moved; device verification must be re-audited');
             }
 
             const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:runId});
-            if(run.id!==runId||run.head_sha!==target||run.head_branch!=='android/a1-work-add-cleanup'||
-               run.event!=='pull_request'||run.workflow_id!==363617952||run.status!=='completed'||
-               run.conclusion!=='success'||run.run_attempt!==1){
-              throw new Error('Unexpected successful PR build provenance');
+            if(run.id!==runId||run.head_sha!==target||run.head_branch!=='main'||
+               run.event!=='push'||run.workflow_id!==363617952||!['in_progress','completed'].includes(run.status)||
+               (run.status==='completed'&&run.conclusion!=='success')||run.run_attempt!==1){
+              throw new Error('Unexpected main build provenance');
             }
 
-            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108498809654});
+            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108501199706});
             if(build.run_id!==run.id||build.head_sha!==target||build.name!=='android'||
                build.status!=='completed'||build.conclusion!=='success'){
               throw new Error('Exact Android APK-producing job is not successful');
@@ -74,24 +70,24 @@ jobs:
                artifact.workflow_run?.id!==run.id||artifact.workflow_run?.head_sha!==target){
               throw new Error('Unexpected QA APK artifact');
             }
-            if(artifact.digest!=='sha256:33979f69882afde58bbbd08dbc94fafca9725b09538ef2a375841e80d5180cef'){
+            if(artifact.digest!=='sha256:ea23108b8263162efcca14dbd1c75a9d7aecea404b97791d160bf990b727e5a1'){
               throw new Error('QA APK artifact digest changed');
             }
 
-            fs.mkdirSync('artifacts/android-a1-pr138',{recursive:true});
-            fs.writeFileSync('artifacts/android-a1-pr138/provenance.json',JSON.stringify({
-              pr:138,targetSha:target,mainSha:main.object.sha,sourceRun:run.id,
+            fs.mkdirSync('artifacts/android-a1-main-4f46bdb7',{recursive:true});
+            fs.writeFileSync('artifacts/android-a1-main-4f46bdb7/provenance.json',JSON.stringify({
+              targetSha:target,mainSha:main.object.sha,sourceRun:run.id,
               sourceRunConclusion:run.conclusion,androidBuildJob:build.id,
               artifactId:artifact.id,artifactDigest:artifact.digest,
               device:'Android API 36 Pixel 5',
               scope:'Work Add device verification only'
             },null,2));
 
-      - name: Download immutable PR QA APK
+      - name: Download immutable main QA APK
         uses: actions/download-artifact@v4
         with:
-          artifact-ids: '10917258023'
-          run-id: 36276018212
+          artifact-ids: '10917149415'
+          run-id: 36276862931
           github-token: ${{ github.token }}
           path: runtime-artifacts
 
@@ -102,7 +98,7 @@ jobs:
           import hashlib, json, pathlib, re, subprocess, time, uuid
           import xml.etree.ElementTree as ET
 
-          OUT=pathlib.Path('artifacts/android-a1-pr138')
+          OUT=pathlib.Path('artifacts/android-a1-main-4f46bdb7')
           OUT.mkdir(parents=True,exist_ok=True)
           PACKAGE='com.freeai.mobile'
           rows=[]
@@ -148,7 +144,7 @@ jobs:
                   if time.monotonic()>=end: break
                   folder=rootdir/f'attempt-{attempt}'
                   folder.mkdir()
-                  remote=f'/sdcard/freeai-pr138-{uuid.uuid4().hex}.xml'
+                  remote=f'/sdcard/freeai-main-4f46bdb7-{uuid.uuid4().hex}.xml'
                   try:
                       subprocess.run(['adb','-s',SERIAL,'shell','rm','-f',remote],check=False,capture_output=True,timeout=8)
                       gen=subprocess.run(['adb','-s',SERIAL,'shell','uiautomator','dump',remote],check=False,capture_output=True,timeout=12)
@@ -295,8 +291,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: free-ai-pr138-android-work-add-device
-          path: artifacts/android-a1-pr138/**
+          name: free-ai-main-4f46bdb7-android-work-add-device
+          path: artifacts/android-a1-main-4f46bdb7/**
           if-no-files-found: error
 
       - name: Enforce focused device result
@@ -307,10 +303,10 @@ jobs:
           test "$VERIFY_OUTCOME" = success
           python3 - <<'PY'
           import json
-          rows=json.load(open('artifacts/android-a1-pr138/results.json'))
+          rows=json.load(open('artifacts/android-a1-main-4f46bdb7/results.json'))
           assert len(rows)==4,rows
           assert all(row['status']=='PASS' for row in rows),rows
-          summary=json.load(open('artifacts/android-a1-pr138/work-add-summary.json'))
+          summary=json.load(open('artifacts/android-a1-main-4f46bdb7/work-add-summary.json'))
           assert summary['Camera']==1,summary
           assert summary['Photos']==1,summary
           assert summary['Files']==1,summary
