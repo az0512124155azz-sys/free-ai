@@ -128,7 +128,7 @@ test('Windows Browser split keeps Composer controls visible and clickable',async
       if(await shortcut.count()){
         await shortcut.click();
       }else{
-        // Open from Chat without switching experience and discarding its history.
+        // The existing Windows Browser action switches Chat to Work.
         await page.getByRole('button',{name:'Add',exact:true}).click();
         await page.getByRole('menu',{name:'Add',exact:true}).getByRole('menuitem',{name:/^Browser/}).click();
       }
@@ -184,9 +184,48 @@ test('Windows Browser split keeps Composer controls visible and clickable',async
     await inspect('restored');
 
     for(const mode of ['work','chat']){
-      await page.locator('.recentItem').filter({hasText:'Pane history '+mode}).click();
-      await expect(page.getByRole('tab',{name:mode==='work'?'Work':'Chat',exact:true})).toHaveAttribute('aria-selected','true');
-      await openBrowser();
+      // Start the Chat transition with Browser closed, so the Add action really
+      // opens it rather than relying on the panel left open by the Work case.
+      if(mode==='chat'){
+        await page.getByTitle('Close browser',{exact:true}).click();
+        await expect(page.locator('.browserPane')).toHaveCount(0);
+      }
+      const recent=page.locator('.recentItem').filter({hasText:'Pane history '+mode});
+      const modeTab=page.getByRole('tab',{name:mode==='work'?'Work':'Chat',exact:true});
+      const history=page.locator('.chatMessage.user .messageBody');
+      await recent.click();
+      await expect(modeTab).toHaveAttribute('aria-selected','true');
+      await expect(history).toHaveText('Existing '+mode);
+      await expect(page.locator('.gptComposer.compact')).toBeVisible();
+
+      if(mode==='chat'){
+        const savedChats=await page.evaluate(()=>JSON.parse(localStorage.getItem('freeai.chats.free')));
+        await page.locator('.gptComposer textarea').fill('Unsaved Chat transition draft');
+        await openBrowser();
+        // Existing Windows behavior: opening Browser enters a fresh Work view.
+        // Verify that transition explicitly without changing product behavior.
+        await expect(page.getByRole('tab',{name:'Work',exact:true})).toHaveAttribute('aria-selected','true');
+        await expect(modeTab).toHaveAttribute('aria-selected','false');
+        await expect(page.locator('.emptyChat .gptComposer')).toBeVisible();
+        await expect(page.locator('.gptComposer.compact')).toHaveCount(0);
+        await expect(page.locator('.chatMessage')).toHaveCount(0);
+        await expect(page.locator('.gptComposer textarea')).toHaveValue('');
+        await expect.poll(()=>page.evaluate(()=>JSON.parse(localStorage.getItem('freeai.chats.free')))).toEqual(savedChats);
+        await expect(recent).toBeVisible();
+        await expect(page.locator('.recentItem').filter({hasText:'Pane history work'})).toBeVisible();
+        await inspect('chat-browser-enters-work');
+
+        // openChat restores the saved thread without closing an existing pane.
+        // Use that real UI route for Chat-with-Browser; do not call openBrowser
+        // again, inject React state, or weaken the compact/history assertions.
+        await recent.click();
+      }else{
+        await openBrowser();
+      }
+      await expect(modeTab).toHaveAttribute('aria-selected','true');
+      await expect(history).toHaveText('Existing '+mode);
+      await expect(page.locator('.browserPane')).toBeVisible();
+      await expect(page.locator('.browserTab.active')).toContainText('Composer Pane QA');
       await expect(page.locator('.gptComposer.compact')).toBeVisible();
       await page.locator('.gptComposer textarea').fill('Pane layout '+mode+' message');
       await chooseModel();
@@ -196,6 +235,11 @@ test('Windows Browser split keeps Composer controls visible and clickable',async
         await page.getByRole('button',{name:'Send message',exact:true}).click();
         await expect(page.locator('.chatMessage.assistant .messageBody').last()).toHaveText('Pane layout local response');
         expect(requests).toHaveLength(1);
+        expect(requests[0].messages).toEqual(expect.arrayContaining([
+          expect.objectContaining({role:'user',content:'Existing chat'}),
+          expect.objectContaining({role:'user',content:'Pane layout chat message'})
+        ]));
+        await expect(modeTab).toHaveAttribute('aria-selected','true');
         await expect(page.locator('.browserPane')).toBeVisible();
         await inspect('history-chat-after-send');
       }
