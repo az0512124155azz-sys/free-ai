@@ -4,6 +4,7 @@ const main=fs.readFileSync('src/main.jsx','utf8');
 const css=fs.readFileSync('src/styles.css','utf8');
 const runtime=fs.readFileSync('scripts/android-runtime-qa.sh','utf8');
 const socialLogin=fs.readFileSync('scripts/configure-android-social-login.mjs','utf8');
+const runtimeConfig=fs.readFileSync('scripts/configure-android-runtime-qa.mjs','utf8');
 
 function requireText(source,text,label){
   if(!source.includes(text)){
@@ -39,6 +40,18 @@ for(const [text,label] of [
   ['EdgeToEdge.enable(this);','native edge-to-edge enablement before BridgeActivity setup'],
   ['super.onCreate(savedInstanceState);','BridgeActivity lifecycle preserved']
 ]) requireText(socialLogin,text,label);
+
+for(const [text,label] of [
+  ["const qaFieldsAndMethods=", "QA bridge fields/methods are separated from Activity lifecycle"],
+  ["const onCreateSignature='protected void onCreate(Bundle savedInstanceState) {'", "QA bridge locates the existing MainActivity onCreate"],
+  ["if((source.split(superOnCreate).length-1)!==1)", "QA bridge rejects ambiguous lifecycle hooks"],
+  ["source=source.replace(superOnCreate,superOnCreate+qaOnCreateSetup);", "QA receiver setup is merged into the existing onCreate"]
+]) requireText(runtimeConfig,text,label);
+
+if(runtimeConfig.includes('const qaBlock=')||runtimeConfig.includes('protected void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        if (!isQaDebuggable()) return;')){
+  console.error('Android 6A2 QA guard failed: runtime QA generator must not declare a second MainActivity onCreate.');
+  process.exit(1);
+}
 
 for(const [text,label] of [
   ['qa_line setThemeLight','light-theme runtime exercise'],
