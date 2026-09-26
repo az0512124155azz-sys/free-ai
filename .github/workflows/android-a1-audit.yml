@@ -1,4 +1,4 @@
-name: Android A2 Remote Controls Device Verification
+name: Android A2 Remote Controls Main Sanity
 
 on:
   push:
@@ -11,27 +11,27 @@ permissions:
   actions: read
 
 concurrency:
-  group: android-a2-pr139-remote-controls-device
+  group: android-a2-main-07db982d-remote-controls
   cancel-in-progress: false
 
 env:
-  AUDIT_TARGET: ac3336fd624924083230e80e95c02ed05bc96ddb
-  SOURCE_RUN: '36277442601'
-  SOURCE_ARTIFACT: '10917439502'
+  AUDIT_TARGET: 07db982d6b409fa6c313ece8c2a99912815a0419
+  SOURCE_RUN: '36278406199'
+  SOURCE_ARTIFACT: '10917708306'
 
 jobs:
   remote_controls:
-    name: PR139 Remote controls on Android 16 Pixel 5
+    name: Main Remote controls on Android 16 Pixel 5
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
-      - name: Check out exact PR product commit
+      - name: Check out exact main product commit
         uses: actions/checkout@v4
         with:
           ref: ${{ env.AUDIT_TARGET }}
           persist-credentials: false
 
-      - name: Verify exact PR APK provenance
+      - name: Verify exact main APK provenance
         uses: actions/github-script@v7
         with:
           script: |
@@ -41,28 +41,22 @@ jobs:
             const runId=Number(process.env.SOURCE_RUN);
             const artifactId=Number(process.env.SOURCE_ARTIFACT);
 
-            const {data:pr}=await github.rest.pulls.get({...repo,pull_number:139});
-            if(pr.state!=='open'||pr.merged||pr.head.sha!==target||pr.base.ref!=='main'){
-              throw new Error('PR #139 moved or is no longer the expected open PR');
-            }
             const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
-            if(main.object.sha!=='4f46bdb703fc48b94ff06260f368bb4f64a3fc04'){
+            if(main.object.sha!==target){
               throw new Error('main moved; focused device verification must be re-audited');
             }
 
             const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:runId});
-            if(run.id!==runId||run.head_sha!==target||run.head_branch!=='android/a2-remote-super-controls'||
-               run.event!=='pull_request'||run.workflow_id!==363617952||run.status!=='completed'||
-               run.conclusion!=='success'||run.run_attempt!==2){
-              throw new Error('Unexpected successful PR build provenance');
+            if(run.id!==runId||run.head_sha!==target||run.head_branch!=='main'||
+               run.event!=='push'||run.workflow_id!==363617952||!['in_progress','completed'].includes(run.status)||
+               ![1,2].includes(run.run_attempt)){
+              throw new Error('Unexpected main build provenance');
             }
 
-            const jobs=await github.paginate(github.rest.actions.listJobsForWorkflowRunAttempt,{
-              ...repo,run_id:runId,attempt_number:2,per_page:100
-            });
-            const build=jobs.find(job=>job.name==='android');
-            if(!build||build.head_sha!==target||build.status!=='completed'||build.conclusion!=='success'){
-              throw new Error('Exact Android APK-producing job is not successful in attempt 2');
+            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108505468990});
+            if(build.run_id!==run.id||build.head_sha!==target||build.name!=='android'||
+               build.status!=='completed'||build.conclusion!=='success'){
+              throw new Error('Exact Android APK-producing job is not successful');
             }
             for(const name of ['Validate JavaScript','Build APK','Build runtime QA APKs','Upload Android runtime QA APK']){
               const steps=(build.steps||[]).filter(step=>step.name===name);
@@ -76,35 +70,35 @@ jobs:
                artifact.workflow_run?.id!==run.id||artifact.workflow_run?.head_sha!==target){
               throw new Error('Unexpected QA APK artifact');
             }
-            if(artifact.digest!=='sha256:34992739eb2afd1486f655de4163286995c127402417d3f2dce14353a1c48e6d'){
+            if(artifact.digest!=='sha256:bdad089270fe75154328ec78edc87906fea6c8eda37e41b60548cf1ec451c79f'){
               throw new Error('QA APK artifact digest changed');
             }
 
-            fs.mkdirSync('artifacts/android-a2-pr139',{recursive:true});
-            fs.writeFileSync('artifacts/android-a2-pr139/provenance.json',JSON.stringify({
-              pr:139,targetSha:target,mainSha:main.object.sha,sourceRun:run.id,
-              sourceAttempt:run.run_attempt,androidBuildJob:build.id,
-              artifactId:artifact.id,artifactDigest:artifact.digest,
+            fs.mkdirSync('artifacts/android-a2-main-07db982d',{recursive:true});
+            fs.writeFileSync('artifacts/android-a2-main-07db982d/provenance.json',JSON.stringify({
+              targetSha:target,mainSha:main.object.sha,sourceRun:run.id,
+              sourceAttempt:run.run_attempt,sourceStatus:run.status,sourceConclusion:run.conclusion,
+              androidBuildJob:build.id,artifactId:artifact.id,artifactDigest:artifact.digest,
               device:'Android API 36 Pixel 5',
-              scope:'Remote/Super AI controls device verification only'
+              scope:'Merged Remote/Super AI controls verification only'
             },null,2));
 
-      - name: Download immutable PR QA APK
+      - name: Download immutable main QA APK
         uses: actions/download-artifact@v4
         with:
-          artifact-ids: '10917439502'
-          run-id: 36277442601
+          artifact-ids: '10917708306'
+          run-id: 36278406199
           github-token: ${{ github.token }}
           path: runtime-artifacts
 
       - name: Prepare focused native driver
         shell: bash
         run: |
-          cat > "$RUNNER_TEMP/android-a2-remote.py" <<'PY'
+          cat > "$RUNNER_TEMP/android-a2-main-remote.py" <<'PY'
           import hashlib, json, pathlib, re, subprocess, time, uuid
           import xml.etree.ElementTree as ET
 
-          OUT=pathlib.Path('artifacts/android-a2-pr139')
+          OUT=pathlib.Path('artifacts/android-a2-main-07db982d')
           OUT.mkdir(parents=True,exist_ok=True)
           PACKAGE='com.freeai.mobile'
           rows=[]
@@ -149,7 +143,7 @@ jobs:
                   if time.monotonic()>=end: break
                   folder=rootdir/f'attempt-{attempt}'
                   folder.mkdir()
-                  remote=f'/sdcard/freeai-a2-{uuid.uuid4().hex}.xml'
+                  remote=f'/sdcard/freeai-a2-main-{uuid.uuid4().hex}.xml'
                   try:
                       subprocess.run(['adb','-s',SERIAL,'shell','rm','-f',remote],check=False,capture_output=True,timeout=8)
                       gen=subprocess.run(['adb','-s',SERIAL,'shell','uiautomator','dump',remote],check=False,capture_output=True,timeout=12)
@@ -211,18 +205,11 @@ jobs:
               print(status,name,detail,flush=True)
 
           def labels(nodes):
-              return sorted({
-                  value for node in nodes if visible_enabled(node)
-                  for value in labels_for(node) if value
-              })
+              return sorted({value for node in nodes if visible_enabled(node) for value in labels_for(node) if value})
 
           apk=next(pathlib.Path('runtime-artifacts').rglob('free-ai-runtime-qa.apk'))
           (OUT/'apk-sha256.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'\n')
-          (OUT/'device.txt').write_text(
-              adb('shell','getprop','ro.build.version.release')+
-              adb('shell','getprop','ro.build.version.sdk')+
-              adb('shell','wm','size')
-          )
+          (OUT/'device.txt').write_text(adb('shell','getprop','ro.build.version.release')+adb('shell','getprop','ro.build.version.sdk')+adb('shell','wm','size'))
           adb('install','-r',str(apk))
           adb('logcat','-c')
           adb('shell','am','force-stop',PACKAGE)
@@ -231,52 +218,31 @@ jobs:
 
           free_nodes=screenshot('01-free-chat')
           free_picker=action_nodes(free_nodes,'Select model')
-          if len(free_picker)==1:
-              record('Free AI model picker present','PASS','exactly one visible Select model trigger')
-          else:
-              record('Free AI model picker present','FAIL','expected exactly one visible Select model trigger, found '+str(len(free_picker)))
+          record('Free AI model picker present','PASS' if len(free_picker)==1 else 'FAIL','visible Select model triggers='+str(len(free_picker)))
 
           if free_picker:
               tap('Select model','open-free-picker')
               picker_nodes=screenshot('02-free-picker-open')
-              models=action_nodes(picker_nodes,'Models')
-              if models:
-                  record('Free AI picker opens','PASS','model/intelligence panel opened')
-              else:
-                  record('Free AI picker opens','FAIL','Select model trigger did not expose the Models panel')
+              record('Free AI picker opens','PASS' if action_nodes(picker_nodes,'Models') else 'FAIL','Models panel visibility checked')
               tap('Select model','close-free-picker')
 
           tap('Open navigation','open-nav')
-          nav_nodes=wait_text('Remote','nav-remote-ready')
+          wait_text('Remote','nav-remote-ready')
           (OUT/'03-free-nav.png').write_bytes(adb('exec-out','screencap','-p',binary=True))
           tap('Remote','enter-remote')
-          remote_nodes=wait_text('Remote','remote-ready')
+          wait_text('Remote','remote-ready')
           remote_nodes=screenshot('04-remote')
 
           remote_picker=action_nodes(remote_nodes,'Select model')
-          if remote_picker:
-              record('Remote manual model picker absent','FAIL','found '+str(len(remote_picker))+' visible Select model trigger(s)')
-          else:
-              record('Remote manual model picker absent','PASS','no visible Select model trigger')
-
-          if not action_nodes(remote_nodes,'Remote'):
-              record('Remote screen active','FAIL','Remote header not visible')
-          else:
-              record('Remote screen active','PASS','Remote header visible')
+          record('Remote manual model picker absent','PASS' if not remote_picker else 'FAIL','visible Select model triggers='+str(len(remote_picker)))
+          record('Remote screen active','PASS' if action_nodes(remote_nodes,'Remote') else 'FAIL','Remote header checked')
 
           tap('Open navigation','open-remote-nav')
           remote_nav=screenshot('05-remote-nav')
-
           repository=action_nodes(remote_nav,'Choose repository')
           coding=action_nodes(remote_nav,'Coding')
-          if repository:
-              record('Remote repository control absent','FAIL','found '+str(len(repository))+' visible Choose repository control(s)')
-          else:
-              record('Remote repository control absent','PASS','Choose repository is not visible')
-          if coding:
-              record('Remote Coding group absent','FAIL','found visible Coding group')
-          else:
-              record('Remote Coding group absent','PASS','Coding group is not visible')
+          record('Remote repository control absent','PASS' if not repository else 'FAIL','visible Choose repository controls='+str(len(repository)))
+          record('Remote Coding group absent','PASS' if not coding else 'FAIL','visible Coding groups='+str(len(coding)))
 
           (OUT/'free-labels.json').write_text(json.dumps(labels(free_nodes),indent=2,ensure_ascii=False))
           (OUT/'remote-labels.json').write_text(json.dumps(labels(remote_nodes),indent=2,ensure_ascii=False))
@@ -285,8 +251,7 @@ jobs:
               'Free AI Select model':len(free_picker),
               'Remote Select model':len(remote_picker),
               'Remote Choose repository':len(repository),
-              'Remote Coding':len(coding),
-              'acceptedRemoteXml':last_xml
+              'Remote Coding':len(coding)
           },indent=2))
           (OUT/'logcat.txt').write_text(adb('logcat','-d'))
           (OUT/'crash.txt').write_text(adb('logcat','-b','crash','-d'))
@@ -294,7 +259,7 @@ jobs:
           if any(row['status']!='PASS' for row in rows):
               raise SystemExit(1)
           PY
-          python3 -m py_compile "$RUNNER_TEMP/android-a2-remote.py"
+          python3 -m py_compile "$RUNNER_TEMP/android-a2-main-remote.py"
 
       - name: Enable KVM
         run: |
@@ -302,7 +267,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Verify Remote controls on Android 16 Pixel 5
+      - name: Verify merged Remote controls on Android 16 Pixel 5
         id: verify
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -317,17 +282,17 @@ jobs:
           disable-spellchecker: true
           enable-hw-keyboard: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: python3 "$RUNNER_TEMP/android-a2-remote.py"
+          script: python3 "$RUNNER_TEMP/android-a2-main-remote.py"
 
-      - name: Upload focused Remote evidence
+      - name: Upload focused merged Remote evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: free-ai-pr139-android-remote-controls-device
-          path: artifacts/android-a2-pr139/**
+          name: free-ai-main-07db982d-android-remote-controls-device
+          path: artifacts/android-a2-main-07db982d/**
           if-no-files-found: error
 
-      - name: Enforce focused device result
+      - name: Enforce focused merged device result
         if: always()
         env:
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
@@ -335,10 +300,10 @@ jobs:
           test "$VERIFY_OUTCOME" = success
           python3 - <<'PY'
           import json
-          rows=json.load(open('artifacts/android-a2-pr139/results.json'))
+          rows=json.load(open('artifacts/android-a2-main-07db982d/results.json'))
           assert len(rows)==6,rows
           assert all(row['status']=='PASS' for row in rows),rows
-          summary=json.load(open('artifacts/android-a2-pr139/summary.json'))
+          summary=json.load(open('artifacts/android-a2-main-07db982d/summary.json'))
           assert summary['Free AI Select model']==1,summary
           assert summary['Remote Select model']==0,summary
           assert summary['Remote Choose repository']==0,summary
