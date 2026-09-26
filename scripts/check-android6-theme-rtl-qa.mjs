@@ -3,6 +3,7 @@ import fs from 'node:fs';
 const main=fs.readFileSync('src/main.jsx','utf8');
 const css=fs.readFileSync('src/styles.css','utf8');
 const runtime=fs.readFileSync('scripts/android-runtime-qa.sh','utf8');
+const socialLogin=fs.readFileSync('scripts/configure-android-social-login.mjs','utf8');
 
 function requireText(source,text,label){
   if(!source.includes(text)){
@@ -28,8 +29,16 @@ for(const [text,label] of [
   ['html[dir="rtl"] .nativeMobileShell .gptSidebar{','RTL native drawer rule'],
   ['transform:translateX(105%);','RTL closed drawer direction'],
   ['box-shadow:-20px 0 60px rgba(0,0,0,.34);','RTL drawer shadow direction'],
-  ['inset-inline-start:0;','logical inline-start positioning']
+  ['inset-inline-start:0;','logical inline-start positioning'],
+  ['.nativeMobileShell .workspaceHeader{height:52px;grid-template-columns:1fr auto 1fr;padding:0 8px;flex:none;z-index:140}','native header stacking above the mobile model picker']
 ]) requireText(css,text,label);
+
+for(const [text,label] of [
+  ['import androidx.activity.EdgeToEdge;','AndroidX edge-to-edge import'],
+  ['protected void onCreate(Bundle savedInstanceState)','MainActivity onCreate edge-to-edge hook'],
+  ['EdgeToEdge.enable(this);','native edge-to-edge enablement before BridgeActivity setup'],
+  ['super.onCreate(savedInstanceState);','BridgeActivity lifecycle preserved']
+]) requireText(socialLogin,text,label);
 
 for(const [text,label] of [
   ['qa_line setThemeLight','light-theme runtime exercise'],
