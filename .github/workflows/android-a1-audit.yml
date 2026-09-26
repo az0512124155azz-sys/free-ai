@@ -79,7 +79,7 @@ jobs:
         shell: bash
         run: |
           cat > "$RUNNER_TEMP/android-a1-native.py" <<'PY'
-          import hashlib, json, os, pathlib, re, subprocess, time, traceback
+          import hashlib, json, os, pathlib, re, subprocess, time, traceback, uuid
           import xml.etree.ElementTree as ET
           OUT=pathlib.Path('artifacts/android-a1-77ffab72')
           OUT.mkdir(parents=True,exist_ok=True)
@@ -91,14 +91,94 @@ jobs:
           def adb(*args,binary=False):
               return subprocess.check_output(['adb','-s',SERIAL,*args],timeout=25,text=not binary)
           def norm(value): return ' '.join(value.split()).strip()
-          def dump(name):
-              adb('shell','uiautomator','dump','/sdcard/freeai-a1.xml')
-              raw=adb('exec-out','cat','/sdcard/freeai-a1.xml')
-              (OUT/(name+'.xml')).write_text(raw)
-              root=ET.fromstring(raw[raw.index('<?xml'):])
-              nodes=list(root.iter('node'))
-              (OUT/(name+'-labels.json')).write_text(json.dumps(sorted(labels(nodes)),ensure_ascii=False,indent=2))
-              return nodes
+          # Capture only newly requested UI trees; never parse a shared previous dump.
+          CASE='setup'
+          CAPTURE_SEQUENCE=0
+          LAST_DUMP=None
+          class UiDumpUnavailable(RuntimeError):
+              pass
+
+          def capture_command(folder,phase,args,deadline):
+              remaining=deadline-time.monotonic()
+              if remaining<=0: raise UiDumpUnavailable('UI capture deadline exhausted before '+phase)
+              command=['adb','-s',SERIAL,*args]
+              metadata={'command':command,'timeoutSeconds':min(12.0,remaining)}
+              stdout,stderr=b'',b''
+              try:
+                  result=subprocess.run(command,capture_output=True,timeout=metadata['timeoutSeconds'],check=False)
+                  stdout,stderr=result.stdout,result.stderr
+                  metadata['returncode']=result.returncode
+                  return result
+              except subprocess.TimeoutExpired as exc:
+                  stdout,stderr=exc.stdout or b'',exc.stderr or b''
+                  metadata['timedOut']=True
+                  raise UiDumpUnavailable('adb '+phase+' timed out') from exc
+              except OSError as exc:
+                  metadata['error']=str(exc)
+                  raise UiDumpUnavailable('adb '+phase+' unavailable: '+str(exc)) from exc
+              finally:
+                  if phase=='read': (folder/'raw.xml').write_bytes(stdout)
+                  (folder/(phase+'.stdout')).write_bytes(stdout)
+                  (folder/(phase+'.stderr')).write_bytes(stderr)
+                  (folder/(phase+'.json')).write_text(json.dumps(metadata,indent=2))
+
+          def dump(name,deadline=None):
+              global CAPTURE_SEQUENCE,LAST_DUMP
+              LAST_DUMP=None
+              end=time.monotonic()+25 if deadline is None else deadline
+              CAPTURE_SEQUENCE+=1
+              safe=lambda value: re.sub(r'[^A-Za-z0-9_-]','_',value)[:80] or 'unnamed'
+              capture=OUT/'ui-dumps'/safe(CASE)/(safe(name)+'-'+str(CAPTURE_SEQUENCE)+'-'+uuid.uuid4().hex)
+              capture.mkdir(parents=True,exist_ok=False)
+              last_error='No fresh UI tree before deadline'
+              for attempt in range(1,6):
+                  if time.monotonic()>=end: break
+                  folder=capture/('attempt-'+str(attempt))
+                  folder.mkdir()
+                  remote='/sdcard/freeai-a1-'+uuid.uuid4().hex+'.xml'
+                  meta={'case':CASE,'name':name,'attempt':attempt,'remotePath':remote,'accepted':False}
+                  (folder/'raw.xml').write_bytes(b'')
+                  try:
+                      # A unique path plus explicit absence verification rules out old XML.
+                      removed=capture_command(folder,'remove',['shell','rm','-f',remote],end)
+                      if removed.returncode!=0: raise UiDumpUnavailable('Could not remove capture target')
+                      absent=capture_command(folder,'absence',['shell','test','!','-e',remote],end)
+                      if absent.returncode!=0: raise UiDumpUnavailable('Capture target is not provably absent')
+                      generated=capture_command(folder,'dump',['shell','uiautomator','dump',remote],end)
+                      # Preserve partial/invalid bytes as evidence, never as a usable tree.
+                      read=capture_command(folder,'read',['exec-out','cat',remote],end)
+                      raw=read.stdout
+                      (folder/'raw.xml').write_bytes(raw)
+                      diagnostics=(generated.stdout+b'\n'+generated.stderr).decode('utf-8',errors='replace')
+                      if generated.returncode!=0 or read.returncode!=0:
+                          raise UiDumpUnavailable('UI dump or XML read failed')
+                      if re.search(r'ERROR:|null root node|could not get idle state',diagnostics,re.I):
+                          raise UiDumpUnavailable('UIAutomator reported an unsuccessful capture')
+                      if not re.search(r'^UI hier(?:chary|archy) dumped to: '+re.escape(remote)+r'\s*$',diagnostics,re.M):
+                          raise UiDumpUnavailable('No success acknowledgement for this unique capture path')
+                      if not raw.strip(): raise UiDumpUnavailable('Empty XML dump')
+                      if b'<!DOCTYPE' in raw.upper() or b'<!ENTITY' in raw.upper():
+                          raise UiDumpUnavailable('Unexpected XML declarations')
+                      try: root=ET.fromstring(raw)
+                      except (ET.ParseError,ValueError,LookupError) as exc:
+                          raise UiDumpUnavailable('Malformed XML: '+str(exc)) from exc
+                      nodes=list(root.iter('node'))
+                      if root.tag!='hierarchy' or not nodes:
+                          raise UiDumpUnavailable('Missing hierarchy root or UI nodes')
+                      if time.monotonic()>=end: raise UiDumpUnavailable('UI capture completed after deadline')
+                      LAST_DUMP=str((folder/'raw.xml').relative_to(OUT))
+                      meta.update(accepted=True,xml=LAST_DUMP,sha256=hashlib.sha256(raw).hexdigest(),nodeCount=len(nodes))
+                      (folder/'labels.json').write_text(json.dumps(sorted(labels(nodes)),ensure_ascii=False,indent=2))
+                      return nodes
+                  except (UiDumpUnavailable,ET.ParseError) as exc:
+                      last_error=str(exc)
+                      meta['error']=last_error
+                  finally:
+                      (folder/'result.json').write_text(json.dumps(meta,indent=2))
+                  remaining=end-time.monotonic()
+                  if remaining>0 and attempt<5: time.sleep(min(0.5,remaining))
+              raise UiDumpUnavailable(last_error+'; evidence: '+str(capture))
+
           def labels(nodes):
               return set(norm(n.get(k,'')) for n in nodes for k in ['text','content-desc'])-{''}
           def match(nodes,text):
@@ -109,15 +189,21 @@ jobs:
               return None
           def wait_text(text,name,seconds=25):
               end=time.monotonic()+seconds
+              last_error='Target absent in fresh XML'
               while time.monotonic()<end:
-                  nodes=dump(name)
-                  if match(nodes,text): return nodes
-                  time.sleep(0.5)
-              raise RuntimeError('UI target not found: '+text)
+                  try:
+                      nodes=dump(name,deadline=end)
+                      if match(nodes,text): return nodes
+                      last_error='Target absent in fresh XML'
+                  except UiDumpUnavailable as exc:
+                      last_error=str(exc)
+                  remaining=end-time.monotonic()
+                  if remaining>0: time.sleep(min(0.5,remaining))
+              raise RuntimeError('UI target not found: '+text+'; '+last_error)
           def tap(text,name):
               nodes=wait_text(text,name+'-before')
               node,(x1,y1,x2,y2)=match(nodes,text)
-              entry={'target':text,'bounds':node.get('bounds'),'serial':SERIAL,'center':[(x1+x2)//2,(y1+y2)//2]}
+              entry={'case':CASE,'xml':LAST_DUMP,'target':text,'bounds':node.get('bounds'),'serial':SERIAL,'center':[(x1+x2)//2,(y1+y2)//2]}
               with (OUT/'taps.jsonl').open('a') as f: f.write(json.dumps(entry)+'\n')
               adb('shell','input','tap',str(entry['center'][0]),str(entry['center'][1]))
               time.sleep(0.7)
@@ -138,12 +224,17 @@ jobs:
           def signature(nodes):
               return sorted((n.get('text',''),n.get('content-desc',''),n.get('bounds',''),n.get('clickable','')) for n in nodes if n.get('package')==PACKAGE)
           def run_case(name,fn):
+              global CASE
+              previous_case=CASE
+              CASE=name
               try: fn()
               except Exception as exc:
                   record(name,'BLOCKED',str(exc))
                   (OUT/(name+'-exception.txt')).write_text(traceback.format_exc())
                   try: shot(name+'-blocked')
                   except Exception: pass
+              finally:
+                  CASE=previous_case
           apk=next(pathlib.Path('runtime-artifacts').rglob('free-ai-runtime-qa.apk'))
           (OUT/'apk-sha256.txt').write_text(hashlib.sha256(apk.read_bytes()).hexdigest()+'\n')
           (OUT/'device.txt').write_text(adb('shell','getprop','ro.build.version.release')+adb('shell','getprop','ro.build.version.sdk')+adb('shell','wm','size'))
