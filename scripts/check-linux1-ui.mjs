@@ -1,7 +1,8 @@
 import fs from 'node:fs';
 
-const renderer=fs.readFileSync('src/main.jsx','utf8');
-const main=fs.readFileSync('electron/main.cjs','utf8');
+const read=path=>fs.readFileSync(path,'utf8').replace(/\r\n?/g,'\n');
+const renderer=read('src/main.jsx');
+const main=read('electron/main.cjs');
 
 function fail(message){
   console.error('Linux L1.1 UI regression failed: '+message);
