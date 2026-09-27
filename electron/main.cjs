@@ -1352,7 +1352,7 @@ async function chooseRepository(){
 }
 
 async function canonicalLocalFolderRoot(input){
-  if(process.platform!=='win32')throw new Error('Local folder access is currently available on Windows.');
+  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows and Linux.');
   const requested=path.resolve(String(input||''));
   if(!requested||!fs.existsSync(requested)||!fs.statSync(requested).isDirectory())throw new Error('Local folder is not available.');
   const realRoot=fs.realpathSync(requested);
@@ -1496,9 +1496,11 @@ function localFolderRead(inputRoot,relativePath,startLine=1,endLine=null){
   };
 }
 
+const localFolderStateKey=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');
+
 function recordLocalFileRead(task,result){
   if(!(task.localFileReadState instanceof Map))task.localFileReadState=new Map();
-  const key=String(result?.path||'').toLowerCase();
+  const key=localFolderStateKey(result?.path);
   if(!key)return;
   let state=task.localFileReadState.get(key);
   if(!state||state.size!==result.size||state.mtimeMs!==result.mtimeMs||state.totalLines!==result.totalLines){
@@ -1518,7 +1520,7 @@ function recordLocalFileRead(task,result){
 
 function localFileReadIsComplete(task,target){
   if(!(task.localFileReadState instanceof Map))return false;
-  const key=String(target.relative||'').toLowerCase();
+  const key=localFolderStateKey(target.relative);
   const state=task.localFileReadState.get(key);
   if(!state||!fs.existsSync(target.resolved))return false;
   const stat=fs.statSync(target.resolved);
@@ -1567,7 +1569,7 @@ function localFolderWrite(inputRoot,relativePath,content){
 }
 
 async function chooseLocalFolder(){
-  if(process.platform!=='win32')throw new Error('Local folder access is currently available on Windows.');
+  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows and Linux.');
   if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
   const result=await dialog.showOpenDialog(win,{
     title:'Open local folder for Work',
