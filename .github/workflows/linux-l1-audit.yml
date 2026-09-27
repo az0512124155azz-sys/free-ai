@@ -1,11 +1,11 @@
-name: Linux L1 Full Audit
+name: Linux L1.1 PR143 Audit
 
 on:
   push:
     branches: [audit/linux-l1-ui]
     paths:
       - .github/workflows/linux-l1-audit.yml
-      - tests/linux-audit/**
+      - tests/linux-audit/linux-l1-pr143.spec.mjs
       - playwright.linux.audit.config.mjs
   workflow_dispatch:
 
@@ -14,12 +14,12 @@ permissions:
   actions: read
 
 concurrency:
-  group: linux-l1-main-825092a8
-  cancel-in-progress: false
+  group: linux-l1-pr143-d2e1e24c
+  cancel-in-progress: true
 
 jobs:
   linux_l1:
-    name: Linux L1 packaged and UI audit
+    name: PR143 packaged Linux L1.1 audit
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -30,10 +30,10 @@ jobs:
           path: audit-harness
           persist-credentials: false
 
-      - name: Check out exact product main
+      - name: Check out exact PR product commit
         uses: actions/checkout@v4
         with:
-          ref: 825092a8ef55135d4f7397e5c050d077ba3f1153
+          ref: d2e1e24c2f54d48a2e1e01cb0bfed95489f6caeb
           path: product
           persist-credentials: false
 
@@ -43,42 +43,46 @@ jobs:
           script: |
             const fs=require('fs');
             const repo=context.repo;
-            const target='825092a8ef55135d4f7397e5c050d077ba3f1153';
-            const sourceRun=36303734096;
-            const sourceJob=108576179069;
-            const artifactId=10926875546;
+            const target='d2e1e24c2f54d48a2e1e01cb0bfed95489f6caeb';
+            const sourceRun=36316692513;
+            const sourceJob=108613862732;
+            const artifactId=10931021961;
 
+            const {data:pr}=await github.rest.pulls.get({...repo,pull_number:143});
+            if(pr.state!=='open'||pr.merged||pr.head.sha!==target||pr.base.ref!=='main'){
+              throw new Error('PR #143 moved or is no longer the expected open PR');
+            }
             const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
-            if(main.object.sha!==target)throw new Error('main moved; Linux audit must be restarted on the new main SHA');
+            if(main.object.sha!=='825092a8ef55135d4f7397e5c050d077ba3f1153'){
+              throw new Error('main moved; Linux PR audit must be restarted');
+            }
 
             const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:sourceRun});
-            if(run.head_sha!==target||run.head_branch!=='main'||run.event!=='push'||run.status!=='completed'||run.conclusion!=='success'||run.run_attempt!==1){
-              throw new Error('Unexpected source main workflow provenance');
+            if(run.head_sha!==target||run.head_branch!=='linux/l1-ui-handlers'||run.event!=='pull_request'||run.run_attempt!==2||
+               !['in_progress','completed'].includes(run.status)||(run.status==='completed'&&run.conclusion!=='success')){
+              throw new Error('Unexpected PR source workflow provenance');
             }
 
             const {data:job}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:sourceJob});
-            if(job.run_id!==sourceRun||job.head_sha!==target||job.name!=='desktop (ubuntu-latest, linux, release/*.AppImage)'||job.status!=='completed'||job.conclusion!=='success'){
+            if(job.run_id!==sourceRun||job.head_sha!==target||job.name!=='desktop (ubuntu-latest, linux, release/*.AppImage)'||
+               job.status!=='completed'||job.conclusion!=='success'){
               throw new Error('Exact Linux AppImage-producing job is not successful');
-            }
-            const buildSteps=(job.steps||[]).filter(step=>step.name==='Build desktop app');
-            if(buildSteps.length!==1||buildSteps[0].status!=='completed'||buildSteps[0].conclusion!=='success'){
-              throw new Error('Linux desktop build step did not succeed');
             }
 
             const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:artifactId});
-            if(artifact.id!==artifactId||artifact.name!=='free-ai-linux'||artifact.expired||artifact.workflow_run?.id!==sourceRun||artifact.workflow_run?.head_sha!==target){
+            if(artifact.id!==artifactId||artifact.name!=='free-ai-linux'||artifact.expired||
+               artifact.workflow_run?.id!==sourceRun||artifact.workflow_run?.head_sha!==target){
               throw new Error('Unexpected Linux artifact');
             }
-            if(artifact.digest!=='sha256:d9638db4114e07f66469673eaab9f2bd2759880f9c22e10b62fcd3c7617ff82b'){
+            if(artifact.digest!=='sha256:febf74d46b9812d14a70c56d21ffe394ad9ef06614d72f5c50c1e724f463113a'){
               throw new Error('Linux artifact digest changed');
             }
 
-            fs.mkdirSync('product/artifacts/linux-audit',{recursive:true});
-            fs.writeFileSync('product/artifacts/linux-audit/provenance.json',JSON.stringify({
-              targetSha:target,sourceRun,sourceJob,artifactId,
-              artifactDigest:artifact.digest,
-              runner:process.env.RUNNER_OS,
-              scope:'Linux L1 packaged AppImage + deterministic full-shell audit'
+            fs.mkdirSync('product/artifacts/linux-l1-pr143',{recursive:true});
+            fs.writeFileSync('product/artifacts/linux-l1-pr143/provenance.json',JSON.stringify({
+              pr:143,targetSha:target,mainSha:main.object.sha,sourceRun,
+              sourceAttempt:run.run_attempt,sourceJob,artifactId,artifactDigest:artifact.digest,
+              scope:'Linux L1.1 packaged backend + deterministic UI verification'
             },null,2));
 
       - uses: actions/setup-node@v4
@@ -90,28 +94,28 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y xvfb
 
-      - name: Install exact product dependencies and pinned Playwright driver
+      - name: Install exact product dependencies and pinned Playwright
         working-directory: product
         run: |
           npm install --no-audit --no-fund
           npm install --no-save --no-package-lock @playwright/test@1.63.0
 
-      - name: Copy audit harness into exact product checkout
+      - name: Copy focused audit harness
         run: |
           mkdir -p product/tests/linux-audit
-          cp audit-harness/tests/linux-audit/linux-shell.spec.mjs product/tests/linux-audit/linux-shell.spec.mjs
-          cp audit-harness/playwright.linux.audit.config.mjs product/playwright.linux.audit.config.mjs
-          node --check product/tests/linux-audit/linux-shell.spec.mjs
+          cp audit-harness/tests/linux-audit/linux-l1-pr143.spec.mjs product/tests/linux-audit/
+          cp audit-harness/playwright.linux.audit.config.mjs product/
+          node --check product/tests/linux-audit/linux-l1-pr143.spec.mjs
 
-      - name: Download immutable Linux AppImage artifact
+      - name: Download immutable PR Linux AppImage
         uses: actions/download-artifact@v4
         with:
-          artifact-ids: '10926875546'
-          run-id: 36303734096
+          artifact-ids: '10931021961'
+          run-id: 36316692513
           github-token: ${{ github.token }}
           path: product/runtime-artifacts
 
-      - name: Extract packaged AppImage without FUSE
+      - name: Extract immutable PR AppImage without FUSE
         working-directory: product
         shell: bash
         run: |
@@ -121,19 +125,14 @@ jobs:
           chmod +x "$appimage"
           app_dir="$(dirname "$appimage")"
           app_name="$(basename "$appimage")"
-          (
-            cd "$app_dir"
-            rm -rf squashfs-root
-            "./$app_name" --appimage-extract >/dev/null
-          )
+          (cd "$app_dir" && rm -rf squashfs-root && "./$app_name" --appimage-extract >/dev/null)
           executable="$(realpath "$app_dir/squashfs-root/free-ai")"
           test -x "$executable"
           echo "FREEAI_LINUX_EXECUTABLE=$executable" >> "$GITHUB_ENV"
-          sha256sum "$appimage" > artifacts/linux-audit/appimage-sha256.txt
-          file "$appimage" > artifacts/linux-audit/appimage-file.txt
-          printf '%s\n' "$executable" > artifacts/linux-audit/appimage-executable.txt
+          sha256sum "$appimage" > artifacts/linux-l1-pr143/appimage-sha256.txt
+          file "$appimage" > artifacts/linux-l1-pr143/appimage-file.txt
 
-      - name: Build deterministic QA AppImage from exact main
+      - name: Build deterministic QA AppImage from exact PR head
         working-directory: product
         env:
           VITE_VISUAL_TEST: '1'
@@ -145,18 +144,13 @@ jobs:
           qa_appimage="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$qa_appimage"
           chmod +x "$qa_appimage"
-          (
-            cd release
-            rm -rf squashfs-root
-            "./$(basename "$qa_appimage")" --appimage-extract >/dev/null
-          )
+          (cd release && rm -rf squashfs-root && "./$(basename "$qa_appimage")" --appimage-extract >/dev/null)
           qa_executable="$(realpath release/squashfs-root/free-ai)"
           test -x "$qa_executable"
           echo "FREEAI_LINUX_QA_EXECUTABLE=$qa_executable" >> "$GITHUB_ENV"
-          sha256sum "$qa_appimage" > artifacts/linux-audit/deterministic-qa-appimage-sha256.txt
-          printf '%s\n' "$qa_executable" > artifacts/linux-audit/deterministic-qa-executable.txt
+          sha256sum "$qa_appimage" > artifacts/linux-l1-pr143/qa-appimage-sha256.txt
 
-      - name: Run packaged + full Linux UI audit under Xvfb
+      - name: Run focused Linux L1.1 audit
         id: linux_audit
         continue-on-error: true
         working-directory: product
@@ -164,20 +158,19 @@ jobs:
           ELECTRON_DISABLE_SECURITY_WARNINGS: 'true'
         run: xvfb-run -a npx playwright test --config=playwright.linux.audit.config.mjs
 
-      - name: Upload Linux L1 evidence
+      - name: Upload Linux L1.1 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: free-ai-linux-l1-main-825092a8
-          path: product/artifacts/linux-audit/**
+          name: free-ai-linux-l1-pr143
+          path: product/artifacts/linux-l1-pr143/**
           if-no-files-found: error
 
-      - name: Enforce Linux audit verdict
+      - name: Enforce focused Linux verdict
         if: always()
         env:
           AUDIT_OUTCOME: ${{ steps.linux_audit.outcome }}
         run: |
           test "$AUDIT_OUTCOME" = success
-          test -s product/artifacts/linux-audit/packaged-results.json
-          test -s product/artifacts/linux-audit/linux-full-results.json
-          node -e "const a=require('./product/artifacts/linux-audit/packaged-results.json'); const b=require('./product/artifacts/linux-audit/linux-full-results.json'); if([...a,...b].some(x=>x.status!=='PASS')) process.exit(1)"
+          test -s product/artifacts/linux-l1-pr143/results.json
+          node -e "const r=require('./product/artifacts/linux-l1-pr143/results.json');if(r.some(x=>x.status!=='PASS'))process.exit(1)"
