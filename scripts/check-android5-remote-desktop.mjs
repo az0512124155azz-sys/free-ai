@@ -28,7 +28,8 @@ has(source,"{isNative&&!(isAndroidNative&&product==='super')&&<MobileConversatio
 if(source.includes("{isNative&&<MobileConversationPicker"))fail('Unscoped native model picker would re-expose manual model selection in Android Super AI.');
 const safeRepositoryVisibility=[
   "{!(product==='super'&&isAndroidNative)&&<>",
-  "{(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>"
+  "{(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>",
+  "{(product!=='super'||isWorkDesktop)&&<>"
 ];
 if(!safeRepositoryVisibility.some(marker=>source.includes(marker))){
   fail('Android Super AI/Remote must hide repository controls while supported desktop platforms may expose them.');
