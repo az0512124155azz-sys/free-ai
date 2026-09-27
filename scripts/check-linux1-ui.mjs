@@ -16,7 +16,8 @@ for(const [text,label] of [
   ["function toggleSidebarSearch(){\n    const next=!sidebarSearchOpen;\n    if(!next)setSidebarSearch('');\n    setSidebarSearchOpen(next);\n  }",'Search close resets the active query'],
   ['onClick={toggleSidebarSearch}><Search size={16}/>','Search button uses reset-aware toggle'],
   ["if(!(isWindowsDesktop||isLinuxDesktop))return;",'repository picker is enabled on Linux desktop'],
-  ["(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>",'Super repository control is only shown where supported']
+  ["(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>",'Super repository control is only shown where supported'],
+  ["{mode==='work'&&!isAndroidNative&&!isLinuxDesktop&&<MenuRow icon={Paperclip} label=\"Attach files\"",'Linux Work suppresses the duplicate Attach files row']
 ]) requireText(renderer,text,label);
 
 if(renderer.includes("if(!isWindowsDesktop)return;\n    stopActiveWorkTask();\n    setMode('work')")){
@@ -24,6 +25,12 @@ if(renderer.includes("if(!isWindowsDesktop)return;\n    stopActiveWorkTask();\n 
 }
 if(renderer.includes("if(isWindowsDesktop)setSidebarSearch('');setSidebarSearchOpen(v=>!v)")){
   fail('platform-specific Search reset returned');
+}
+if(renderer.includes("{mode==='work'&&!isAndroidNative&&<MenuRow icon={Paperclip} label=\"Attach files\"")){
+  fail('Linux Work duplicate Attach files action returned');
+}
+if(!renderer.includes("label={isWindowsDesktop?'Files':'Files and folders'}")){
+  fail('Linux Files and folders action is missing');
 }
 
 for(const [text,label] of [
