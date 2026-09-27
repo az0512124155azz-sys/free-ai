@@ -51,6 +51,7 @@ function readAndroidSystemBarsQaState(){
 }
 
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
+const isLinuxDesktop=isDesktop&&desktopPlatform==='linux';
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 function isAuthCallbackUrl(value){
@@ -1142,6 +1143,11 @@ function App(){
     const normalized={...next,approvalMode:normalizeApprovalMode(next.approvalMode)};
     setAppPrefs(normalized);localStorage.setItem('freeai.prefs',JSON.stringify(normalized));
   }
+  function toggleSidebarSearch(){
+    const next=!sidebarSearchOpen;
+    if(!next)setSidebarSearch('');
+    setSidebarSearchOpen(next);
+  }
   function stopActiveWorkTask(){
     const taskId=activeWorkTaskIdRef.current;
     if(isWindowsDesktop&&taskId){
@@ -1151,7 +1157,7 @@ function App(){
     }
   }
   async function chooseRepositoryWorkspace(){
-    if(!isWindowsDesktop)return;
+    if(!(isWindowsDesktop||isLinuxDesktop))return;
     stopActiveWorkTask();
     setMode('work');setPage('chat');setMobileNavOpen(false);
     setAttachmentError('');
@@ -2155,7 +2161,7 @@ function App(){
               </div>}
             </div>}
         <div className="brandActions">
-          <button title="Search chats" aria-label="Search chats" aria-expanded={sidebarSearchOpen} onClick={()=>{if(isWindowsDesktop)setSidebarSearch('');setSidebarSearchOpen(v=>!v)}}><Search size={16}/></button>
+          <button title="Search chats" aria-label="Search chats" aria-expanded={sidebarSearchOpen} onClick={toggleSidebarSearch}><Search size={16}/></button>
           <button className="mobileCloseNav" title="Close navigation" onClick={()=>setMobileNavOpen(false)}><X size={17}/></button>
         </div>
       </div>
@@ -2239,7 +2245,7 @@ function App(){
                 </button>)
             }
           </>}
-          {!(product==='super'&&isAndroidNative)&&<>
+          {(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>
             <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
             <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
               {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
@@ -3146,7 +3152,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onPlugins,tools,setSelec
     {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Globe2} label="Search the web" sub={webSearchEnabled?'Live Search is enabled for the next message':'Use the selected browser AI’s live Search tool and return sources'} active={webSearchEnabled} onClick={onToggleWebSearch}/>}
     {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Sparkles} label="Deep research" sub={deepResearchEnabled?'Deep Research is enabled for the next message':'Review a plan first; browser models use native research and API models can use configured Free AI retrieval'} active={deepResearchEnabled} onClick={onToggleDeepResearch}/>}
     {!isNative&&!(mode==='work'&&isWindowsDesktop&&showBottomPanel)&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
-    {mode==='work'&&!isAndroidNative&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
+    {mode==='work'&&!isAndroidNative&&!isLinuxDesktop&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
     {mode==='work'&&isWindowsDesktop&&!showBottomPanel&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
     {mode==='work'&&isWindowsDesktop&&<>
       <div className="floatingTitle section">Direct MCP apps</div>

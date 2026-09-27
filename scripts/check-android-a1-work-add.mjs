@@ -58,9 +58,10 @@ for(const marker of [
   if(!plus.includes(marker))fail('Android native picker action missing: '+marker);
 }
 
-const scoped=`{mode==='work'&&!isAndroidNative&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}`;
-if(!plus.includes(scoped)){
-  fail('Work Attach files row must be excluded on Android while remaining available to non-Android Work surfaces');
+const attachRow=/\{mode==='work'&&([^\n{}]*&&)*<MenuRow icon=\{Paperclip\} label="Attach files" sub="Attach specific files to this message" onClick=\{\(\)=>fileRef\.current\?\.click\(\)\}\/?>\}/;
+const attachMatch=plus.match(attachRow);
+if(!attachMatch||!attachMatch[0].includes('!isAndroidNative')){
+  fail('Work Attach files row must be explicitly excluded on Android even when other desktop platform guards are present');
 }
 if(plus.includes(`{mode==='work'&&<MenuRow icon={Paperclip} label="Attach files"`)){
   fail('unscoped Work Attach files row would recreate the Android duplicate');
