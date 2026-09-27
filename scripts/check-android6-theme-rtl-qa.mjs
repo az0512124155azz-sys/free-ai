@@ -25,7 +25,9 @@ for(const [text,label] of [
   ["'systemBars='+String(systemBarsQa.applied||systemBarsQa.requested||'unknown')","system-bar audit token"],
   ["'horizontalOverflow='+horizontalOverflow","horizontal overflow audit token"],
   ["'drawerInlineStart='+drawerInlineStart","drawer inline-start audit token"],
-  ["updateAndroidSystemBarsQaState({requested,applied:requested,error:''})","native SystemBars success evidence"]
+  ["updateAndroidSystemBarsQaState({requested,applied:requested,error:''})","native SystemBars success evidence"],
+  ["registerPlugin('FreeAINativeWindow')","native window theme bridge registration"],
+  ["FreeAINativeWindow.setThemeBackground({theme:requested})","native window background follows app appearance"]
 ]) requireText(main,text,label);
 
 for(const [text,label] of [
@@ -42,7 +44,12 @@ for(const [text,label] of [
   ['import androidx.core.view.WindowCompat;','AndroidX WindowCompat import'],
   ['protected void onCreate(Bundle savedInstanceState)','MainActivity onCreate edge-to-edge hook'],
   ['super.onCreate(savedInstanceState);','BridgeActivity lifecycle preserved'],
-  ['WindowCompat.setDecorFitsSystemWindows(getWindow(), false);','post-BridgeActivity edge-to-edge window setup']
+  ['WindowCompat.setDecorFitsSystemWindows(getWindow(), false);','post-BridgeActivity edge-to-edge window setup'],
+  ['registerPlugin(FreeAINativeWindowPlugin.class);','native window plugin registration'],
+  ['@CapacitorPlugin(name = "FreeAINativeWindow")','native window plugin annotation'],
+  ['public void setThemeBackground(PluginCall call)','native window theme method'],
+  ['getBridge().getWebView().getParent()).setBackgroundColor(color)','native inset parent background synchronization'],
+  ['window.getDecorView().setBackgroundColor(color);','native decor background synchronization']
 ]) requireText(socialLogin,text,label);
 
 for(const [text,label] of [
@@ -59,6 +66,8 @@ if(runtimeConfig.includes('const qaBlock=')||runtimeConfig.includes('protected v
 }
 
 for(const [text,label] of [
+  ['<color name="free_ai_window_background">#181818</color>','dark native window fallback color'],
+  ["next=upsertItem(next,'android:windowBackground','@color/free_ai_window_background');",'app theme native window background'],
   ["next=upsertItem(next,'android:statusBarColor','@android:color/transparent');",'transparent app status bar theme'],
   ["next=upsertItem(next,'android:navigationBarColor','@android:color/transparent');",'transparent app navigation bar theme']
 ]) requireText(branding,text,label);
