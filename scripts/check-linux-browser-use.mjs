@@ -15,8 +15,8 @@ function requireText(source,text,label){
 }
 
 for(const [text,label] of [
-  ["const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='linux';",'Windows/Linux browser capability helper'],
-  ["if(!isBrowserDesktopPlatform())throw new Error('Built-in Browser Use control is currently enabled on Windows and Linux.');",'Linux built-in Browser Use action gate'],
+  ["const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='darwin'||process.platform==='linux';",'shared desktop browser capability helper'],
+  ["if(!isBrowserDesktopPlatform())throw new Error('Built-in Browser Use control is currently enabled on Windows, macOS, and Linux.');",'Linux built-in Browser Use action gate retained'],
   ["if(isBrowserDesktopPlatform()&&!browserPermissionsConfigured){",'Linux browser permission handlers'],
   ["ses.setPermissionCheckHandler((webContents,permission,requestingOrigin,details={})=>",'explicit permission check handler'],
   ["ses.setPermissionRequestHandler((webContents,permission,callback,details={})=>",'explicit permission request handler'],
@@ -26,8 +26,8 @@ for(const [text,label] of [
   ["if(!isBrowserDesktopPlatform()||isMainFrame===false)return;",'Linux certificate handling'],
   ["if(isBrowserDesktopPlatform()){\n    clearBrowserPermissions();\n    const ses=persistentBrowserSession();",'Linux clear-data permission reset'],
   ["if(!isBrowserDesktopPlatform())return browserSnapshot();",'Linux download cancellation capability'],
-  ["Download file actions are currently available on Windows and Linux.",'Linux download file actions'],
-  ["External protocol handling is currently available on Windows and Linux.",'Linux external protocol handling'],
+  ["Download file actions are currently available on Windows, macOS, and Linux.",'Linux download file actions retained'],
+  ["External protocol handling is currently available on Windows, macOS, and Linux.",'Linux external protocol handling retained'],
   ["const browserWork=isBrowserDesktopPlatform();",'Linux Work Browser capability'],
   ["browserWork\n      ? 'browser_builtin: Free AI built-in browser.",'Linux built-in Browser tool publication'],
   ["browserWork\n      ? (extensionSocket&&extensionSocket.readyState===WebSocket.OPEN",'Linux extension Browser tool publication'],
