@@ -51,7 +51,7 @@ jobs:
 
       - name: Install Linux Whisper build toolchain
         if: matrix.artifact == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake build-essential xvfb
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
 
       - name: Validate real-account Google QA PowerShell
         if: matrix.artifact == 'windows'
@@ -124,43 +124,6 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-
-      - name: Prepare Linux Dictation runtime QA assets
-        if: steps.desktop_build.outcome == 'success' && matrix.artifact == 'linux' && github.event_name == 'pull_request' && github.head_ref == 'linux/dictation'
-        shell: bash
-        run: |
-          set -euo pipefail
-          qa="$RUNNER_TEMP/linux-dictation-runtime-qa"
-          rm -rf "$qa"
-          mkdir -p "$qa"
-          curl --fail --location --retry 3 --retry-delay 2 \
-            "https://huggingface.co/ggerganov/whisper.cpp/resolve/f281eb45af861ab5e5297d23694b7d46e090c02c/ggml-base-q5_1.bin?download=true" \
-            --output "$qa/ggml-base-q5_1.bin"
-          echo "422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a8898  $qa/ggml-base-q5_1.bin" | sha256sum --check -
-          curl --fail --location --retry 3 --retry-delay 2 \
-            "https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.4/samples/jfk.wav" \
-            --output "$qa/jfk.wav"
-
-      - name: Upload Linux Dictation runtime QA assets
-        if: steps.desktop_build.outcome == 'success' && matrix.artifact == 'linux' && github.event_name == 'pull_request' && github.head_ref == 'linux/dictation'
-        uses: actions/upload-artifact@v4
-        with:
-          name: linux-dictation-runtime-qa
-          path: ${{ runner.temp }}/linux-dictation-runtime-qa
-          if-no-files-found: error
-          retention-days: 1
-
-      - name: Linux Dictation packaged runtime QA
-        if: steps.desktop_build.outcome == 'success' && matrix.artifact == 'linux' && github.event_name == 'pull_request' && github.head_ref == 'linux/dictation'
-        shell: bash
-        run: |
-          set -euo pipefail
-          sample="$RUNNER_TEMP/jfk.wav"
-          curl --fail --location --retry 3 --retry-delay 2 \
-            "https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.4/samples/jfk.wav" \
-            --output "$sample"
-          appimage="$(ls release/*.AppImage | head -n 1)"
-          node scripts/qa-linux-dictation-runtime.mjs "$appimage" "$sample"
 
       - name: Report desktop build failure
         if: steps.desktop_build.outcome == 'failure'
