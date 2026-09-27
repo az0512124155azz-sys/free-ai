@@ -28,6 +28,7 @@ const colors=`<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="free_ai_icon_background">${iconBackground}</color>
     <color name="free_ai_splash_background">${iconBackground}</color>
+    <color name="free_ai_window_background">#181818</color>
     <color name="free_ai_notification_color">${brandBlue}</color>
 </resources>
 `;
@@ -167,6 +168,12 @@ if(fs.existsSync(stylesPath)){
       next=upsertItem(next,'android:windowLightStatusBar','false');
       next=upsertItem(next,'android:windowLightNavigationBar','false');
       next=upsertItem(next,'android:windowLayoutInDisplayCutoutMode','always');
+
+      if(name!=='AppTheme.NoActionBarLaunch'){
+        next=upsertItem(next,'android:windowBackground','@color/free_ai_window_background');
+        next=upsertItem(next,'android:statusBarColor','@android:color/transparent');
+        next=upsertItem(next,'android:navigationBarColor','@android:color/transparent');
+      }
 
       if(name==='AppTheme.NoActionBarLaunch'){
         open=open.replace(/parent=["'][^"']*["']/,'parent="Theme.SplashScreen"');
