@@ -3840,18 +3840,18 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
       <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
       <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onFocus={()=>{addressEditingRef.current=true}} onBlur={()=>{addressEditingRef.current=false;if(state.url)setUrl(state.url)}} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL" aria-label="Address and search"/></form>
-      {isWindowsDesktop&&downloads.length>0&&<button className={downloadsOpen?'downloadStatus browserToolButton active':'downloadStatus browserToolButton'} onClick={()=>{setSiteToolsOpen(false);setDownloadsOpen(v=>!v);setDownloadActionStatus('')}} title={activeDownloads?activeDownloads+' active download'+(activeDownloads===1?'':'s'):'Downloads'}><Download size={14}/><small>{activeDownloads||downloads.length}</small></button>}
+      {isWorkDesktop&&downloads.length>0&&<button className={downloadsOpen?'downloadStatus browserToolButton active':'downloadStatus browserToolButton'} onClick={()=>{setSiteToolsOpen(false);setDownloadsOpen(v=>!v);setDownloadActionStatus('')}} title={activeDownloads?activeDownloads+' active download'+(activeDownloads===1?'':'s'):'Downloads'}><Download size={14}/><small>{activeDownloads||downloads.length}</small></button>}
       {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>{setDownloadsOpen(false);setDownloadActionStatus('');setSiteToolsOpen(v=>!v)}} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
       <button className={annotating?'active':''} onClick={annotating?cancelAnnotation:startAnnotation} title={annotating?'Cancel annotation':'Annotate page'}><PenLine size={15}/></button>
       <button onClick={()=>window.desktopApi?.openAuthUrl?.(state.url||url)} title="Open in system browser"><ExternalLink size={15}/></button>
     </div>
 
-    {isWindowsDesktop&&permissionRequest&&<div className="siteToolsHeader browserPermissionBar" role="dialog" aria-label="Website permission request">
+    {isWorkDesktop&&permissionRequest&&<div className="siteToolsHeader browserPermissionBar" role="dialog" aria-label="Website permission request">
       <span><b>{permissionHost(permissionRequest)} wants {permissionLabel(permissionRequest)}</b><small>{permissionRequest.userGesture?'Requested after your action.':'Requested by this page.'} Allow for this Free AI session?</small></span>
       <span className="browserPermissionActions"><button onClick={()=>resolvePermission(permissionRequest.id,false)}>Deny</button><button onClick={()=>resolvePermission(permissionRequest.id,true)}>Allow</button></span>
     </div>}
 
-    {isWindowsDesktop&&state.error&&<div className="siteToolsHeader browserErrorBar" role="alert">
+    {isWorkDesktop&&state.error&&<div className="siteToolsHeader browserErrorBar" role="alert">
       <span><b>{state.error.type==='crash'?'Page stopped':state.error.type==='certificate'?'Certificate error':state.error.type==='protocol'?'Unsupported link':'Page unavailable'}</b><small>{state.error.description||'This page could not be loaded.'}</small></span>
       {state.error.type==='protocol'
         ? state.error.canOpenExternal
@@ -3860,7 +3860,7 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
         : <button onClick={retryPage}><RefreshCw size={14}/>Retry</button>}
     </div>}
 
-    {isWindowsDesktop&&downloadsOpen&&downloads.length>0&&<div className="siteToolsPanel">
+    {isWorkDesktop&&downloadsOpen&&downloads.length>0&&<div className="siteToolsPanel">
       <div className="siteToolsHeader">
         <span><b>Downloads</b><small>{downloadActionStatus|| (activeDownloads?activeDownloads+' in progress':downloads.length+' recent download'+(downloads.length===1?'':'s'))}</small></span>
         <button onClick={()=>{setDownloadsOpen(false);setDownloadActionStatus('')}}><X size={14}/>Close</button>
@@ -4163,7 +4163,7 @@ function BrowserSettings({prefs,setPrefs,onBrowser,status}){
     <h3>Browser</h3>
     <div className="settingBlock">
       <SettingRow title="Enable site tools" desc="Discover WebMCP tools exposed by supported websites in Free AI's built-in browser." control={<Toggle value={prefs.siteToolsEnabled!==false} onChange={v=>setPrefs({...prefs,siteToolsEnabled:v})}/>}/>
-      <SettingRow title="Open built-in browser" desc={isWindowsDesktop?"Use Free AI's separate browser profile. Sign-ins persist across app restarts; open tabs stay only while Free AI is running.":"Use Free AI's separate browser profile, tabs, sign-ins and downloads."} control={<button className="settingsInlineButton" onClick={onBrowser}>Open</button>}/>
+      <SettingRow title="Open built-in browser" desc={isWorkDesktop?"Use Free AI's separate browser profile. Sign-ins persist across app restarts; open tabs stay only while Free AI is running.":"Use Free AI's separate browser profile, tabs, sign-ins and downloads."} control={<button className="settingsInlineButton" onClick={onBrowser}>Open</button>}/>
       <SettingRow title="Browser extension" desc="Use your existing Chromium profile, signed-in sessions and open tabs as a separate Browser Use channel." control={<span className={'connectionStatus '+(status?.browserExtension?.connected?'good':'')}>{status?.browserExtension?.connected?'Connected · '+((status.browserExtension.tabCount||0))+' tabs':'Disconnected'}</span>}/>
       <SettingRow title="Clear browsing data" desc="Clear cookies, signed-in website state, local storage and browser cache for the Free AI browser profile." control={confirmClear
         ? <span className="confirmInline"><button onClick={()=>setConfirmClear(false)}>Cancel</button><button className="dangerAction" onClick={clearData}>Clear</button></span>
