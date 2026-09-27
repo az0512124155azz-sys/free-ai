@@ -45,6 +45,7 @@ for(const [text,label] of [
   ["return app.isPackaged\n    ? path.join(process.resourcesPath,'whisper','whisper-cli')",'packaged Whisper binary location'],
   ["await pipeline(Readable.fromWeb(response.body)",'streamed model download'],
   ["if(hash!==MODEL_SHA256)",'model integrity verification'],
+  ["const modelReady=await verifiedModel(app);",'status verifies model integrity'],
   ["if(data.toString('ascii',0,4)!=='RIFF'||data.toString('ascii',8,12)!=='WAVE')",'PCM WAV validation'],
   ["'--language',languageCode(language)",'language-aware local transcription'],
   ["'--output-json'",'structured Whisper output'],
