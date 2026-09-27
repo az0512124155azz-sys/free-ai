@@ -140,7 +140,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm run build:desktop
+          rm -rf release
+          npm run desktop:dist
           qa_appimage="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
           test -n "$qa_appimage"
           chmod +x "$qa_appimage"
@@ -176,4 +177,7 @@ jobs:
         env:
           AUDIT_OUTCOME: ${{ steps.linux_audit.outcome }}
         run: |
-          test "$AUDIT_OUTCOME" = succes
+          test "$AUDIT_OUTCOME" = success
+          test -s product/artifacts/linux-audit/packaged-results.json
+          test -s product/artifacts/linux-audit/linux-full-results.json
+          node -e "const a=require('./product/artifacts/linux-audit/packaged-results.json'); const b=require('./product/artifacts/linux-audit/linux-full-results.json'); if([...a,...b].some(x=>x.status!=='PASS')) process.exit(1)"
