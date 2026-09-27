@@ -5,6 +5,8 @@ const css=fs.readFileSync('src/styles.css','utf8');
 const runtime=fs.readFileSync('scripts/android-runtime-qa.sh','utf8');
 const socialLogin=fs.readFileSync('scripts/configure-android-social-login.mjs','utf8');
 const runtimeConfig=fs.readFileSync('scripts/configure-android-runtime-qa.mjs','utf8');
+const branding=fs.readFileSync('scripts/configure-android-branding.mjs','utf8');
+const capacitor=fs.readFileSync('capacitor.config.json','utf8');
 
 function requireText(source,text,label){
   if(!source.includes(text)){
@@ -31,27 +33,37 @@ for(const [text,label] of [
   ['transform:translateX(105%);','RTL closed drawer direction'],
   ['box-shadow:-20px 0 60px rgba(0,0,0,.34);','RTL drawer shadow direction'],
   ['inset-inline-start:0;','logical inline-start positioning'],
-  ['.nativeMobileShell .workspaceHeader{height:52px;grid-template-columns:1fr auto 1fr;padding:0 8px;flex:none;z-index:140}','native header stacking above the mobile model picker']
+  ['.nativeMobileShell .workspaceHeader{height:52px;grid-template-columns:1fr auto 1fr;padding:0 8px;flex:none;position:relative;z-index:140;isolation:isolate}','native header stacking above the mobile model picker'],
+  ['.nativeMobileShell .mobileModeAnchor{display:block;position:relative;justify-self:center;z-index:2;pointer-events:auto}','native mode anchor remains an explicit hit target'],
+  ['touch-action:manipulation','native mode button touch handling']
 ]) requireText(css,text,label);
 
 for(const [text,label] of [
-  ['import androidx.activity.EdgeToEdge;','AndroidX edge-to-edge import'],
+  ['import androidx.core.view.WindowCompat;','AndroidX WindowCompat import'],
   ['protected void onCreate(Bundle savedInstanceState)','MainActivity onCreate edge-to-edge hook'],
-  ['EdgeToEdge.enable(this);','native edge-to-edge enablement before BridgeActivity setup'],
-  ['super.onCreate(savedInstanceState);','BridgeActivity lifecycle preserved']
+  ['super.onCreate(savedInstanceState);','BridgeActivity lifecycle preserved'],
+  ['WindowCompat.setDecorFitsSystemWindows(getWindow(), false);','post-BridgeActivity edge-to-edge window setup']
 ]) requireText(socialLogin,text,label);
 
 for(const [text,label] of [
   ["const qaFieldsAndMethods=", "QA bridge fields/methods are separated from Activity lifecycle"],
   ["const onCreateSignature='protected void onCreate(Bundle savedInstanceState) {'", "QA bridge locates the existing MainActivity onCreate"],
   ["if((source.split(superOnCreate).length-1)!==1)", "QA bridge rejects ambiguous lifecycle hooks"],
-  ["source=source.replace(superOnCreate,superOnCreate+qaOnCreateSetup);", "QA receiver setup is merged into the existing onCreate"]
+  ["if((source.split(windowSetup).length-1)!==1)", "QA bridge requires one post-BridgeActivity window setup"],
+  ["source=source.replace(windowSetup,windowSetup+qaOnCreateSetup);", "QA receiver setup is merged after the edge-to-edge window setup"]
 ]) requireText(runtimeConfig,text,label);
 
 if(runtimeConfig.includes('const qaBlock=')||runtimeConfig.includes('protected void onCreate(Bundle savedInstanceState) {\n        super.onCreate(savedInstanceState);\n        if (!isQaDebuggable()) return;')){
   console.error('Android 6A2 QA guard failed: runtime QA generator must not declare a second MainActivity onCreate.');
   process.exit(1);
 }
+
+for(const [text,label] of [
+  ["next=upsertItem(next,'android:statusBarColor','@android:color/transparent');",'transparent app status bar theme'],
+  ["next=upsertItem(next,'android:navigationBarColor','@android:color/transparent');",'transparent app navigation bar theme']
+]) requireText(branding,text,label);
+
+requireText(capacitor,'"initialViewportFitValueHint": "cover"','initial viewport-fit cover hint');
 
 for(const [text,label] of [
   ['qa_line setThemeLight','light-theme runtime exercise'],
