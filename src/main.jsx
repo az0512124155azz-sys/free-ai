@@ -2272,7 +2272,7 @@ function App(){
           <span className="profileName">{sidebarName}</span>
           <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-        {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
+        {!isNative&&(!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
         {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setMobileNavOpen(false);setMobileSettingsList(true);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
       </div>
@@ -4207,9 +4207,15 @@ function ProfileSettings({session}){
 }
 function VoiceSettings({prefs,setPrefs}){
   const [permission,setPermission]=useState('unknown');
+  const [linuxStatus,setLinuxStatus]=useState(null);
   useEffect(()=>{
-    if(!isNative)return;
-    SpeechRecognition.checkPermissions().then(p=>setPermission(p?.speechRecognition||'unknown')).catch(()=>setPermission('unknown'));
+    if(isNative){
+      SpeechRecognition.checkPermissions().then(p=>setPermission(p?.speechRecognition||'unknown')).catch(()=>setPermission('unknown'));
+      return;
+    }
+    if(isDesktop&&desktopPlatform==='linux'){
+      window.desktopApi?.getLinuxDictationStatus?.().then(setLinuxStatus).catch(()=>setLinuxStatus({available:false,modelReady:false}));
+    }
   },[]);
   async function request(){
     try{const p=await SpeechRecognition.requestPermissions();setPermission(p?.speechRecognition||'unknown')}catch{setPermission('denied')}
@@ -4218,8 +4224,11 @@ function VoiceSettings({prefs,setPrefs}){
     <h3>Dictation</h3>
     <div className="settingBlock">
       {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Engine" desc="Uses Windows Voice Typing. Its language follows your current Windows input language." control={<span className="valuePill">Windows + H</span>}/>}
-      {isDesktop&&desktopPlatform!=='win32'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
-      {!isDesktop&&<SettingRow title="Language" desc="Language used by the microphone dictation button." control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Device language</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
+      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Engine" desc="Runs Whisper locally on this computer. Recorded audio is transcribed locally and is not sent to an AI provider." control={<span className="valuePill">Local Whisper</span>}/>}
+      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Model" desc="Multilingual Whisper base q5_1. The verified ~60 MB model downloads on first use and is then reused offline." control={<span className="valuePill">{linuxStatus?.modelReady?'Ready':'First use download'}</span>}/>}
+      {isDesktop&&desktopPlatform!=='win32'&&desktopPlatform!=='linux'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
+      {(!isDesktop||desktopPlatform==='linux')&&<SettingRow title="Language" desc={desktopPlatform==='linux'?'Language hint for local Whisper transcription. Auto-detect keeps multilingual dictation flexible.':'Language used by the microphone dictation button.'} control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Auto detect</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
+      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Microphone permission" desc="Requested only when you start dictation. Free AI allows audio capture for its own renderer and denies camera access." control={<span className="valuePill">On demand</span>}/>}
       {isNative&&<SettingRow title="Microphone permission" desc={permission==='denied'?'Microphone access is denied. Enable it in Android Settings, then retry.':'Required for native Android dictation.'} control={<button className="settingsInlineButton" onClick={request}>{permission==='granted'?'Granted':permission==='denied'?'Denied · retry':'Request access'}</button>}/>}
     </div>
   </div>
