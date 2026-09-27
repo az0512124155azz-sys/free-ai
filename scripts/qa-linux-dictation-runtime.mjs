@@ -6,8 +6,10 @@ import path from 'node:path';
 import {spawn,execFileSync} from 'node:child_process';
 import WebSocket from 'ws';
 
-const [appimage,sample]=process.argv.slice(2);
-if(!appimage||!sample)throw new Error('Usage: node scripts/qa-linux-dictation-runtime.mjs <AppImage> <speech.wav>');
+const [appimageArg,sampleArg]=process.argv.slice(2);
+if(!appimageArg||!sampleArg)throw new Error('Usage: node scripts/qa-linux-dictation-runtime.mjs <AppImage> <speech.wav>');
+const appimage=path.resolve(appimageArg);
+const sample=path.resolve(sampleArg);
 
 const MODEL_NAME='ggml-base-q5_1.bin';
 const MODEL_SIZE=59707625;
