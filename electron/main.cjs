@@ -45,6 +45,7 @@ const AUTH_CALLBACK_URL='freeai://auth/callback';
 const BROWSER_PARTITION='persist:freeai-browser';
 const BROWSER_RENDERABLE_PROTOCOLS=new Set(['http:','https:','about:','data:','blob:']);
 const BROWSER_EXTERNAL_PROTOCOLS=new Set(['mailto:','tel:','sms:','webcal:']);
+const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='linux';
 
 function isAuthCallbackUrl(value){
   try{
@@ -202,19 +203,19 @@ function activeBrowserEntry(){
 
 function browserCanGoBack(wc){
   if(!wc)return false;
-  if(process.platform==='win32'&&wc.navigationHistory)return wc.navigationHistory.canGoBack();
+  if(wc.navigationHistory)return wc.navigationHistory.canGoBack();
   return wc.canGoBack();
 }
 
 function browserCanGoForward(wc){
   if(!wc)return false;
-  if(process.platform==='win32'&&wc.navigationHistory)return wc.navigationHistory.canGoForward();
+  if(wc.navigationHistory)return wc.navigationHistory.canGoForward();
   return wc.canGoForward();
 }
 
 function browserGoBack(wc){
   if(!wc)return false;
-  if(process.platform==='win32'&&wc.navigationHistory){
+  if(wc.navigationHistory){
     if(!wc.navigationHistory.canGoBack())return false;
     wc.navigationHistory.goBack();
     return true;
@@ -226,7 +227,7 @@ function browserGoBack(wc){
 
 function browserGoForward(wc){
   if(!wc)return false;
-  if(process.platform==='win32'&&wc.navigationHistory){
+  if(wc.navigationHistory){
     if(!wc.navigationHistory.canGoForward())return false;
     wc.navigationHistory.goForward();
     return true;
@@ -238,12 +239,12 @@ function browserGoForward(wc){
 
 function browserTabMeta(id,view){
   const wc=view.webContents;
-  const windows=process.platform==='win32';
+  const tracked=isBrowserDesktopPlatform();
   return {
     id,
-    url:windows?(browserUrls.get(id)||wc.getURL()||''):(wc.getURL()||''),
-    title:windows?(browserTitles.get(id)||'New tab'):(wc.getTitle()||'New tab'),
-    favicon:windows?(browserFavicons.get(id)||''):'',
+    url:tracked?(browserUrls.get(id)||wc.getURL()||''):(wc.getURL()||''),
+    title:tracked?(browserTitles.get(id)||wc.getTitle()||'New tab'):(wc.getTitle()||'New tab'),
+    favicon:tracked?(browserFavicons.get(id)||''):'',
     loading:wc.isLoading(),
     error:browserErrors.get(id)||null
   };
@@ -262,7 +263,7 @@ function browserPermissionPublic(record){
 }
 
 function browserPermissionSnapshot(tabId){
-  if(process.platform!=='win32'||!tabId)return [];
+  if(!isBrowserDesktopPlatform()||!tabId)return [];
   return [...browserPermissionRequests.values()]
     .filter(record=>record.tabId===tabId)
     .map(browserPermissionPublic);
@@ -343,7 +344,7 @@ function electronBrowserKey(value){
 }
 
 async function performBuiltInBrowserAction(payload={}){
-  if(process.platform!=='win32')throw new Error('Built-in Browser Use control is currently enabled on Windows.');
+  if(!isBrowserDesktopPlatform())throw new Error('Built-in Browser Use control is currently enabled on Windows and Linux.');
   const requestedTabId=payload.tabId||activeBrowserTabId;
   if(requestedTabId&&requestedTabId!==activeBrowserTabId){
     if(!activateBrowserTab(requestedTabId))throw new Error('That built-in browser tab is not available.');
@@ -628,7 +629,7 @@ function browserDownloadById(id){
 
 function persistentBrowserSession(){
   const ses=session.fromPartition(BROWSER_PARTITION);
-  if(process.platform==='win32'&&!browserPermissionsConfigured){
+  if(isBrowserDesktopPlatform()&&!browserPermissionsConfigured){
     browserPermissionsConfigured=true;
     ses.setPermissionCheckHandler((webContents,permission,requestingOrigin,details={})=>{
       const origin=browserPermissionOrigin(details.requestingUrl||requestingOrigin||webContents?.getURL?.()||'');
@@ -772,7 +773,7 @@ function setBrowserProtocolError(tabId,value){
 }
 
 function createBrowserView(webPreferences={}){
-  if(process.platform==='win32')persistentBrowserSession();
+  if(isBrowserDesktopPlatform())persistentBrowserSession();
   return new WebContentsView({
     webPreferences:{
       ...(webPreferences&&typeof webPreferences==='object'?webPreferences:{}),
@@ -878,7 +879,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   const view=options.view||createBrowserView(options.webPreferences);
   browserTabs.set(id,view);
   browserErrors.delete(id);
-  if(process.platform==='win32'){
+  if(isBrowserDesktopPlatform()){
     browserUrls.set(id,initialUrl);
     browserTitles.set(id,'New tab');
     browserFavicons.delete(id);
@@ -886,7 +887,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   const wc=view.webContents;
   hookBrowserDownloads(wc);
   wc.on('before-input-event',(event,input)=>{
-    if(process.platform!=='win32'||input.type!=='keyDown')return;
+    if(!isBrowserDesktopPlatform()||input.type!=='keyDown')return;
     const key=String(input.key||'').toLowerCase();
     if(key==='b'&&input.control&&input.shift&&!input.alt&&!input.meta){
       event.preventDefault();
@@ -894,7 +895,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
     }
   });
   wc.setWindowOpenHandler((details)=>{
-    if(process.platform!=='win32'){
+    if(!isBrowserDesktopPlatform()){
       createBrowserTab(details.url,true);
       return {action:'deny'};
     }
@@ -933,13 +934,13 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
     };
   });
   wc.on('will-navigate',(details)=>{
-    if(process.platform!=='win32')return;
+    if(!isBrowserDesktopPlatform())return;
     if(setBrowserProtocolError(id,details?.url)){
       details.preventDefault();
     }
   });
   wc.on('did-start-navigation',(_event,details)=>{
-    if(process.platform!=='win32'||details?.isMainFrame===false)return;
+    if(!isBrowserDesktopPlatform()||details?.isMainFrame===false)return;
     if(typeof details?.url==='string'&&details.url)browserUrls.set(id,details.url);
     if(!details?.isSameDocument){
       cancelBrowserPermissionsForTab(id);
@@ -949,25 +950,25 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
     emitBrowserState();
   });
   wc.on('did-redirect-navigation',(_event,details)=>{
-    if(process.platform!=='win32'||details?.isMainFrame===false)return;
+    if(!isBrowserDesktopPlatform()||details?.isMainFrame===false)return;
     if(typeof details?.url==='string'&&details.url)browserUrls.set(id,details.url);
     emitBrowserState();
   });
   wc.on('did-start-loading',()=>{browserErrors.delete(id);emitBrowserState()});
   wc.on('did-navigate',(_event,url)=>{
-    if(process.platform==='win32'&&typeof url==='string'&&url)browserUrls.set(id,url);
+    if(isBrowserDesktopPlatform()&&typeof url==='string'&&url)browserUrls.set(id,url);
     emitBrowserState();
   });
   wc.on('did-navigate-in-page',(_event,url,isMainFrame)=>{
-    if(process.platform==='win32'&&isMainFrame!==false&&typeof url==='string'&&url)browserUrls.set(id,url);
+    if(isBrowserDesktopPlatform()&&isMainFrame!==false&&typeof url==='string'&&url)browserUrls.set(id,url);
     emitBrowserState();
   });
   wc.on('page-title-updated',(_event,title)=>{
-    if(process.platform==='win32')browserTitles.set(id,String(title||'New tab'));
+    if(isBrowserDesktopPlatform())browserTitles.set(id,String(title||'New tab'));
     emitBrowserState();
   });
   wc.on('page-favicon-updated',async(_event,favicons)=>{
-    if(process.platform!=='win32')return;
+    if(!isBrowserDesktopPlatform())return;
     const favicon=(Array.isArray(favicons)?favicons:[]).find(value=>typeof value==='string'&&value.trim());
     if(!favicon){
       browserFavicons.delete(id);
@@ -990,7 +991,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
     emitBrowserState();
   });
   wc.on('did-fail-load',(_event,errorCode,errorDescription,validatedURL,isMainFrame)=>{
-    if(process.platform!=='win32'||isMainFrame===false||Number(errorCode)===-3)return;
+    if(!isBrowserDesktopPlatform()||isMainFrame===false||Number(errorCode)===-3)return;
     const existing=browserErrors.get(id);
     if(existing?.type!=='certificate'){
       browserErrors.set(id,{
@@ -1013,7 +1014,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   wc.on('render-process-gone',(_event,details)=>{
     browserSiteTools.set(id,[]);
     cancelBrowserPermissionsForTab(id);
-    if(process.platform==='win32')browserErrors.set(id,{
+    if(isBrowserDesktopPlatform())browserErrors.set(id,{
       type:'crash',
       description:'The page process stopped unexpectedly. Retry reloads this tab in a new renderer process.',
       reason:String(details?.reason||'crashed'),
@@ -1033,7 +1034,7 @@ function createBrowserTab(input='https://www.google.com/',activate=true,options=
   if(!skipLoad){
     wc.loadURL(initialUrl).catch(error=>{
       if(isBrowserNavigationAbort(error))return;
-      if(process.platform==='win32')browserErrors.set(id,{
+      if(isBrowserDesktopPlatform())browserErrors.set(id,{
         type:'load',
         description:String(error?.message||'This page could not be loaded.'),
         url:String(wc.getURL()||initialUrl)
@@ -3077,19 +3078,20 @@ function workMcpDescription(task){
 
 function workToolDescription(task){
   const windowsWork=process.platform==='win32';
+  const browserWork=isBrowserDesktopPlatform();
   const computerAvailable=windowsWork&&workCanSeeImages(task);
   const localAttach=workCanReceiveFiles(task)
     ? 'attach(path)'
     : 'attach unavailable for this controller because it does not expose real file upload';
   const tools=[
-    windowsWork
+    browserWork
       ? 'browser_builtin: Free AI built-in browser. Actions: snapshot, navigate(url), back, forward, reload, wait(ms), new_tab(url), switch_tab(tabId), close_tab(tabId), click(x,y,button), double_click(x,y,button), move(x,y), scroll(x,y,deltaX,deltaY), type(x,y,text), keypress(keys).'
-      : 'browser_builtin: unavailable on Linux until Linux Browser Use is enabled.',
-    windowsWork
+      : 'browser_builtin: unavailable on this desktop platform.',
+    browserWork
       ? (extensionSocket&&extensionSocket.readyState===WebSocket.OPEN
           ? 'browser_extension: connected Chromium profile. Actions: list_tabs, snapshot(tabId), activate_tab(tabId), create_tab(url), close_tab(tabId), navigate(tabId,url), click(tabId,elementId), focus(tabId,elementId), type(tabId,elementId,text), select(tabId,elementId,value), scroll(tabId,deltaX,deltaY).'
           : 'browser_extension: unavailable because the browser extension is not connected.')
-      : 'browser_extension: unavailable on Linux until Linux Browser Use is enabled.',
+      : 'browser_extension: unavailable on this desktop platform.',
     computerAvailable
       ? 'computer: Windows desktop. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata.'
       : windowsWork
@@ -3359,10 +3361,8 @@ function validateWorkToolDecision(task,decision){
   const action=decision?.action||{};
   const type=String(action.type||'').toLowerCase();
 
-  if(process.platform==='linux'&&['browser_builtin','browser_extension','computer'].includes(decision?.tool)){
-    return decision.tool==='computer'
-      ? 'Computer Use is not enabled for Linux in this checkpoint.'
-      : 'Browser Use is not enabled for Linux in this checkpoint.';
+  if(process.platform==='linux'&&decision?.tool==='computer'){
+    return 'Computer Use is not enabled for Linux in this checkpoint.';
   }
 
   if(decision?.tool==='mcp'){
@@ -3919,7 +3919,7 @@ if(!gotSingleInstanceLock){
 }
 
 app.on('certificate-error',(event,webContents,url,error,_certificate,callback,isMainFrame)=>{
-  if(process.platform!=='win32'||isMainFrame===false)return;
+  if(!isBrowserDesktopPlatform()||isMainFrame===false)return;
   const tabId=browserTabIdForWebContents(webContents);
   if(!tabId)return;
   event.preventDefault();
@@ -3956,7 +3956,7 @@ app.whenReady().then(()=>{
 });
 
 app.on('before-quit',()=>{
-  if(process.platform==='win32'){
+  if(isBrowserDesktopPlatform()){
     clearBrowserPermissions();
     try{persistentBrowserSession().flushStorageData()}catch{}
   }
@@ -4149,7 +4149,7 @@ ipcMain.handle('browser:setSiteToolsEnabled',(_e,value)=>{
   return siteToolsEnabled;
 });
 ipcMain.handle('browser:clearData',async()=>{
-  if(process.platform==='win32'){
+  if(isBrowserDesktopPlatform()){
     clearBrowserPermissions();
     const ses=persistentBrowserSession();
     await ses.clearStorageData();
@@ -4170,7 +4170,7 @@ ipcMain.handle('browser:clearData',async()=>{
   return {ok:true};
 });
 ipcMain.handle('browser:cancelDownload',(_e,id)=>{
-  if(process.platform!=='win32')return browserSnapshot();
+  if(!isBrowserDesktopPlatform())return browserSnapshot();
   const item=browserDownloadItems.get(id);
   const record=browserDownloadById(id);
   if(item&&record&&!record.terminal&&record.canCancel){
@@ -4181,14 +4181,14 @@ ipcMain.handle('browser:cancelDownload',(_e,id)=>{
   return browserSnapshot();
 });
 ipcMain.handle('browser:openDownload',async(_e,id)=>{
-  if(process.platform!=='win32')return {ok:false,error:'Download file actions are currently available on Windows.'};
+  if(!isBrowserDesktopPlatform())return {ok:false,error:'Download file actions are currently available on Windows and Linux.'};
   const record=browserDownloadById(id);
   if(!record?.canOpen||!record.savePath||!fs.existsSync(record.savePath))return {ok:false,error:'The downloaded file is not available.'};
   const error=await shell.openPath(record.savePath);
   return error?{ok:false,error}:{ok:true};
 });
 ipcMain.handle('browser:showDownload',(_e,id)=>{
-  if(process.platform!=='win32')return {ok:false,error:'Download file actions are currently available on Windows.'};
+  if(!isBrowserDesktopPlatform())return {ok:false,error:'Download file actions are currently available on Windows and Linux.'};
   const record=browserDownloadById(id);
   if(!record?.canOpen||!record.savePath||!fs.existsSync(record.savePath))return {ok:false,error:'The downloaded file is not available.'};
   shell.showItemInFolder(record.savePath);
@@ -4201,7 +4201,7 @@ ipcMain.handle('browser:dismissError',()=>{
   return browserSnapshot();
 });
 ipcMain.handle('browser:openExternalProtocol',async(_e,url)=>{
-  if(process.platform!=='win32')return {ok:false,error:'External protocol handling is currently available on Windows.'};
+  if(!isBrowserDesktopPlatform())return {ok:false,error:'External protocol handling is currently available on Windows and Linux.'};
   const activeError=activeBrowserTabId?browserErrors.get(activeBrowserTabId):null;
   const info=browserProtocolInfo(url);
   if(!activeError||activeError.type!=='protocol'||activeError.url!==String(url||'')||!info?.canOpenExternal){
@@ -4223,7 +4223,7 @@ ipcMain.handle('browser:executeSiteTool',async(_e,{tabId,name,input}={})=>{
 ipcMain.handle('browser:navigate',async(_e,input)=>{
   const view=ensureBrowserView();
   const target=normalizeBrowserUrl(input);
-  if(process.platform==='win32'&&activeBrowserTabId){
+  if(isBrowserDesktopPlatform()&&activeBrowserTabId){
     browserUrls.set(activeBrowserTabId,target);
     browserTitles.set(activeBrowserTabId,'New tab');
     browserFavicons.delete(activeBrowserTabId);
@@ -4232,7 +4232,7 @@ ipcMain.handle('browser:navigate',async(_e,input)=>{
   try{
     await view.webContents.loadURL(target);
   }catch(error){
-    if(!isBrowserNavigationAbort(error)&&process.platform==='win32'&&activeBrowserTabId)browserErrors.set(activeBrowserTabId,{
+    if(!isBrowserNavigationAbort(error)&&isBrowserDesktopPlatform()&&activeBrowserTabId)browserErrors.set(activeBrowserTabId,{
       type:'load',
       description:String(error?.message||'This page could not be loaded.'),
       url:target
