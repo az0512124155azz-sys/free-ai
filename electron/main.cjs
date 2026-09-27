@@ -202,38 +202,22 @@ function activeBrowserEntry(){
 }
 
 function browserCanGoBack(wc){
-  if(!wc)return false;
-  if(wc.navigationHistory)return wc.navigationHistory.canGoBack();
-  return wc.canGoBack();
+  return !!wc?.navigationHistory?.canGoBack?.();
 }
 
 function browserCanGoForward(wc){
-  if(!wc)return false;
-  if(wc.navigationHistory)return wc.navigationHistory.canGoForward();
-  return wc.canGoForward();
+  return !!wc?.navigationHistory?.canGoForward?.();
 }
 
 function browserGoBack(wc){
-  if(!wc)return false;
-  if(wc.navigationHistory){
-    if(!wc.navigationHistory.canGoBack())return false;
-    wc.navigationHistory.goBack();
-    return true;
-  }
-  if(!wc.canGoBack())return false;
-  wc.goBack();
+  if(!wc?.navigationHistory?.canGoBack?.())return false;
+  wc.navigationHistory.goBack();
   return true;
 }
 
 function browserGoForward(wc){
-  if(!wc)return false;
-  if(wc.navigationHistory){
-    if(!wc.navigationHistory.canGoForward())return false;
-    wc.navigationHistory.goForward();
-    return true;
-  }
-  if(!wc.canGoForward())return false;
-  wc.goForward();
+  if(!wc?.navigationHistory?.canGoForward?.())return false;
+  wc.navigationHistory.goForward();
   return true;
 }
 
