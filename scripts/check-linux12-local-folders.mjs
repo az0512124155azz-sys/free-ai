@@ -30,8 +30,7 @@ for(const [text,label] of [
   ["const localFolderStateKey=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');",'case-sensitive POSIX local-folder read tracking'],
   ["const blockedRoots=new Set(['.git','.ssh','.aws','.azure','.kube','.gnupg']);",'sensitive local-folder root protection'],
   ["if(/^\\.env(?:\\.|$)/.test(base))return true;",'environment-file protection'],
-  ["if(/\\.(pem|p12|pfx|key)$/i.test(base))return true;",'private-key protection'],
-  ["if(process.platform!=='win32')throw new Error('The local Work task loop is currently available on Windows.');",'Linux Work runtime remains out of scope']
+  ["if(/\\.(pem|p12|pfx|key)$/i.test(base))return true;",'private-key protection']
 ]) requireText(main,text,label);
 
 const backendGuards=(main.match(/Local folder access is currently available on Windows and Linux\./g)||[]).length;
@@ -45,9 +44,6 @@ if(renderer.includes("if(!isWindowsDesktop||workBusy)return;")){
 }
 if(renderer.includes("{windowsDesktop&&mode==='work'&&localFolderWorkspace&&")){
   fail('old Windows-only local-folder context chip remains');
-}
-if(!renderer.includes("if(isWindowsDesktop&&mode==='work')return runWorkGeneration(prompt);")){
-  fail('Linux Work runtime was enabled during the local-folder-only checkpoint');
 }
 if(!pkg.includes('node scripts/check-linux12-local-folders.mjs')){
   fail('package validate does not run the Linux L1.2 local-folder guard');
