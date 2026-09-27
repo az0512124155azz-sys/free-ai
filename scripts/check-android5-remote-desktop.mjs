@@ -26,7 +26,13 @@ has(source,"remoteCapabilities:{browser:{available:false},computer:{available:fa
 has(source,"if(command==='openRemoteDesktop')",'Android runtime QA must open the Remote Desktop surface.');
 has(source,"{isNative&&!(isAndroidNative&&product==='super')&&<MobileConversationPicker",'Android Super AI/Remote must not expose manual model selection while Free AI native keeps its picker.');
 if(source.includes("{isNative&&<MobileConversationPicker"))fail('Unscoped native model picker would re-expose manual model selection in Android Super AI.');
-has(source,"{!(product==='super'&&isAndroidNative)&&<>",'Android Super AI/Remote must hide the Windows-only repository control group.');
+const safeRepositoryVisibility=[
+  "{!(product==='super'&&isAndroidNative)&&<>",
+  "{(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>"
+];
+if(!safeRepositoryVisibility.some(marker=>source.includes(marker))){
+  fail('Android Super AI/Remote must hide repository controls while supported desktop platforms may expose them.');
+}
 has(source,"product==='super'?(repositoryWorkspace?.name||'Choose repository'):'Free AI Workspace'",'Non-Android repository/project navigation must remain present.');
 has(source,"remoteDesktopApiForm=",'Android runtime audit must detect accidental desktop API credential controls.');
 
