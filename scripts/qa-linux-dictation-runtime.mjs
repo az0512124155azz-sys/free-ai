@@ -51,7 +51,13 @@ class Cdp {
   }
   async eval(expression){
     const result=await this.call('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true});
-    if(result.exceptionDetails)throw new Error(result.exceptionDetails.text||'Renderer evaluation failed');
+    if(result.exceptionDetails){
+      const detail=result.exceptionDetails?.exception?.description
+        ||result.exceptionDetails?.exception?.value
+        ||result.exceptionDetails?.text
+        ||'Renderer evaluation failed';
+      throw new Error(String(detail));
+    }
     return result.result?.value;
   }
   close(){try{this.ws?.close()}catch{}}
@@ -158,7 +164,9 @@ try{
     {timeout:20000,label:'authenticated Linux composer'}
   );
 
-  const statusBefore=JSON.parse(await cdp.eval(`JSON.stringify(await window.desktopApi.getLinuxDictationStatus())`));
+  const statusProbe=JSON.parse(await cdp.eval(`(async()=>{try{return JSON.stringify({ok:true,value:await window.desktopApi.getLinuxDictationStatus()})}catch(e){return JSON.stringify({ok:false,name:e?.name||'',message:e?.message||String(e),stack:e?.stack||''})}})()`));
+  if(!statusProbe.ok)fail('dictation status IPC failed: '+statusProbe.message);
+  const statusBefore=statusProbe.value;
   if(!statusBefore.available||!statusBefore.binaryReady)fail('packaged local Whisper backend is unavailable.');
   if(statusBefore.modelReady)fail('corrupt same-size model was incorrectly accepted as ready.');
 
