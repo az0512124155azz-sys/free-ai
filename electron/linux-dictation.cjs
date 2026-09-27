@@ -16,6 +16,7 @@ const MODEL_SHA256='422f1ae452ade6f30a004d7e5c6a43195e4433bc370bf23fac9cc591f01a
 const MODEL_URL='https://huggingface.co/ggerganov/whisper.cpp/resolve/main/'+MODEL_NAME+'?download=true';
 const MAX_WAV_BYTES=16*1024*1024;
 let modelPromise=null;
+let modelVerificationCache={key:'',ready:false};
 
 function rootFor(app){
   return path.join(app.getPath('userData'),'dictation');
@@ -45,9 +46,19 @@ async function verifiedModel(app){
   const file=modelPath(app);
   try{
     const stat=await fsp.stat(file);
-    if(stat.size!==MODEL_SIZE)return false;
-    return (await fileSha256(file))===MODEL_SHA256;
-  }catch{return false}
+    const key=String(stat.size)+':'+String(Math.trunc(stat.mtimeMs));
+    if(modelVerificationCache.key===key)return modelVerificationCache.ready;
+    if(stat.size!==MODEL_SIZE){
+      modelVerificationCache={key,ready:false};
+      return false;
+    }
+    const ready=(await fileSha256(file))===MODEL_SHA256;
+    modelVerificationCache={key,ready};
+    return ready;
+  }catch{
+    modelVerificationCache={key:'',ready:false};
+    return false;
+  }
 }
 
 async function ensureModel(app){
@@ -116,13 +127,9 @@ function runWhisper(binary,args){
   });
 }
 
-async function status(app,{verify=false}={}){
+async function status(app){
   const binary=whisperBinary(app);
-  let modelReady=false;
-  if(verify)modelReady=await verifiedModel(app);
-  else{
-    try{modelReady=(await fsp.stat(modelPath(app))).size===MODEL_SIZE}catch{}
-  }
+  const modelReady=await verifiedModel(app);
   return {
     available:process.platform==='linux'&&fs.existsSync(binary),
     binaryReady:fs.existsSync(binary),
