@@ -3964,8 +3964,9 @@ function SettingsView(props){
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<SimpleSettings title="Computer use" rows={[
-        ['Availability',desktopPlatform==='linux'?'Desktop interaction is not enabled on Linux':'Available to Work and Super AI on this computer'],
-        ['Screen handling',desktopPlatform==='linux'?'No interactive desktop control':'Screenshots are used internally by the active AI task; no screen-mirror panel is shown'],
+        ['Availability',desktopPlatform==='linux'?'Available to Work and Super AI after the system Remote Desktop permission':'Available to Work and Super AI on this computer'],
+        ['Screen handling','Screenshots are used internally by the active AI task; no screen-mirror panel is shown'],
+        ['Linux permission',desktopPlatform==='linux'?'XDG Remote Desktop controls pointer/keyboard access for the active desktop session':'Not applicable on this platform'],
         ['Approvals',normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask']
       ]}/>}
       {section==='Files'&&(isWindowsDesktop||isLinuxDesktop)&&<SimpleSettings title="Files" rows={[['Local folder access','User-selected folder per conversation on Windows and Linux'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}

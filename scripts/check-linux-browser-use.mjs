@@ -31,9 +31,7 @@ for(const [text,label] of [
   ["const browserWork=isBrowserDesktopPlatform();",'Linux Work Browser capability'],
   ["browserWork\n      ? 'browser_builtin: Free AI built-in browser.",'Linux built-in Browser tool publication'],
   ["browserWork\n      ? (extensionSocket&&extensionSocket.readyState===WebSocket.OPEN",'Linux extension Browser tool publication'],
-  ["if(process.platform==='linux'&&decision?.tool==='computer'){",'Computer-only Linux Work rejection'],
   ["function requestExtensionBrowser(command,payload={},timeoutMs=15000){",'cross-platform extension Browser bridge'],
-  ["if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows.');",'Computer Use remains out of scope'],
   ["if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');",'Dictation remains out of scope']
 ]) requireText(main,text,label);
 
