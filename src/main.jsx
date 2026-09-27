@@ -52,6 +52,7 @@ function readAndroidSystemBarsQaState(){
 
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const isLinuxDesktop=isDesktop&&desktopPlatform==='linux';
+const isWorkDesktop=isWindowsDesktop||isLinuxDesktop;
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 function isAuthCallbackUrl(value){
@@ -1150,7 +1151,7 @@ function App(){
   }
   function stopActiveWorkTask(){
     const taskId=activeWorkTaskIdRef.current;
-    if(isWindowsDesktop&&taskId){
+    if(isWorkDesktop&&taskId){
       activeWorkTaskIdRef.current=null;
       window.desktopApi?.stopWorkTask?.(taskId).catch(()=>{});
       setWorkTask(null);
@@ -1438,7 +1439,7 @@ function App(){
     setLocalFolderWorkspace((chat.mode==='work'||(product==='super'&&!chat.isAgentThread))?(chat.localFolder||null):null);
     setActiveProjectId(chat.projectId||null);setSelectedTool(null);setSelectedMcpIds([]);setPage('chat');setChatMenuId(null);
   }
-  const workBusy=isWindowsDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
+  const workBusy=isWorkDesktop&&mode==='work'&&!!workTask&&['running','waiting_approval'].includes(workTask.status);
 
   async function runWorkGeneration(text){
     const userText=String(text||'').trim();
@@ -1833,13 +1834,13 @@ function App(){
     return runGeneration(pending.text,pending.baseMessages,pending.model,null,config);
   }
   async function send(){
-    if(isWindowsDesktop&&mode==='work')return runWorkGeneration(prompt);
+    if(isWorkDesktop&&mode==='work')return runWorkGeneration(prompt);
     if(isWindowsDesktop&&mode==='chat'&&deepResearchEnabled)return openResearchSetup();
     if(isWindowsDesktop&&selected?.source==='browser'&&parallelCount>1)return runParallelGeneration(prompt);
     return runGeneration(prompt,messages,selected);
   }
   async function stopGeneration(){
-    if(isWindowsDesktop&&mode==='work'&&workTask&&['running','waiting_approval'].includes(workTask.status)){
+    if(isWorkDesktop&&mode==='work'&&workTask&&['running','waiting_approval'].includes(workTask.status)){
       try{await window.desktopApi.stopWorkTask(workTask.id)}catch{}
       return;
     }
@@ -2316,7 +2317,7 @@ function App(){
                 windowsDesktop={isWindowsDesktop}
                 stopGeneration={stopGeneration}
                 attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
-                mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
+                mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWorkDesktop&&mode==='work'?workBusy:busy}
                 selected={selected} connected={connected} setSelected={setSelected}
                 modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                 parallelCount={parallelCount} setParallelCount={setParallelCount}
@@ -2326,7 +2327,7 @@ function App(){
                 product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                 spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
                 approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
-                 workTask={isWindowsDesktop&&mode==='work'?workTask:null}
+                 workTask={isWorkDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                  onWorkProject={task=>{const project=projects.find(item=>item.id===task?.projectId);if(project){setActiveProjectId(project.id);setPage('project');setMobileNavOpen(false)}}}
                  onWorkAgent={(task,agent)=>{const chat=chats.find(item=>item.taskId===task?.id&&item.agentId===agent?.id);if(chat)openChat(chat)}}
@@ -2377,7 +2378,7 @@ function App(){
                   windowsDesktop={isWindowsDesktop}
                   stopGeneration={stopGeneration}
                   attachments={attachments} attachmentError={attachmentError} onRemoveAttachment={removeAttachment} onOpenAttachment={item=>{setSelectedFile(item);setSidePanel('file')}}
-                  compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWindowsDesktop&&mode==='work'?workBusy:busy}
+                  compact mode={mode} prompt={prompt} setPrompt={setPrompt} send={send} busy={isWorkDesktop&&mode==='work'?workBusy:busy}
                   selected={selected} connected={connected} setSelected={setSelected}
                   modelMenu={modelMenu} setModelMenu={setModelMenu} onRefreshModels={refreshProviderModels} onSelectProviderModel={selectProviderModelOption} onSelectProviderEffort={selectProviderEffortOption}
                   parallelCount={parallelCount} setParallelCount={setParallelCount}
@@ -2387,7 +2388,7 @@ function App(){
                   product={product} voiceLanguage={appPrefs.voiceLanguage||'auto'} showBottomPanel={appPrefs.showBottomPanel}
                   spellCheckEnabled={appPrefs.spellCheckEnabled!==false} hapticsEnabled={appPrefs.hapticsEnabled!==false}
                   approvalMode={normalizeApprovalMode(appPrefs.approvalMode)} setApprovalMode={v=>persistPrefs({...appPrefs,approvalMode:v})}
-                 workTask={isWindowsDesktop&&mode==='work'?workTask:null}
+                 workTask={isWorkDesktop&&mode==='work'?workTask:null}
                  onWorkApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
                  onWorkProject={task=>{const project=projects.find(item=>item.id===task?.projectId);if(project){setActiveProjectId(project.id);setPage('project');setMobileNavOpen(false)}}}
                  onWorkAgent={(task,agent)=>{const chat=chats.find(item=>item.taskId===task?.id&&item.agentId===agent?.id);if(chat)openChat(chat)}}
@@ -2880,7 +2881,7 @@ function Composer(props){
   },[]);
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
-    {mode==='work'&&windowsDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval} onOpenProject={onWorkProject} onOpenAgent={onWorkAgent}/>} 
+    {mode==='work'&&(windowsDesktop||isLinuxDesktop)&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval} onOpenProject={onWorkProject} onOpenAgent={onWorkAgent}/>} 
     {product==='super'&&windowsDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
