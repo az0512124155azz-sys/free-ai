@@ -1,4 +1,4 @@
-name: Android A3 Mode Menu Device Verification
+name: Android A3 Visual Device Verification
 
 on:
   push:
@@ -12,11 +12,15 @@ permissions:
   contents: read
   actions: read
 
+concurrency:
+  group: android-a3-pr141-visual-e539
+  cancel-in-progress: true
+
 jobs:
-  mode_menu:
-    name: PR141 mode menu on Android 16 Pixel 5
+  visual:
+    name: PR141 visual rerun on Android 16 Pixel 5
     runs-on: ubuntu-latest
-    timeout-minutes: 18
+    timeout-minutes: 20
     steps:
       - name: Check out audit harness
         uses: actions/checkout@v4
@@ -28,7 +32,7 @@ jobs:
       - name: Check out exact PR product commit
         uses: actions/checkout@v4
         with:
-          ref: ae9ba4813bdb9b6dec798da76c69d41168b32165
+          ref: e539c33e334eef40bdf068b57c93b860f558942a
           path: product
           persist-credentials: false
 
@@ -38,18 +42,20 @@ jobs:
           script: |
             const repo=context.repo;
             const {data:pr}=await github.rest.pulls.get({...repo,pull_number:141});
-            if(pr.state!=='open'||pr.merged||pr.head.sha!=='ae9ba4813bdb9b6dec798da76c69d41168b32165') throw new Error('PR moved');
+            if(pr.state!=='open'||pr.merged||pr.head.sha!=='e539c33e334eef40bdf068b57c93b860f558942a'||pr.base.ref!=='main') throw new Error('PR moved');
             const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
             if(main.object.sha!=='07db982d6b409fa6c313ece8c2a99912815a0419') throw new Error('main moved');
-            const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:36280484033});
-            if(run.head_sha!==pr.head.sha||run.status!=='completed'||run.conclusion!=='success'||run.run_attempt!==1) throw new Error('Unexpected source run');
-            const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:10918128064});
-            if(artifact.name!=='free-ai-android-runtime-qa'||artifact.expired||artifact.digest!=='sha256:455e50da676462a8bb90f28935e5b0dd493c8f629362b33013f6d69cf3ca4b89') throw new Error('Unexpected artifact');
+            const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:36281756552});
+            if(run.head_sha!==pr.head.sha||run.head_branch!=='android/a3-visual-system-bars'||run.event!=='pull_request'||run.status!=='completed'||run.conclusion!=='success'||run.run_attempt!==1) throw new Error('Unexpected source run');
+            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108514801974});
+            if(build.head_sha!==pr.head.sha||build.status!=='completed'||build.conclusion!=='success') throw new Error('Android producer job not green');
+            const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:10919067217});
+            if(artifact.name!=='free-ai-android-runtime-qa'||artifact.expired||artifact.digest!=='sha256:6ae5fe3ae30dec0fe9cc501bdea29e3e45a66ae3f697ffafcf05e8f2bf3c13b6') throw new Error('Unexpected artifact');
 
       - uses: actions/download-artifact@v4
         with:
-          artifact-ids: '10918128064'
-          run-id: 36280484033
+          artifact-ids: '10919067217'
+          run-id: 36281756552
           github-token: ${{ github.token }}
           path: product/runtime-artifacts
 
@@ -59,7 +65,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Verify mode menu
+      - name: Verify visual fixes
         id: verify
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -80,8 +86,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: free-ai-pr141-android-mode-menu
-          path: product/artifacts/android-a3-pr141-mode-menu/**
+          name: free-ai-pr141-android-visual-e539
+          path: product/artifacts/android-a3-pr141-visual/**
           if-no-files-found: error
 
       - name: Enforce result
@@ -93,9 +99,12 @@ jobs:
           cd product
           python3 - <<'PY'
           import json
-          rows=json.load(open('artifacts/android-a3-pr141-mode-menu/results.json'))
-          assert len(rows)==3,rows
+          rows=json.load(open('artifacts/android-a3-pr141-visual/results.json'))
+          assert len(rows)==7,rows
           assert all(r['status']=='PASS' for r in rows),rows
-          bounds=json.load(open('artifacts/android-a3-pr141-mode-menu/bounds.json'))
-          assert bounds['Chat'] and bounds['Work'] and bounds['Select model'],bounds
+          summary=json.load(open('artifacts/android-a3-pr141-visual/summary.json'))
+          assert summary['initialWebViewBounds'][1] <= 2,summary
+          assert 'theme=dark' in summary['darkQa'] and 'systemBars=dark' in summary['darkQa'],summary
+          assert 'theme=light' in summary['lightQa'] and 'systemBars=light' in summary['lightQa'],summary
+          assert summary['modeBounds']['Chat'] and summary['modeBounds']['Work'] and summary['modeBounds']['Select model'],summary
           PY
