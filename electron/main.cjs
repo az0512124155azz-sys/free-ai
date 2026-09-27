@@ -3076,18 +3076,25 @@ function workMcpDescription(task){
 }
 
 function workToolDescription(task){
-  const computerAvailable=process.platform==='win32'&&workCanSeeImages(task);
+  const windowsWork=process.platform==='win32';
+  const computerAvailable=windowsWork&&workCanSeeImages(task);
   const localAttach=workCanReceiveFiles(task)
     ? 'attach(path)'
     : 'attach unavailable for this controller because it does not expose real file upload';
   const tools=[
-    'browser_builtin: Free AI built-in browser. Actions: snapshot, navigate(url), back, forward, reload, wait(ms), new_tab(url), switch_tab(tabId), close_tab(tabId), click(x,y,button), double_click(x,y,button), move(x,y), scroll(x,y,deltaX,deltaY), type(x,y,text), keypress(keys).',
-    extensionSocket&&extensionSocket.readyState===WebSocket.OPEN
-      ? 'browser_extension: connected Chromium profile. Actions: list_tabs, snapshot(tabId), activate_tab(tabId), create_tab(url), close_tab(tabId), navigate(tabId,url), click(tabId,elementId), focus(tabId,elementId), type(tabId,elementId,text), select(tabId,elementId,value), scroll(tabId,deltaX,deltaY).'
-      : 'browser_extension: unavailable because the browser extension is not connected.',
+    windowsWork
+      ? 'browser_builtin: Free AI built-in browser. Actions: snapshot, navigate(url), back, forward, reload, wait(ms), new_tab(url), switch_tab(tabId), close_tab(tabId), click(x,y,button), double_click(x,y,button), move(x,y), scroll(x,y,deltaX,deltaY), type(x,y,text), keypress(keys).'
+      : 'browser_builtin: unavailable on Linux until Linux Browser Use is enabled.',
+    windowsWork
+      ? (extensionSocket&&extensionSocket.readyState===WebSocket.OPEN
+          ? 'browser_extension: connected Chromium profile. Actions: list_tabs, snapshot(tabId), activate_tab(tabId), create_tab(url), close_tab(tabId), navigate(tabId,url), click(tabId,elementId), focus(tabId,elementId), type(tabId,elementId,text), select(tabId,elementId,value), scroll(tabId,deltaX,deltaY).'
+          : 'browser_extension: unavailable because the browser extension is not connected.')
+      : 'browser_extension: unavailable on Linux until Linux Browser Use is enabled.',
     computerAvailable
       ? 'computer: Windows desktop. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata.'
-      : 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.',
+      : windowsWork
+        ? 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.'
+        : 'computer: unavailable on Linux until Linux Computer Use is enabled.',
     task.product==='super'&&task.workspace?.root
       ? 'repository: selected local Git repository "'+task.workspace.name+'". Actions: status, list, read(path,startLine optional,endLine optional), diff(path optional), write(path,content). Read all line ranges of an existing file before writing. Writes require user approval and cannot access .git or escape the selected repository.'
       : 'repository: unavailable because no local Git repository is attached to this task.',
@@ -3351,6 +3358,12 @@ async function callWorkModel(task,observation,attachments=[]){
 function validateWorkToolDecision(task,decision){
   const action=decision?.action||{};
   const type=String(action.type||'').toLowerCase();
+
+  if(process.platform==='linux'&&['browser_builtin','browser_extension','computer'].includes(decision?.tool)){
+    return decision.tool==='computer'
+      ? 'Computer Use is not enabled for Linux in this checkpoint.'
+      : 'Browser Use is not enabled for Linux in this checkpoint.';
+  }
 
   if(decision?.tool==='mcp'){
     if(!['list','describe','call'].includes(type)){
@@ -3689,7 +3702,7 @@ async function runWorkTask(task){
 }
 
 async function startWorkTask(input={}){
-  if(process.platform!=='win32')throw new Error('The local Work task loop is currently available on Windows.');
+  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('The local Work task loop is currently available on Windows and Linux.');
   const provider=String(input.provider||'');
   const source=String(input.source||'browser');
   if(!provider)throw new Error('Select a model before starting Work.');
