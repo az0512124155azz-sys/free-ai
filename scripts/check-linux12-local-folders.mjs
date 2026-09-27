@@ -14,18 +14,18 @@ function requireText(source,text,label){
 }
 
 for(const [text,label] of [
-  ["if(!(isWindowsDesktop||isLinuxDesktop)||workBusy)return;",'Linux local-folder picker renderer guard'],
-  ["{(windowsDesktop||isLinuxDesktop)&&mode==='work'&&localFolderWorkspace&&<div className=\"repositoryContextChip localFolderContextChip\">",'Linux local-folder context chip'],
-  ["{(windowsDesktop||isLinuxDesktop)?<button onClick={onChooseLocalFolder}><Folder size={15}/>{localFolderWorkspace?.name||'Open local folder'}</button>",'Linux Work local-folder action'],
-  ["{mode==='work'&&(isWindowsDesktop||isLinuxDesktop)&&!showBottomPanel&&<MenuRow icon={Folder}",'Linux collapsed local-folder action'],
-  ["{section==='Files'&&(isWindowsDesktop||isLinuxDesktop)&&<SimpleSettings title=\"Files\"",'Linux Files settings'],
-  ["['Local folder access','User-selected folder per conversation on Windows and Linux']",'cross-platform local-folder settings copy'],
+  ["if(!isWorkDesktop||workBusy)return;",'shared desktop local-folder picker renderer guard'],
+  ["{isWorkDesktop&&mode==='work'&&localFolderWorkspace&&<div className=\"repositoryContextChip localFolderContextChip\">",'shared desktop local-folder context chip'],
+  ["{isWorkDesktop?<button onClick={onChooseLocalFolder}><Folder size={15}/>{localFolderWorkspace?.name||'Open local folder'}</button>",'shared desktop Work local-folder action'],
+  ["{mode==='work'&&isWorkDesktop&&!showBottomPanel&&<MenuRow icon={Folder}",'shared desktop collapsed local-folder action'],
+  ["{section==='Files'&&isWorkDesktop&&<SimpleSettings title=\"Files\"",'shared desktop Files settings'],
+  ["['Local folder access','User-selected folder per conversation on Windows, macOS, and Linux']",'cross-platform local-folder settings copy'],
   ["localFolder:mode==='work'&&localFolderWorkspace?localFolderWorkspace:(existing?.localFolder||null)",'chat local-folder persistence'],
   ["setLocalFolderWorkspace((chat.mode==='work'||(product==='super'&&!chat.isAgentThread))?(chat.localFolder||null):null);",'chat local-folder restore']
 ]) requireText(renderer,text,label);
 
 for(const [text,label] of [
-  ["if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows and Linux.');",'Windows/Linux local-folder backend guard'],
+  ["if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows, macOS, and Linux.');",'desktop local-folder backend guard'],
   ["properties:['openDirectory']",'native directory picker'],
   ["const localFolderStateKey=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');",'case-sensitive POSIX local-folder read tracking'],
   ["const blockedRoots=new Set(['.git','.ssh','.aws','.azure','.kube','.gnupg']);",'sensitive local-folder root protection'],
@@ -33,8 +33,8 @@ for(const [text,label] of [
   ["if(/\\.(pem|p12|pfx|key)$/i.test(base))return true;",'private-key protection']
 ]) requireText(main,text,label);
 
-const backendGuards=(main.match(/Local folder access is currently available on Windows and Linux\./g)||[]).length;
-if(backendGuards!==2)fail('expected exactly two Windows/Linux local-folder backend guards, found '+backendGuards);
+const backendGuards=(main.match(/Local folder access is currently available on Windows, macOS, and Linux\./g)||[]).length;
+if(backendGuards!==2)fail('expected exactly two desktop local-folder backend guards, found '+backendGuards);
 
 if(main.includes("Local folder access is currently available on Windows.'")){
   fail('old Windows-only local-folder backend guard remains');
