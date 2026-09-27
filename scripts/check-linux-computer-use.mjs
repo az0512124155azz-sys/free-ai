@@ -51,7 +51,7 @@ for(const [text,label] of [
 ]) requireText(main,text,label);
 
 for(const [text,label] of [
-  ["Available to Work and Super AI after the system Remote Desktop permission",'Linux Computer settings availability'],
+  ["Available after the system Remote Desktop permission",'Linux Computer settings availability'],
   ["Screenshots are used internally by the active AI task; no screen-mirror panel is shown",'no mirror panel behavior'],
   ["XDG Remote Desktop controls pointer/keyboard access for the active desktop session",'Linux portal settings explanation']
 ]) requireText(renderer,text,label);
