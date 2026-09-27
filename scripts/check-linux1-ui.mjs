@@ -16,8 +16,8 @@ for(const [text,label] of [
   ["const isLinuxDesktop=isDesktop&&desktopPlatform==='linux';",'Linux desktop capability flag'],
   ["function toggleSidebarSearch(){\n    const next=!sidebarSearchOpen;\n    if(!next)setSidebarSearch('');\n    setSidebarSearchOpen(next);\n  }",'Search close resets the active query'],
   ['onClick={toggleSidebarSearch}><Search size={16}/>','Search button uses reset-aware toggle'],
-  ["if(!(isWindowsDesktop||isLinuxDesktop))return;",'repository picker is enabled on Linux desktop'],
-  ["(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>",'Super repository control is only shown where supported'],
+  ["if(!isWorkDesktop)return;",'repository picker remains enabled on Linux through the shared desktop Work gate'],
+  ["(product!=='super'||isWorkDesktop)&&<>",'Super repository control is only shown on supported desktop Work platforms'],
   ["{mode==='work'&&!isAndroidNative&&!isLinuxDesktop&&<MenuRow icon={Paperclip} label=\"Attach files\"",'Linux Work suppresses the duplicate Attach files row']
 ]) requireText(renderer,text,label);
 
@@ -35,7 +35,7 @@ if(!renderer.includes("label={isWindowsDesktop?'Files':'Files and folders'}")){
 }
 
 for(const [text,label] of [
-  ["if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows and Linux.');",'Linux repository main-process support'],
+  ["if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows, macOS, and Linux.');",'Linux repository main-process support retained through shared desktop gate'],
   ["const normalize=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');",'case-sensitive POSIX repository containment'],
   ["properties:['openDirectory']",'native directory picker']
 ]) requireText(main,text,label);

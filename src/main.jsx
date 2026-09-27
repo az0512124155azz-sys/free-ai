@@ -51,8 +51,9 @@ function readAndroidSystemBarsQaState(){
 }
 
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
+const isMacDesktop=isDesktop&&desktopPlatform==='darwin';
 const isLinuxDesktop=isDesktop&&desktopPlatform==='linux';
-const isWorkDesktop=isWindowsDesktop||isLinuxDesktop;
+const isWorkDesktop=isWindowsDesktop||isMacDesktop||isLinuxDesktop;
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
 function isAuthCallbackUrl(value){
@@ -1158,7 +1159,7 @@ function App(){
     }
   }
   async function chooseRepositoryWorkspace(){
-    if(!(isWindowsDesktop||isLinuxDesktop))return;
+    if(!isWorkDesktop)return;
     stopActiveWorkTask();
     setMode('work');setPage('chat');setMobileNavOpen(false);
     setAttachmentError('');
@@ -1174,7 +1175,7 @@ function App(){
     setRepositoryWorkspace(null);
   }
   async function chooseLocalFolderWorkspace(){
-    if(!(isWindowsDesktop||isLinuxDesktop)||workBusy)return;
+    if(!isWorkDesktop||workBusy)return;
     stopActiveWorkTask();
     setMode('work');setPage('chat');setMobileNavOpen(false);
     setAttachmentError('');
@@ -2246,7 +2247,7 @@ function App(){
                 </button>)
             }
           </>}
-          {(product!=='super'||isWindowsDesktop||isLinuxDesktop)&&<>
+          {(product!=='super'||isWorkDesktop)&&<>
             <div className="sidebarGroupTitle">{product==='super'?'Coding':'Projects'}</div>
             <button className="projectItem" onClick={()=>{if(product==='super')chooseRepositoryWorkspace();else{stopActiveWorkTask();setMode('work');setPage('chat');setMobileNavOpen(false)}}}>
               {product==='super'?<GitBranch size={15}/>:<Folder size={15}/>}
@@ -3006,12 +3007,12 @@ function Composer(props){
   },[]);
 
   return <div className={'gptComposer '+(mode==='work'&&!windowsDesktop?'workComposer':'')+' '+(compact?'compact':'')}>
-    {mode==='work'&&(windowsDesktop||isLinuxDesktop)&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval} onOpenProject={onWorkProject} onOpenAgent={onWorkAgent}/>} 
-    {product==='super'&&windowsDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
+    {mode==='work'&&isWorkDesktop&&workTask&&<WorkTaskStatus task={workTask} onApproval={onWorkApproval} onOpenProject={onWorkProject} onOpenAgent={onWorkAgent}/>} 
+    {product==='super'&&isWorkDesktop&&repositoryWorkspace&&<div className="repositoryContextChip">
       <GitBranch size={13}/><span><b>{repositoryWorkspace.name}</b><small>{repositoryWorkspace.branch||'Git repository'}{Number(repositoryWorkspace.dirty)>0?' · '+repositoryWorkspace.dirty+' changed':''}</small></span>
       <button type="button" aria-label="Remove repository" disabled={busy} onClick={()=>!busy&&onClearRepository?.()}><X size={12}/></button>
     </div>}
-    {(windowsDesktop||isLinuxDesktop)&&mode==='work'&&localFolderWorkspace&&<div className="repositoryContextChip localFolderContextChip">
+    {isWorkDesktop&&mode==='work'&&localFolderWorkspace&&<div className="repositoryContextChip localFolderContextChip">
       <Folder size={13}/><span><b>{localFolderWorkspace.name}</b><small>Local folder · access confirmed per task</small></span>
       <button type="button" aria-label="Remove local folder" disabled={busy} onClick={()=>!busy&&onClearLocalFolder?.()}><X size={12}/></button>
     </div>}
@@ -3092,8 +3093,8 @@ function Composer(props){
     {dictationNotice&&(windowsDesktop||desktopPlatform==='linux')&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
-      {product==='super'&&windowsDesktop&&<button onClick={onChooseRepository}><GitBranch size={15}/>{repositoryWorkspace?.name||'Choose repository'}</button>}
-      {(windowsDesktop||isLinuxDesktop)?<button onClick={onChooseLocalFolder}><Folder size={15}/>{localFolderWorkspace?.name||'Open local folder'}</button>:<button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>}
+      {product==='super'&&isWorkDesktop&&<button onClick={onChooseRepository}><GitBranch size={15}/>{repositoryWorkspace?.name||'Choose repository'}</button>}
+      {isWorkDesktop?<button onClick={onChooseLocalFolder}><Folder size={15}/>{localFolderWorkspace?.name||'Open local folder'}</button>:<button onClick={()=>fileRef.current?.click()}><Folder size={15}/>Choose project</button>}
       <button onClick={onPlugins}><Plug size={15}/>Plugins</button>
       {!isNative&&<button onClick={onBrowser}><Globe2 size={15}/>Browser</button>}
     </div>}
@@ -3279,7 +3280,7 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onPlugins,tools,setSelec
     {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Sparkles} label="Deep research" sub={deepResearchEnabled?'Deep Research is enabled for the next message':'Review a plan first; browser models use native research and API models can use configured Free AI retrieval'} active={deepResearchEnabled} onClick={onToggleDeepResearch}/>}
     {!isNative&&!(mode==='work'&&isWorkDesktop&&showBottomPanel)&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&!isAndroidNative&&!isLinuxDesktop&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
-    {mode==='work'&&(isWindowsDesktop||isLinuxDesktop)&&!showBottomPanel&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
+    {mode==='work'&&isWorkDesktop&&!showBottomPanel&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
     {mode==='work'&&isWindowsDesktop&&<>
       <div className="floatingTitle section">Direct MCP apps</div>
       {directMcpConnections.length===0
@@ -4060,7 +4061,7 @@ function SettingsView(props){
   const hiddenOnMobile=new Set(['Keyboard shortcuts','Computer use','Files','Configuration','Browser','Git','Environments']);
   const visibleSettings=settingsSections.filter(([,label])=>
     (!isNative||!hiddenOnMobile.has(label))&&
-    (label!=='Files'||isWindowsDesktop)&&
+    (label!=='Files'||isWorkDesktop)&&
     (label!=='App'||isWindowsDesktop)&&
     (!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase()))
   );
@@ -4094,7 +4095,7 @@ function SettingsView(props){
         ['Linux permission',desktopPlatform==='linux'?'XDG Remote Desktop controls pointer/keyboard access for the active desktop session':'Not applicable on this platform'],
         ['Approvals',normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask']
       ]}/>}
-      {section==='Files'&&(isWindowsDesktop||isLinuxDesktop)&&<SimpleSettings title="Files" rows={[['Local folder access','User-selected folder per conversation on Windows and Linux'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
+      {section==='Files'&&isWorkDesktop&&<SimpleSettings title="Files" rows={[['Local folder access','User-selected folder per conversation on Windows, macOS, and Linux'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
       {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":isNative?"Discover app listings and review provider-managed capabilities. Account authorization and permissions remain with the provider or app connection.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&(isNative
