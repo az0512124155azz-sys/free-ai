@@ -168,6 +168,11 @@ if(fs.existsSync(stylesPath)){
       next=upsertItem(next,'android:windowLightNavigationBar','false');
       next=upsertItem(next,'android:windowLayoutInDisplayCutoutMode','always');
 
+      if(name!=='AppTheme.NoActionBarLaunch'){
+        next=upsertItem(next,'android:statusBarColor','@android:color/transparent');
+        next=upsertItem(next,'android:navigationBarColor','@android:color/transparent');
+      }
+
       if(name==='AppTheme.NoActionBarLaunch'){
         open=open.replace(/parent=["'][^"']*["']/,'parent="Theme.SplashScreen"');
         next=upsertItem(next,'android:windowBackground','@drawable/splash');
