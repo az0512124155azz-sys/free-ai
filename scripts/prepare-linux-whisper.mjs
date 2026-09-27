@@ -35,10 +35,12 @@ run('cmake',[
   '-B',build,
   '-DCMAKE_BUILD_TYPE=Release',
   '-DBUILD_SHARED_LIBS=OFF',
+  '-DWHISPER_BUILD_IS_DEV=OFF',
   '-DWHISPER_BUILD_TESTS=OFF',
   '-DWHISPER_BUILD_EXAMPLES=ON',
   '-DWHISPER_SDL2=OFF',
-  '-DGGML_NATIVE=OFF'
+  '-DGGML_NATIVE=OFF',
+  '-DGGML_OPENMP=OFF'
 ]);
 run('cmake',['--build',build,'--config','Release','--target','whisper-cli','--parallel','2']);
 
@@ -47,4 +49,13 @@ if(!fs.existsSync(built))throw new Error('whisper-cli build completed without th
 fs.mkdirSync(outDir,{recursive:true});
 fs.copyFileSync(built,out);
 fs.chmodSync(out,0o755);
-console.log('Prepared Linux whisper-cli at '+out);
+
+const version=execFileSync(out,['--version'],{encoding:'utf8'}).trim();
+if(!/whisper\.cpp version:\s*1\.9\.4\b/.test(version)||/-dev\b/.test(version)){
+  throw new Error('Unexpected whisper-cli version: '+version);
+}
+const ldd=execFileSync('ldd',[out],{encoding:'utf8'});
+if(/libgomp\.so/i.test(ldd)){
+  throw new Error('Linux whisper-cli unexpectedly depends on libgomp; build must remain portable without host OpenMP runtime.');
+}
+console.log('Prepared Linux whisper-cli at '+out+' ('+version+')');
