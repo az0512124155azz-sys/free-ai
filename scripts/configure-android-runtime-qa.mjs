@@ -98,8 +98,10 @@ if(!source.includes('private static final String QA_ACTION')){
 
   const onCreateSignature='protected void onCreate(Bundle savedInstanceState) {';
   const superOnCreate='        super.onCreate(savedInstanceState);';
+  const windowSetup='        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);';
   if(!source.includes(onCreateSignature))throw new Error('MainActivity onCreate hook not found.');
   if((source.split(superOnCreate).length-1)!==1)throw new Error('Expected exactly one super.onCreate(savedInstanceState) call.');
+  if((source.split(windowSetup).length-1)!==1)throw new Error('Expected exactly one post-BridgeActivity edge-to-edge window setup.');
 
   const qaOnCreateSetup=`
         if (!isQaDebuggable()) return;
@@ -122,7 +124,7 @@ if(!source.includes('private static final String QA_ACTION')){
         }`;
 
   source=source.replace(classAnchor,classAnchor+qaFieldsAndMethods);
-  source=source.replace(superOnCreate,superOnCreate+qaOnCreateSetup);
+  source=source.replace(windowSetup,windowSetup+qaOnCreateSetup);
 }
 
 fs.writeFileSync(mainActivity,source,'utf8');
