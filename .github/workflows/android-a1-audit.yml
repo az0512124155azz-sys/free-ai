@@ -18,9 +18,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 18
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out audit harness
+        uses: actions/checkout@v4
+        with:
+          ref: audit/android-a1-ui
+          path: audit-harness
+          persist-credentials: false
+
+      - name: Check out exact PR product commit
+        uses: actions/checkout@v4
         with:
           ref: ae9ba4813bdb9b6dec798da76c69d41168b32165
+          path: product
           persist-credentials: false
 
       - name: Verify immutable PR artifact
@@ -42,7 +51,7 @@ jobs:
           artifact-ids: '10918128064'
           run-id: 36280484033
           github-token: ${{ github.token }}
-          path: runtime-artifacts
+          path: product/runtime-artifacts
 
       - name: Enable KVM
         run: |
@@ -65,14 +74,14 @@ jobs:
           disable-spellchecker: true
           enable-hw-keyboard: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: python3 scripts/android-a3-mode-menu-audit.py
+          script: cd product && python3 ../audit-harness/scripts/android-a3-mode-menu-audit.py
 
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: free-ai-pr141-android-mode-menu
-          path: artifacts/android-a3-pr141-mode-menu/**
+          path: product/artifacts/android-a3-pr141-mode-menu/**
           if-no-files-found: error
 
       - name: Enforce result
@@ -81,6 +90,7 @@ jobs:
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
         run: |
           test "$VERIFY_OUTCOME" = success
+          cd product
           python3 - <<'PY'
           import json
           rows=json.load(open('artifacts/android-a3-pr141-mode-menu/results.json'))
