@@ -6,6 +6,7 @@ const crypto=require('crypto');
 const {execFile}=require('child_process');
 const {WebSocketServer,WebSocket}=require('ws');
 const {runOwnedResearch,exportResearchReport,apiTransportUrl}=require('./research.cjs');
+const linuxDictation=require('./linux-dictation.cjs');
 
 let win;
 let extensionSocket=null;
@@ -59,6 +60,30 @@ function linuxRemoteDesktopController(){
 function linuxRemoteDesktopStatus(){
   try{return linuxRemoteDesktopController()?.status?.()||{active:false,devices:0,streams:[]}}
   catch{return {active:false,devices:0,streams:[]}}
+}
+
+function trustedMainRenderer(webContents){
+  if(!win||win.isDestroyed()||!webContents||webContents.id!==win.webContents.id)return false;
+  const current=String(webContents.getURL?.()||'');
+  if(current.startsWith('file://'))return true;
+  const dev=String(process.env.VITE_DEV_SERVER_URL||'').trim();
+  if(!dev)return false;
+  try{return new URL(current).origin===new URL(dev).origin}catch{return false}
+}
+function mainRendererAudioPermission(webContents,permission,details={}){
+  if(permission!=='media'||!trustedMainRenderer(webContents))return false;
+  const raw=Array.isArray(details.mediaTypes)?details.mediaTypes:[details.mediaType].filter(Boolean);
+  const mediaTypes=raw.map(value=>String(value||'').toLowerCase()).filter(Boolean);
+  return mediaTypes.includes('audio')&&!mediaTypes.includes('video');
+}
+function configureMainRendererPermissions(){
+  const ses=session.defaultSession;
+  ses.setPermissionCheckHandler((webContents,permission,_origin,details={})=>
+    mainRendererAudioPermission(webContents,permission,details)
+  );
+  ses.setPermissionRequestHandler((webContents,permission,callback,details={})=>
+    callback(mainRendererAudioPermission(webContents,permission,details))
+  );
 }
 
 function isAuthCallbackUrl(value){
@@ -4013,6 +4038,7 @@ app.whenReady().then(()=>{
   loadMcpConnections();
   startLocalBridge();
   createWindow();
+  configureMainRendererPermissions();
 
   const startupAuthUrl=findAuthUrl(process.argv);
   if(startupAuthUrl)pendingAuthUrl=startupAuthUrl;
@@ -4186,9 +4212,26 @@ ipcMain.handle('api:removeConnection',(_e,id)=>{
 });
 ipcMain.handle('computer:captureScreens',()=>captureScreens());
 ipcMain.handle('dictation:start',async()=>{
-  if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');
+  if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');
   await startWindowsVoiceTyping();
   return {ok:true,mode:'windows-voice-typing'};
+});
+ipcMain.handle('dictation:linuxStatus',async event=>{
+  if(process.platform!=='linux')return {available:false,binaryReady:false,modelReady:false,localOnly:true};
+  if(!trustedMainRenderer(event.sender))throw new Error('Linux dictation status is only available to the Free AI renderer.');
+  return linuxDictation.status(app);
+});
+ipcMain.handle('dictation:linuxTranscribe',async(event,payload={})=>{
+  if(process.platform!=='linux')throw new Error('Local Whisper dictation is currently available on Linux.');
+  if(!trustedMainRenderer(event.sender))throw new Error('Linux dictation is only available to the Free AI renderer.');
+  const raw=payload?.wav;
+  let wav;
+  if(Buffer.isBuffer(raw))wav=raw;
+  else if(raw instanceof Uint8Array)wav=Buffer.from(raw);
+  else if(raw instanceof ArrayBuffer)wav=Buffer.from(new Uint8Array(raw));
+  else if(ArrayBuffer.isView(raw))wav=Buffer.from(raw.buffer,raw.byteOffset,raw.byteLength);
+  else throw new Error('Linux dictation audio payload is invalid.');
+  return linuxDictation.transcribe(app,{wav,language:payload.language});
 });
 
 

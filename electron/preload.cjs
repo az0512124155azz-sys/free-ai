@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('desktopApi',{
   refreshAllMcpConnections:()=>ipcRenderer.invoke('mcp:refreshAll'),
   captureScreens:()=>ipcRenderer.invoke('computer:captureScreens'),
   startSystemDictation:()=>ipcRenderer.invoke('dictation:start'),
+  getLinuxDictationStatus:()=>ipcRenderer.invoke('dictation:linuxStatus'),
+  transcribeLinuxDictation:(payload)=>ipcRenderer.invoke('dictation:linuxTranscribe',payload),
   computerPerformAction:(payload)=>ipcRenderer.invoke('computer:performAction',payload),
   computerClick:(payload)=>ipcRenderer.invoke('computer:click',payload),
   computerClickAndType:(payload)=>ipcRenderer.invoke('computer:clickAndType',payload),

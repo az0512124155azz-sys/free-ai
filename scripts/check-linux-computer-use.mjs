@@ -68,9 +68,6 @@ if(l13.includes('Linux Computer Use unavailable description')||l13.includes('Lin
 if(browser.includes('Computer-only Linux Work rejection')||browser.includes('Computer Use remains out of scope')){
   fail('Browser checkpoint still asserts Linux Computer Use must remain blocked');
 }
-if(!main.includes("if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');")){
-  fail('Dictation scope changed during Linux Computer Use checkpoint');
-}
 if(!pkg.includes('"dbus-next": "^0.10.2"')){
   fail('dbus-next production dependency is missing');
 }

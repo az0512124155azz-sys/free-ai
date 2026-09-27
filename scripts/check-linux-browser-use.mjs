@@ -32,7 +32,6 @@ for(const [text,label] of [
   ["browserWork\n      ? 'browser_builtin: Free AI built-in browser.",'Linux built-in Browser tool publication'],
   ["browserWork\n      ? (extensionSocket&&extensionSocket.readyState===WebSocket.OPEN",'Linux extension Browser tool publication'],
   ["function requestExtensionBrowser(command,payload={},timeoutMs=15000){",'cross-platform extension Browser bridge'],
-  ["if(process.platform!=='win32')throw new Error('Native desktop dictation is currently available on Windows.');",'Dictation remains out of scope']
 ]) requireText(main,text,label);
 
 for(const [text,label] of [

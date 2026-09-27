@@ -2272,7 +2272,7 @@ function App(){
           <span className="profileName">{sidebarName}</span>
           <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-        {!isNative&&(!isDesktop||desktopPlatform==='win32')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
+        {!isNative&&(!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
         {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setMobileNavOpen(false);setMobileSettingsList(true);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
       </div>
@@ -2652,6 +2652,8 @@ function Composer(props){
   const nativeSpeechFinalizing=useRef(false);
   const nativeLastTranscript=useRef('');
   const webRecognition=useRef(null);
+  const linuxAudioRef=useRef(null);
+  const linuxDictationTimerRef=useRef(null);
   const dictationBase=useRef('');
   const startVoiceRef=useRef(null);
   const stopVoiceRef=useRef(null);
@@ -2693,6 +2695,111 @@ function Composer(props){
     if(/no[_ -]?match|speech[_ -]?timeout|no speech/i.test(detail))return 'No speech was detected. Try again.';
     return event?.message||event?.code||'Dictation failed.';
   }
+  function linuxFlattenAudio(chunks){
+    const total=chunks.reduce((sum,chunk)=>sum+chunk.length,0);
+    const out=new Float32Array(total);
+    let offset=0;
+    for(const chunk of chunks){out.set(chunk,offset);offset+=chunk.length}
+    return out;
+  }
+  function linuxDownsampleAudio(input,inputRate,targetRate=16000){
+    if(!input.length)return new Float32Array();
+    if(inputRate===targetRate)return input;
+    const ratio=inputRate/targetRate;
+    const length=Math.max(1,Math.floor(input.length/ratio));
+    const output=new Float32Array(length);
+    for(let i=0;i<length;i++){
+      const start=Math.floor(i*ratio);
+      const end=Math.min(input.length,Math.max(start+1,Math.floor((i+1)*ratio)));
+      let sum=0;
+      for(let j=start;j<end;j++)sum+=input[j];
+      output[i]=sum/(end-start);
+    }
+    return output;
+  }
+  function linuxPcmWav(samples,sampleRate=16000){
+    const buffer=new ArrayBuffer(44+samples.length*2);
+    const view=new DataView(buffer);
+    const write=(offset,text)=>{for(let i=0;i<text.length;i++)view.setUint8(offset+i,text.charCodeAt(i))};
+    write(0,'RIFF');
+    view.setUint32(4,36+samples.length*2,true);
+    write(8,'WAVE');
+    write(12,'fmt ');
+    view.setUint32(16,16,true);
+    view.setUint16(20,1,true);
+    view.setUint16(22,1,true);
+    view.setUint32(24,sampleRate,true);
+    view.setUint32(28,sampleRate*2,true);
+    view.setUint16(32,2,true);
+    view.setUint16(34,16,true);
+    write(36,'data');
+    view.setUint32(40,samples.length*2,true);
+    let offset=44;
+    for(const raw of samples){
+      const value=Math.max(-1,Math.min(1,raw));
+      view.setInt16(offset,value<0?value*0x8000:value*0x7fff,true);
+      offset+=2;
+    }
+    return new Uint8Array(buffer);
+  }
+  async function stopLinuxVoice({discard=false}={}){
+    const state=linuxAudioRef.current;
+    if(!state)return;
+    linuxAudioRef.current=null;
+    if(linuxDictationTimerRef.current){clearTimeout(linuxDictationTimerRef.current);linuxDictationTimerRef.current=null}
+    try{state.processor.onaudioprocess=null}catch{}
+    try{state.source.disconnect()}catch{}
+    try{state.processor.disconnect()}catch{}
+    try{state.silent.disconnect()}catch{}
+    for(const track of state.stream.getTracks())track.stop();
+    await state.context.close().catch(()=>{});
+    setListening(false);
+    if(discard)return;
+    const pcm=linuxDownsampleAudio(linuxFlattenAudio(state.chunks),state.sampleRate,16000);
+    if(pcm.length<3200){setDictationError('No speech was detected. Try again.');return}
+    setDictationNotice('Transcribing locally with Whisper…');
+    try{
+      const status=await window.desktopApi.getLinuxDictationStatus?.().catch(()=>null);
+      if(status&&!status.modelReady)setDictationNotice('Preparing local Whisper model (~60 MB) for first use…');
+      const result=await window.desktopApi.transcribeLinuxDictation({
+        wav:linuxPcmWav(pcm,16000),
+        language:voiceLanguage||'auto'
+      });
+      const text=String(result?.text||'').trim();
+      if(!text)throw new Error('No speech was detected. Try again.');
+      setPrompt((dictationBase.current?dictationBase.current+' ':'')+text);
+      setDictationNotice(result?.downloadedModel?'Local transcription ready · Whisper model downloaded.':'Local transcription ready.');
+      setTimeout(()=>setDictationNotice(''),3500);
+    }catch(e){
+      setDictationNotice('');
+      setDictationError(e?.message||'Local dictation failed.');
+    }
+  }
+  async function startLinuxVoice(){
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone capture is not available in this Linux runtime.');
+    if(!window.desktopApi?.transcribeLinuxDictation)throw new Error('Local Whisper dictation is missing from this Free AI build.');
+    const stream=await navigator.mediaDevices.getUserMedia({
+      audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},
+      video:false
+    });
+    const AudioContextClass=window.AudioContext||window.webkitAudioContext;
+    if(!AudioContextClass){stream.getTracks().forEach(track=>track.stop());throw new Error('Audio capture is not supported by this Linux runtime.')}
+    const context=new AudioContextClass();
+    await context.resume();
+    const source=context.createMediaStreamSource(stream);
+    const processor=context.createScriptProcessor(4096,1,1);
+    const silent=context.createGain();
+    silent.gain.value=0;
+    const chunks=[];
+    processor.onaudioprocess=event=>chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+    source.connect(processor);
+    processor.connect(silent);
+    silent.connect(context.destination);
+    linuxAudioRef.current={stream,context,source,processor,silent,chunks,sampleRate:context.sampleRate};
+    setListening(true);
+    setDictationNotice('Listening locally… tap the microphone to stop.');
+    linuxDictationTimerRef.current=setTimeout(()=>stopLinuxVoice().catch(()=>{}),60000);
+  }
 
   async function stopVoice(){
     setDictationError('');
@@ -2710,6 +2817,8 @@ function Composer(props){
           setListening(false);
           updateAndroidDictationQaState({stopped:true,finalized:true});
         }
+      }else if(desktopPlatform==='linux'&&linuxAudioRef.current){
+        await stopLinuxVoice();
       }else if(webRecognition.current){
         webRecognition.current.stop();
         webRecognition.current=null;
@@ -2729,6 +2838,19 @@ function Composer(props){
     dictationBase.current=prompt.trimEnd();
 
     if(isDesktop){
+      if(desktopPlatform==='linux'){
+        try{
+          await startLinuxVoice();
+        }catch(e){
+          setListening(false);
+          setDictationNotice('');
+          const detail=String(e?.message||e||'');
+          setDictationError(/permission|notallowed/i.test(detail)
+            ? 'Microphone access is denied. Allow microphone access for Free AI and try again.'
+            : (e?.message||'Linux dictation could not start.'));
+        }
+        return;
+      }
       if(desktopPlatform!=='win32'){
         setDictationError('Desktop dictation is not available on this platform yet.');
         return;
@@ -2876,7 +2998,10 @@ function Composer(props){
         if(SpeechRecognition.forceStop)SpeechRecognition.forceStop({timeout:500}).catch(()=>SpeechRecognition.stop().catch(()=>{}));
         else SpeechRecognition.stop().catch(()=>{});
         SpeechRecognition.removeAllListeners().catch(()=>{});
-      }else webRecognition.current?.abort?.();
+      }else{
+        webRecognition.current?.abort?.();
+        if(linuxAudioRef.current)stopLinuxVoice({discard:true}).catch(()=>{});
+      }
     };
   },[]);
 
@@ -2952,7 +3077,7 @@ function Composer(props){
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{onSelectProviderEffort?.(v);setEffortMenu(false)}}/>}
         </div>}
-        {(isNative||!isDesktop||desktopPlatform==='win32')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'} aria-label={windowsDesktop?'Dictate with Windows':listening?'Stop dictation':'Dictate'}><Mic2 size={18}/></button>}
+        {(isNative||!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':desktopPlatform==='linux'?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')} aria-label={windowsDesktop?'Dictate with Windows':desktopPlatform==='linux'?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')}><Mic2 size={18}/></button>}
         {(busy||prompt.trim()||attachments.length>0)&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||attachments.length>0)&&selected?'sendReady':'')}
           onClick={busy?(windowsDesktop||isAndroidNative?stopGeneration:undefined):send}
           disabled={busy?!(windowsDesktop||isAndroidNative):!selected}
@@ -2964,7 +3089,7 @@ function Composer(props){
     </div>
     {attachmentError&&<div className="dictationError" role="alert">{attachmentError}</div>}
     {dictationError&&<div className="dictationError voiceDictationError" role="alert">{dictationError}</div>}
-    {dictationNotice&&windowsDesktop&&<div className="dictationStatus">{dictationNotice}</div>}
+    {dictationNotice&&(windowsDesktop||desktopPlatform==='linux')&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
       {product==='super'&&windowsDesktop&&<button onClick={onChooseRepository}><GitBranch size={15}/>{repositoryWorkspace?.name||'Choose repository'}</button>}
@@ -4082,9 +4207,15 @@ function ProfileSettings({session}){
 }
 function VoiceSettings({prefs,setPrefs}){
   const [permission,setPermission]=useState('unknown');
+  const [linuxStatus,setLinuxStatus]=useState(null);
   useEffect(()=>{
-    if(!isNative)return;
-    SpeechRecognition.checkPermissions().then(p=>setPermission(p?.speechRecognition||'unknown')).catch(()=>setPermission('unknown'));
+    if(isNative){
+      SpeechRecognition.checkPermissions().then(p=>setPermission(p?.speechRecognition||'unknown')).catch(()=>setPermission('unknown'));
+      return;
+    }
+    if(isDesktop&&desktopPlatform==='linux'){
+      window.desktopApi?.getLinuxDictationStatus?.().then(setLinuxStatus).catch(()=>setLinuxStatus({available:false,modelReady:false}));
+    }
   },[]);
   async function request(){
     try{const p=await SpeechRecognition.requestPermissions();setPermission(p?.speechRecognition||'unknown')}catch{setPermission('denied')}
@@ -4093,8 +4224,11 @@ function VoiceSettings({prefs,setPrefs}){
     <h3>Dictation</h3>
     <div className="settingBlock">
       {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Engine" desc="Uses Windows Voice Typing. Its language follows your current Windows input language." control={<span className="valuePill">Windows + H</span>}/>}
-      {isDesktop&&desktopPlatform!=='win32'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
-      {!isDesktop&&<SettingRow title="Language" desc="Language used by the microphone dictation button." control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Device language</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
+      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Engine" desc="Runs Whisper locally on this computer. Recorded audio is transcribed locally and is not sent to an AI provider." control={<span className="valuePill">Local Whisper</span>}/>}
+      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Model" desc="Multilingual Whisper base q5_1. The verified ~60 MB model downloads on first use and is then reused offline." control={<span className="valuePill">{linuxStatus?.modelReady?'Ready':'First use download'}</span>}/>}
+      {isDesktop&&desktopPlatform!=='win32'&&desktopPlatform!=='linux'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
+      {(!isDesktop||desktopPlatform==='linux')&&<SettingRow title="Language" desc={desktopPlatform==='linux'?'Language hint for local Whisper transcription. Auto-detect keeps multilingual dictation flexible.':'Language used by the microphone dictation button.'} control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Auto detect</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
+      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Microphone permission" desc="Requested only when you start dictation. Free AI allows audio capture for its own renderer and denies camera access." control={<span className="valuePill">On demand</span>}/>}
       {isNative&&<SettingRow title="Microphone permission" desc={permission==='denied'?'Microphone access is denied. Enable it in Android Settings, then retry.':'Required for native Android dictation.'} control={<button className="settingsInlineButton" onClick={request}>{permission==='granted'?'Granted':permission==='denied'?'Denied · retry':'Request access'}</button>}/>}
     </div>
   </div>
