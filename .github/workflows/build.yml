@@ -49,6 +49,10 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Install Linux Whisper build toolchain
+        if: matrix.artifact == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+
       - name: Validate real-account Google QA PowerShell
         if: matrix.artifact == 'windows'
         shell: powershell
