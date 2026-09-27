@@ -2042,12 +2042,12 @@ function App(){
       }catch(e){console.error('Free AI mobile browser failed',e)}
       return;
     }
-    if(isWindowsDesktop&&product==='free'&&mode!=='work')selectExperience('work');
+    if((isWindowsDesktop||isMacDesktop)&&product==='free'&&mode!=='work')selectExperience('work');
     setSidePanel('browser');
   }
 
   useEffect(()=>{
-    if(!isWindowsDesktop||!isDesktop)return;
+    if(!(isWindowsDesktop||isMacDesktop)||!isDesktop)return;
     const off=window.desktopApi.onAppCommand?.(command=>{
       if(command!=='toggle-browser')return;
       if(sidePanel==='browser'){

@@ -46,7 +46,7 @@ const AUTH_CALLBACK_URL='freeai://auth/callback';
 const BROWSER_PARTITION='persist:freeai-browser';
 const BROWSER_RENDERABLE_PROTOCOLS=new Set(['http:','https:','about:','data:','blob:']);
 const BROWSER_EXTERNAL_PROTOCOLS=new Set(['mailto:','tel:','sms:','webcal:']);
-const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='linux';
+const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='darwin'||process.platform==='linux';
 
 let linuxRemoteDesktopInstance=null;
 function linuxRemoteDesktopController(){
@@ -203,7 +203,7 @@ function installAppMenu(){
     },
     {label:'Edit',submenu:[{role:'undo'},{role:'redo'},{type:'separator'},{role:'cut'},{role:'copy'},{role:'paste'},{role:'selectAll'}]},
     {label:'View',submenu:[
-      {label:'Toggle browser',accelerator:'CmdOrCtrl+Shift+B',click:()=>win?.webContents.send('app-command',process.platform==='win32'?'toggle-browser':'open-browser')},
+      {label:'Toggle browser',accelerator:'CmdOrCtrl+Shift+B',click:()=>win?.webContents.send('app-command',(process.platform==='win32'||process.platform==='darwin')?'toggle-browser':'open-browser')},
       {label:'Toggle sidebar',accelerator:'CmdOrCtrl+Shift+S',click:()=>win?.webContents.send('app-command','toggle-sidebar')},
       {type:'separator'},{role:'reload'},{role:'forceReload'},{type:'separator'},{role:'resetZoom'},{role:'zoomIn'},{role:'zoomOut'},{type:'separator'},{role:'togglefullscreen'}
     ]},
@@ -367,7 +367,7 @@ function electronBrowserKey(value){
 }
 
 async function performBuiltInBrowserAction(payload={}){
-  if(!isBrowserDesktopPlatform())throw new Error('Built-in Browser Use control is currently enabled on Windows and Linux.');
+  if(!isBrowserDesktopPlatform())throw new Error('Built-in Browser Use control is currently enabled on Windows, macOS, and Linux.');
   const requestedTabId=payload.tabId||activeBrowserTabId;
   if(requestedTabId&&requestedTabId!==activeBrowserTabId){
     if(!activateBrowserTab(requestedTabId))throw new Error('That built-in browser tab is not available.');
@@ -4297,14 +4297,14 @@ ipcMain.handle('browser:cancelDownload',(_e,id)=>{
   return browserSnapshot();
 });
 ipcMain.handle('browser:openDownload',async(_e,id)=>{
-  if(!isBrowserDesktopPlatform())return {ok:false,error:'Download file actions are currently available on Windows and Linux.'};
+  if(!isBrowserDesktopPlatform())return {ok:false,error:'Download file actions are currently available on Windows, macOS, and Linux.'};
   const record=browserDownloadById(id);
   if(!record?.canOpen||!record.savePath||!fs.existsSync(record.savePath))return {ok:false,error:'The downloaded file is not available.'};
   const error=await shell.openPath(record.savePath);
   return error?{ok:false,error}:{ok:true};
 });
 ipcMain.handle('browser:showDownload',(_e,id)=>{
-  if(!isBrowserDesktopPlatform())return {ok:false,error:'Download file actions are currently available on Windows and Linux.'};
+  if(!isBrowserDesktopPlatform())return {ok:false,error:'Download file actions are currently available on Windows, macOS, and Linux.'};
   const record=browserDownloadById(id);
   if(!record?.canOpen||!record.savePath||!fs.existsSync(record.savePath))return {ok:false,error:'The downloaded file is not available.'};
   shell.showItemInFolder(record.savePath);
@@ -4317,7 +4317,7 @@ ipcMain.handle('browser:dismissError',()=>{
   return browserSnapshot();
 });
 ipcMain.handle('browser:openExternalProtocol',async(_e,url)=>{
-  if(!isBrowserDesktopPlatform())return {ok:false,error:'External protocol handling is currently available on Windows and Linux.'};
+  if(!isBrowserDesktopPlatform())return {ok:false,error:'External protocol handling is currently available on Windows, macOS, and Linux.'};
   const activeError=activeBrowserTabId?browserErrors.get(activeBrowserTabId):null;
   const info=browserProtocolInfo(url);
   if(!activeError||activeError.type!=='protocol'||activeError.url!==String(url||'')||!info?.canOpenExternal){
