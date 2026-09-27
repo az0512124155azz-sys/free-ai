@@ -1178,7 +1178,7 @@ async function gitCommand(root,args,options={}){
 }
 
 async function canonicalRepositoryRoot(input){
-  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows and Linux.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows, macOS, and Linux.');
   const requested=path.resolve(String(input||''));
   if(!requested||!fs.existsSync(requested)||!fs.statSync(requested).isDirectory())throw new Error('Repository folder is not available.');
   let root;
@@ -1364,7 +1364,7 @@ async function repositoryWrite(inputRoot,relativePath,content){
 }
 
 async function chooseRepository(){
-  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows and Linux.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows, macOS, and Linux.');
   if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
   const result=await dialog.showOpenDialog(win,{
     title:'Choose Git repository',
@@ -1376,7 +1376,7 @@ async function chooseRepository(){
 }
 
 async function canonicalLocalFolderRoot(input){
-  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows and Linux.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows, macOS, and Linux.');
   const requested=path.resolve(String(input||''));
   if(!requested||!fs.existsSync(requested)||!fs.statSync(requested).isDirectory())throw new Error('Local folder is not available.');
   const realRoot=fs.realpathSync(requested);
@@ -1593,7 +1593,7 @@ function localFolderWrite(inputRoot,relativePath,content){
 }
 
 async function chooseLocalFolder(){
-  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows and Linux.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows, macOS, and Linux.');
   if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
   const result=await dialog.showOpenDialog(win,{
     title:'Open local folder for Work',
@@ -3799,7 +3799,7 @@ async function runWorkTask(task){
 }
 
 async function startWorkTask(input={}){
-  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('The local Work task loop is currently available on Windows and Linux.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('The local Work task loop is currently available on Windows, macOS, and Linux.');
   const provider=String(input.provider||'');
   const source=String(input.source||'browser');
   if(!provider)throw new Error('Select a model before starting Work.');
