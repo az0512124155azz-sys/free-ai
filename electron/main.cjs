@@ -1719,12 +1719,12 @@ async function pasteWindowsText(text){
   await runPowerShell("Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('^v')");
 }
 
-function runAppleScript(script){
+function runJxa(script){
   return new Promise((resolve,reject)=>{
-    execFile('/usr/bin/osascript',['-e',script],{windowsHide:true},(error,stdout,stderr)=>{
+    execFile('/usr/bin/osascript',['-l','JavaScript','-e',String(script||'')],{windowsHide:true},(error,stdout,stderr)=>{
       if(error){
         const detail=String(stderr||error.message||error);
-        if(/not allowed assistive access|-25211|accessibility/i.test(detail)){
+        if(/not allowed assistive access|-25211|accessibility|not authorized to send apple events/i.test(detail)){
           return reject(new Error('Free AI needs Accessibility permission in System Settings → Privacy & Security → Accessibility to control macOS apps.'));
         }
         return reject(new Error(detail));
@@ -1741,17 +1741,133 @@ function ensureMacAccessibility(){
   throw new Error('Free AI needs Accessibility permission in System Settings → Privacy & Security → Accessibility. Enable it, then try again.');
 }
 
-async function clickMacPoint(x,y){
+function ensureMacScreenCaptureAccess(){
+  if(process.platform!=='darwin')return 'granted';
+  const status=systemPreferences.getMediaAccessStatus('screen');
+  if(status==='denied'||status==='restricted'){
+    throw new Error('Free AI needs Screen Recording permission in System Settings → Privacy & Security → Screen & System Audio Recording to capture the desktop.');
+  }
+  return status;
+}
+
+function macMouseButton(button){
+  switch(String(button||'left').toLowerCase()){
+    case 'left':return {button:'$.kCGMouseButtonLeft',down:'$.kCGEventLeftMouseDown',up:'$.kCGEventLeftMouseUp',drag:'$.kCGEventLeftMouseDragged'};
+    case 'right':return {button:'$.kCGMouseButtonRight',down:'$.kCGEventRightMouseDown',up:'$.kCGEventRightMouseUp',drag:'$.kCGEventRightMouseDragged'};
+    case 'wheel':
+    case 'middle':return {button:'$.kCGMouseButtonCenter',down:'$.kCGEventOtherMouseDown',up:'$.kCGEventOtherMouseUp',drag:'$.kCGEventOtherMouseDragged'};
+    default:throw new Error('Computer Use requested an unsupported mouse button.');
+  }
+}
+
+function macKeyCode(key){
+  const name=String(key||'').trim().toUpperCase();
+  const codes={
+    A:0,S:1,D:2,F:3,H:4,G:5,Z:6,X:7,C:8,V:9,B:11,Q:12,W:13,E:14,R:15,Y:16,T:17,
+    '1':18,'2':19,'3':20,'4':21,'6':22,'5':23,'=':24,'9':25,'7':26,'-':27,'8':28,'0':29,
+    O:31,U:32,I:34,P:35,ENTER:36,RETURN:36,L:37,J:38,K:40,N:45,M:46,TAB:48,SPACE:49,
+    BACKSPACE:51,ESC:53,ESCAPE:53,DELETE:117,HOME:115,END:119,PAGEUP:116,PAGEDOWN:121,
+    ARROWLEFT:123,LEFT:123,ARROWRIGHT:124,RIGHT:124,ARROWDOWN:125,DOWN:125,ARROWUP:126,UP:126,
+    F1:122,F2:120,F3:99,F4:118,F5:96,F6:97,F7:98,F8:100,F9:101,F10:109,F11:103,F12:111
+  };
+  return codes[name]??null;
+}
+
+function macModifierFlag(key){
+  const name=String(key||'').trim().toUpperCase();
+  if(name==='SHIFT')return 1<<17;
+  if(name==='CTRL'||name==='CONTROL')return 1<<18;
+  if(name==='ALT'||name==='OPTION')return 1<<19;
+  if(name==='META'||name==='CMD'||name==='COMMAND')return 1<<20;
+  return 0;
+}
+
+async function moveMacPoint(x,y){
   ensureMacAccessibility();
-  const px=Math.round(Number(x)||0);
-  const py=Math.round(Number(y)||0);
-  await runAppleScript(`tell application "System Events" to click at {${px}, ${py}}`);
+  const px=Math.round(Number(x)||0),py=Math.round(Number(y)||0);
+  await runJxa(`ObjC.import('Cocoa');
+const event=$.CGEventCreateMouseEvent($(),$.kCGEventMouseMoved,$.CGPointMake(${px},${py}),$.kCGMouseButtonLeft);
+$.CGEventPost($.kCGHIDEventTap,event);`);
+}
+
+async function clickMacPoint(x,y,button='left',count=1){
+  ensureMacAccessibility();
+  const px=Math.round(Number(x)||0),py=Math.round(Number(y)||0);
+  const b=macMouseButton(button);
+  const clicks=Math.max(1,Math.min(2,Math.round(Number(count)||1)));
+  await runJxa(`ObjC.import('Cocoa');
+const point=$.CGPointMake(${px},${py});
+for(let i=0;i<${clicks};i++){
+  const down=$.CGEventCreateMouseEvent($(),${b.down},point,${b.button});
+  const up=$.CGEventCreateMouseEvent($(),${b.up},point,${b.button});
+  $.CGEventSetIntegerValueField(down,$.kCGMouseEventClickState,${clicks});
+  $.CGEventSetIntegerValueField(up,$.kCGMouseEventClickState,${clicks});
+  $.CGEventPost($.kCGHIDEventTap,down);
+  $.CGEventPost($.kCGHIDEventTap,up);
+  if(i+1<${clicks})delay(0.07);
+}`);
+}
+
+async function scrollMacPoint(x,y,scrollX,scrollY){
+  ensureMacAccessibility();
+  const px=Math.round(Number(x)||0),py=Math.round(Number(y)||0);
+  const sx=Math.max(-4000,Math.min(4000,Math.round(Number(scrollX)||0)));
+  const sy=Math.max(-4000,Math.min(4000,Math.round(Number(scrollY)||0)));
+  await runJxa(`ObjC.import('Cocoa');
+const move=$.CGEventCreateMouseEvent($(),$.kCGEventMouseMoved,$.CGPointMake(${px},${py}),$.kCGMouseButtonLeft);
+$.CGEventPost($.kCGHIDEventTap,move);
+const wheel=$.CGEventCreateScrollWheelEvent($(),$.kCGScrollEventUnitPixel,2,${-sy},${sx});
+$.CGEventPost($.kCGHIDEventTap,wheel);`);
+}
+
+async function keypressMac(keys){
+  ensureMacAccessibility();
+  const list=(Array.isArray(keys)?keys:[keys]).filter(Boolean);
+  let flags=0;
+  const codes=[];
+  for(const key of list){
+    const modifier=macModifierFlag(key);
+    if(modifier){flags|=modifier;continue}
+    const code=macKeyCode(key);
+    if(code===null)throw new Error('Computer Use requested an unsupported keyboard key.');
+    codes.push(code);
+  }
+  if(!codes.length)throw new Error('Computer Use requested a keyboard shortcut without a non-modifier key.');
+  await runJxa(`ObjC.import('Cocoa');
+const codes=${JSON.stringify(codes)};
+for(const code of codes){
+  const down=$.CGEventCreateKeyboardEvent($(),code,true);
+  const up=$.CGEventCreateKeyboardEvent($(),code,false);
+  $.CGEventSetFlags(down,${flags});
+  $.CGEventSetFlags(up,${flags});
+  $.CGEventPost($.kCGHIDEventTap,down);
+  $.CGEventPost($.kCGHIDEventTap,up);
+}`);
+}
+
+async function dragMacPath(points){
+  ensureMacAccessibility();
+  if(!Array.isArray(points)||points.length<2)throw new Error('Drag requires at least two valid points.');
+  const safe=points.map(point=>({x:Math.round(Number(point.x)||0),y:Math.round(Number(point.y)||0)}));
+  await runJxa(`ObjC.import('Cocoa');
+const points=${JSON.stringify(safe)};
+const start=points[0];
+const down=$.CGEventCreateMouseEvent($(),$.kCGEventLeftMouseDown,$.CGPointMake(start.x,start.y),$.kCGMouseButtonLeft);
+$.CGEventPost($.kCGHIDEventTap,down);
+for(const point of points.slice(1)){
+  delay(0.035);
+  const drag=$.CGEventCreateMouseEvent($(),$.kCGEventLeftMouseDragged,$.CGPointMake(point.x,point.y),$.kCGMouseButtonLeft);
+  $.CGEventPost($.kCGHIDEventTap,drag);
+}
+const end=points[points.length-1];
+const up=$.CGEventCreateMouseEvent($(),$.kCGEventLeftMouseUp,$.CGPointMake(end.x,end.y),$.kCGMouseButtonLeft);
+$.CGEventPost($.kCGHIDEventTap,up);`);
 }
 
 async function pasteMacText(text){
   ensureMacAccessibility();
   await clipboard.writeText(String(text||''));
-  await runAppleScript('tell application "System Events" to keystroke "v" using command down');
+  await keypressMac(['CMD','V']);
 }
 
 async function startWindowsVoiceTyping(){
@@ -2563,17 +2679,18 @@ function linuxComputerCaptureMapping(sources,displays){
 }
 
 async function captureScreens(){
+  if(process.platform==='darwin')ensureMacScreenCaptureAccess();
   const displays=screen.getAllDisplays();
   const primaryDisplay=screen.getPrimaryDisplay();
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:800,height:450}});
   const linuxMapping=linuxComputerCaptureMapping(sources,displays);
   return sources.map((source,index)=>{
-    const reliableWindowsDisplay=process.platform==='win32'&&source.display_id
+    const reliableNativeDisplay=(process.platform==='win32'||process.platform==='darwin')&&source.display_id
       ? displays.find(display=>String(display.id)===String(source.display_id))||null
       : null;
     const portalMapping=process.platform==='linux'?linuxMapping.get(source.id)||null:null;
-    const legacyDisplay=process.platform==='win32'?null:(displays[index]||null);
-    const display=reliableWindowsDisplay||portalMapping?.display||legacyDisplay;
+    const legacyDisplay=reliableNativeDisplay?null:(displays[index]||null);
+    const display=reliableNativeDisplay||portalMapping?.display||legacyDisplay;
     const size=source.thumbnail.getSize();
     const linuxInteractive=process.platform==='linux'&&!!portalMapping;
     return {
@@ -2584,14 +2701,16 @@ async function captureScreens(){
       height:Number(size?.height)||450,
       displayId:linuxInteractive?portalMapping.stream.displayId:(display?.id??null),
       primary:linuxInteractive?true:(!!display&&String(display.id)===String(primaryDisplay?.id)),
-      interactive:process.platform==='win32'?!!reliableWindowsDisplay:process.platform==='darwin'?!!display:linuxInteractive,
+      interactive:process.platform==='win32'?!!reliableNativeDisplay:process.platform==='darwin'?!!display:linuxInteractive,
       scaleFactor:Number(display?.scaleFactor)||1,
       rotation:Number(display?.rotation)||0,
       mapping:process.platform==='win32'
-        ?(reliableWindowsDisplay?'display_id':'unavailable')
-        :process.platform==='linux'
-          ?(linuxInteractive?'xdg-remote-desktop':'unavailable')
-          :'legacy',
+        ?(reliableNativeDisplay?'display_id':'unavailable')
+        :process.platform==='darwin'
+          ?(reliableNativeDisplay?'display_id':'legacy')
+          :process.platform==='linux'
+            ?(linuxInteractive?'xdg-remote-desktop':'unavailable')
+            :'legacy',
       portalStreamId:linuxInteractive?portalMapping.stream.nodeId:null,
       portalMappingId:linuxInteractive?portalMapping.stream.mappingId:''
     };
@@ -2649,9 +2768,47 @@ async function performLinuxComputerAction(payload={}){
   return {ok:true,action:type,point,screens:await captureScreens()};
 }
 
+async function performMacComputerAction(payload={}){
+  if(process.platform!=='darwin')throw new Error('macOS Computer Use is not available on this platform.');
+  const action=payload.action||{};
+  const type=String(action.type||'').toLowerCase();
+  const displayId=payload.displayId;
+  const viewport=payload.viewport||{};
+  const point=()=>computerViewportPoint(displayId,action.x,action.y,viewport.width,viewport.height);
+
+  if(type==='screenshot')return {ok:true,action:type,screens:await captureScreens()};
+  if(type==='wait'){
+    await new Promise(resolve=>setTimeout(resolve,Math.max(250,Math.min(3000,Number(action.ms)||1000))));
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='type'){
+    await pasteMacText(String(action.text||''));
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='keypress'){
+    await keypressMac(action.keys);
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='drag'){
+    const path=Array.isArray(action.path)?action.path.map(item=>computerViewportPoint(displayId,item?.x,item?.y,viewport.width,viewport.height)):[];
+    await dragMacPath(path);
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+
+  const target=point();
+  if(type==='move')await moveMacPoint(target.x,target.y);
+  else if(type==='click')await clickMacPoint(target.x,target.y,action.button||'left',1);
+  else if(type==='double_click')await clickMacPoint(target.x,target.y,action.button||'left',2);
+  else if(type==='scroll')await scrollMacPoint(target.x,target.y,action.scroll_x,action.scroll_y);
+  else throw new Error('Unsupported Computer Use action: '+String(action.type||'unknown'));
+
+  return {ok:true,action:type,point:target,screens:await captureScreens()};
+}
+
 async function performWindowsComputerAction(payload={}){
   if(process.platform==='linux')return performLinuxComputerAction(payload);
-  if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows and Linux.');
+  if(process.platform==='darwin')return performMacComputerAction(payload);
+  if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows, macOS, and Linux.');
   const action=payload.action||{};
   const type=String(action.type||'').toLowerCase();
   const displayId=payload.displayId;
@@ -3177,9 +3334,10 @@ function workMcpDescription(task){
 
 function workToolDescription(task){
   const windowsWork=process.platform==='win32';
+  const macWork=process.platform==='darwin';
   const linuxWork=process.platform==='linux';
   const browserWork=isBrowserDesktopPlatform();
-  const computerPlatform=windowsWork||linuxWork;
+  const computerPlatform=windowsWork||macWork||linuxWork;
   const computerAvailable=computerPlatform&&workCanSeeImages(task);
   const localAttach=workCanReceiveFiles(task)
     ? 'attach(path)'
@@ -3194,7 +3352,7 @@ function workToolDescription(task){
           : 'browser_extension: unavailable because the browser extension is not connected.')
       : 'browser_extension: unavailable on this desktop platform.',
     computerAvailable
-      ? 'computer: desktop control. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata. Linux uses the system XDG Remote Desktop permission dialog before interactive control.'
+      ? 'computer: desktop control. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata. Linux uses the XDG Remote Desktop permission dialog; macOS requires Screen Recording for screenshots and Accessibility for pointer/keyboard control.'
       : computerPlatform
         ? 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.'
         : 'computer: unavailable on this desktop platform.',

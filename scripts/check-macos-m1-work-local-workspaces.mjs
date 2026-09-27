@@ -35,7 +35,7 @@ for(const [text,label] of [
   ["const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='darwin'||process.platform==='linux';",'Browser Use promoted to shared desktop support after M1'],
   ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'dictation intentionally not enabled on macOS in M1'],
   ["if(process.platform==='linux')return performLinuxComputerAction(payload);",'Linux Computer Use routing retained'],
-  ["if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows and Linux.');",'Computer Use intentionally not enabled on macOS in M1']
+  ["if(process.platform==='darwin')return performMacComputerAction(payload);",'Computer Use promoted to macOS after M1']
 ]) requireText(main,text,label);
 
 if(!pkg.includes('node scripts/check-macos-m1-work-local-workspaces.mjs')){

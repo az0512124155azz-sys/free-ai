@@ -31,8 +31,8 @@ for(const [text,label] of [
   ["browserWork\n      ? (extensionSocket&&extensionSocket.readyState===WebSocket.OPEN",'macOS extension Browser Work tool'],
   ["Built-in Browser Use must take a fresh snapshot of the target tab before coordinate or keyboard actions.",'fresh-snapshot safety gate'],
   ["Free AI will not control a Chromium tab that hosts a model participating in this Super AI task.",'provider-tab protection'],
-  ["if(process.platform==='linux')return performLinuxComputerAction(payload);",'Computer Use remains outside macOS M2'],
-  ["if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows and Linux.');",'macOS Computer Use remains disabled'],
+  ["if(process.platform==='linux')return performLinuxComputerAction(payload);",'Linux Computer Use routing retained'],
+  ["if(process.platform==='darwin')return performMacComputerAction(payload);",'Computer Use promoted to macOS after M2'],
   ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'macOS Dictation remains outside M2']
 ]) requireText(main,text,label);
 
