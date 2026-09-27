@@ -31,10 +31,6 @@ if(taskProps!==2)fail('expected two Linux-capable Work task props, found '+taskP
 
 for(const [text,label] of [
   ["if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('The local Work task loop is currently available on Windows and Linux.');",'Windows/Linux Work backend gate'],
-  ["computer: unavailable on Linux until Linux Computer Use is enabled.",'Linux Computer Use unavailable description'],
-  ["if(process.platform==='linux'&&decision?.tool==='computer'){",'Linux Computer Use validation'],
-  ["return 'Computer Use is not enabled for Linux in this checkpoint.';",'Linux Computer Use rejection'],
-  ["if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows.');",'Computer Use remains Windows-only'],
   ["if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local folder access is currently available on Windows and Linux.');",'Linux local-folder support retained']
 ]) requireText(main,text,label);
 
