@@ -205,7 +205,7 @@ try{
   if(!/(fellow|americans|country|ask|president)/i.test(finalState.text))fail('unexpected speech transcript: '+finalState.text);
   if(finalState.title!=='Dictate locally with Whisper'||/listening/.test(finalState.cls))fail('microphone UI did not return to idle after transcription.');
 
-  const statusAfter=JSON.parse(await cdp.eval(`JSON.stringify(await window.desktopApi.getLinuxDictationStatus())`));
+  const statusAfter=JSON.parse(await cdp.eval(`(async()=>JSON.stringify(await window.desktopApi.getLinuxDictationStatus()))()`));
   if(!statusAfter.modelReady||!statusAfter.localOnly)fail('downloaded model did not become verified/ready.');
   const stat=await fsp.stat(model);
   if(stat.size!==MODEL_SIZE)fail('downloaded model size mismatch.');
