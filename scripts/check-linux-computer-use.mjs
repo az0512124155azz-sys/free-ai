@@ -43,8 +43,8 @@ for(const [text,label] of [
   ["if(process.platform==='linux')return performLinuxComputerAction(payload);",'Linux action dispatch'],
   ["await controller.keypress(['CTRL','V']);",'Linux text paste via portal keyboard'],
   ["const linuxWork=process.platform==='linux';",'Linux Work Computer capability'],
-  ["const computerPlatform=windowsWork||linuxWork;",'Windows/Linux Computer platform capability'],
-  ["Linux uses the system XDG Remote Desktop permission dialog before interactive control.",'Linux Computer tool description'],
+  ["const computerPlatform=windowsWork||macWork||linuxWork;",'shared desktop Computer platform capability'],
+  ["Linux uses the XDG Remote Desktop permission dialog; macOS requires Screen Recording for screenshots and Accessibility for pointer/keyboard control.",'Linux Computer tool description retained in shared copy'],
   ["Free AI will share screenshots of your desktop with the selected AI model",'cross-platform Computer approval text'],
   ["if(linuxRemoteDesktopInstance)linuxRemoteDesktopInstance.shutdown().catch(()=>{});",'portal shutdown cleanup'],
   ["return linuxRemoteDesktopController().clickNormalized(nx,ny,'left',1);",'Linux direct click bridge']
