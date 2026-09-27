@@ -47,6 +47,20 @@ const BROWSER_RENDERABLE_PROTOCOLS=new Set(['http:','https:','about:','data:','b
 const BROWSER_EXTERNAL_PROTOCOLS=new Set(['mailto:','tel:','sms:','webcal:']);
 const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='linux';
 
+let linuxRemoteDesktopInstance=null;
+function linuxRemoteDesktopController(){
+  if(process.platform!=='linux')return null;
+  if(!linuxRemoteDesktopInstance){
+    const {createLinuxRemoteDesktopController}=require('./linux-remote-desktop.cjs');
+    linuxRemoteDesktopInstance=createLinuxRemoteDesktopController();
+  }
+  return linuxRemoteDesktopInstance;
+}
+function linuxRemoteDesktopStatus(){
+  try{return linuxRemoteDesktopController()?.status?.()||{active:false,devices:0,streams:[]}}
+  catch{return {active:false,devices:0,streams:[]}}
+}
+
 function isAuthCallbackUrl(value){
   try{
     const parsed=new URL(String(value||''));
@@ -2496,29 +2510,65 @@ function connectRelay(){
   relaySocket.on('error',e=>console.error('Relay socket error',e?.message||e));
 }
 
+function linuxComputerCaptureMapping(sources,displays){
+  const map=new Map();
+  if(process.platform!=='linux')return map;
+  const state=linuxRemoteDesktopStatus();
+  const stream=state.active&&Array.isArray(state.streams)&&state.streams.length===1?state.streams[0]:null;
+  if(!stream)return map;
+  const close=(a,b,tolerance=3)=>Math.abs(Number(a)-Number(b))<=tolerance;
+  const matchedDisplay=displays.find(display=>{
+    const bounds=display?.bounds||{};
+    return close(bounds.x,stream.position?.x)
+      &&close(bounds.y,stream.position?.y)
+      &&close(bounds.width,stream.width,6)
+      &&close(bounds.height,stream.height,6);
+  })||null;
+  let source=null;
+  if(matchedDisplay){
+    source=sources.find(item=>item.display_id&&String(item.display_id)===String(matchedDisplay.id))||null;
+    if(!source&&sources.length===displays.length){
+      const index=displays.indexOf(matchedDisplay);
+      source=sources[index]||null;
+    }
+  }
+  if(!source&&sources.length===1)source=sources[0];
+  if(source)map.set(source.id,{stream,display:matchedDisplay||displays[0]||null});
+  return map;
+}
+
 async function captureScreens(){
   const displays=screen.getAllDisplays();
   const primaryDisplay=screen.getPrimaryDisplay();
   const sources=await desktopCapturer.getSources({types:['screen'],thumbnailSize:{width:800,height:450}});
+  const linuxMapping=linuxComputerCaptureMapping(sources,displays);
   return sources.map((source,index)=>{
     const reliableWindowsDisplay=process.platform==='win32'&&source.display_id
       ? displays.find(display=>String(display.id)===String(source.display_id))||null
       : null;
+    const portalMapping=process.platform==='linux'?linuxMapping.get(source.id)||null:null;
     const legacyDisplay=process.platform==='win32'?null:(displays[index]||null);
-    const display=reliableWindowsDisplay||legacyDisplay;
+    const display=reliableWindowsDisplay||portalMapping?.display||legacyDisplay;
     const size=source.thumbnail.getSize();
+    const linuxInteractive=process.platform==='linux'&&!!portalMapping;
     return {
       id:source.id,
       name:display?.label||source.name||('Screen '+(index+1)),
       thumbnail:source.thumbnail.toDataURL(),
       width:Number(size?.width)||800,
       height:Number(size?.height)||450,
-      displayId:display?.id??null,
-      primary:!!display&&String(display.id)===String(primaryDisplay?.id),
-      interactive:process.platform==='win32'?!!reliableWindowsDisplay:process.platform==='darwin'?!!display:false,
+      displayId:linuxInteractive?portalMapping.stream.displayId:(display?.id??null),
+      primary:linuxInteractive?true:(!!display&&String(display.id)===String(primaryDisplay?.id)),
+      interactive:process.platform==='win32'?!!reliableWindowsDisplay:process.platform==='darwin'?!!display:linuxInteractive,
       scaleFactor:Number(display?.scaleFactor)||1,
       rotation:Number(display?.rotation)||0,
-      mapping:process.platform==='win32'?(reliableWindowsDisplay?'display_id':'unavailable'):'legacy'
+      mapping:process.platform==='win32'
+        ?(reliableWindowsDisplay?'display_id':'unavailable')
+        :process.platform==='linux'
+          ?(linuxInteractive?'xdg-remote-desktop':'unavailable')
+          :'legacy',
+      portalStreamId:linuxInteractive?portalMapping.stream.nodeId:null,
+      portalMappingId:linuxInteractive?portalMapping.stream.mappingId:''
     };
   });
 }
@@ -2535,8 +2585,48 @@ function computerViewportPoint(displayId,x,y,width,height){
   return displayPoint(displayId,Number(x)/(w-1),Number(y)/(h-1));
 }
 
+async function performLinuxComputerAction(payload={}){
+  const controller=linuxRemoteDesktopController();
+  if(!controller)throw new Error('Linux Computer Use is not available on this platform.');
+  await controller.ensureSession();
+  const action=payload.action||{};
+  const type=String(action.type||'').toLowerCase();
+  const displayId=payload.displayId;
+  const viewport=payload.viewport||{};
+  const x=action.x,y=action.y,width=viewport.width,height=viewport.height;
+
+  if(type==='screenshot')return {ok:true,action:type,screens:await captureScreens()};
+  if(type==='wait'){
+    await new Promise(resolve=>setTimeout(resolve,Math.max(250,Math.min(3000,Number(action.ms)||1000))));
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='type'){
+    await clipboard.writeText(String(action.text||''));
+    await controller.keypress(['CTRL','V']);
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='keypress'){
+    await controller.keypress(action.keys);
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+  if(type==='drag'){
+    await controller.dragViewport(displayId,action.path,width,height);
+    return {ok:true,action:type,screens:await captureScreens()};
+  }
+
+  let point=null;
+  if(type==='move')point=await controller.moveViewport(displayId,x,y,width,height);
+  else if(type==='click')point=await controller.clickViewport(displayId,x,y,width,height,action.button||'left',1);
+  else if(type==='double_click')point=await controller.clickViewport(displayId,x,y,width,height,action.button||'left',2);
+  else if(type==='scroll')point=await controller.scrollViewport(displayId,x,y,width,height,action.scroll_x,action.scroll_y);
+  else throw new Error('Unsupported Computer Use action: '+String(action.type||'unknown'));
+
+  return {ok:true,action:type,point,screens:await captureScreens()};
+}
+
 async function performWindowsComputerAction(payload={}){
-  if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows.');
+  if(process.platform==='linux')return performLinuxComputerAction(payload);
+  if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows and Linux.');
   const action=payload.action||{};
   const type=String(action.type||'').toLowerCase();
   const displayId=payload.displayId;
@@ -2709,7 +2799,7 @@ function workApprovalFor(task,decision){
   if(tool==='computer'&&!task.approvedScopes.has('computer:screen')){
     scope='computer:screen';
     scopeTitle='Allow Computer Use for this task?';
-    scopeDetail='Free AI will share screenshots of your Windows desktop with the selected AI model and may propose mouse or keyboard actions.';
+    scopeDetail='Free AI will share screenshots of your desktop with the selected AI model and may propose mouse or keyboard actions.';
   }else if(tool==='browser_extension'&&type==='list_tabs'&&!task.approvedScopes.has('browser-extension:tabs')){
     scope='browser-extension:tabs';
     scopeTitle='Allow access to your open browser tabs?';
@@ -3062,8 +3152,10 @@ function workMcpDescription(task){
 
 function workToolDescription(task){
   const windowsWork=process.platform==='win32';
+  const linuxWork=process.platform==='linux';
   const browserWork=isBrowserDesktopPlatform();
-  const computerAvailable=windowsWork&&workCanSeeImages(task);
+  const computerPlatform=windowsWork||linuxWork;
+  const computerAvailable=computerPlatform&&workCanSeeImages(task);
   const localAttach=workCanReceiveFiles(task)
     ? 'attach(path)'
     : 'attach unavailable for this controller because it does not expose real file upload';
@@ -3077,10 +3169,10 @@ function workToolDescription(task){
           : 'browser_extension: unavailable because the browser extension is not connected.')
       : 'browser_extension: unavailable on this desktop platform.',
     computerAvailable
-      ? 'computer: Windows desktop. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata.'
-      : windowsWork
+      ? 'computer: desktop control. Start with screenshot. Actions: screenshot, move, scroll, click, double_click, type, keypress, drag, wait. For coordinate actions use displayId plus viewport {width,height} from the latest screenshot metadata. Linux uses the system XDG Remote Desktop permission dialog before interactive control.'
+      : computerPlatform
         ? 'computer: unavailable for this selected model because Computer Use needs a connected browser model with real image/file upload so the model can see desktop screenshots.'
-        : 'computer: unavailable on Linux until Linux Computer Use is enabled.',
+        : 'computer: unavailable on this desktop platform.',
     task.product==='super'&&task.workspace?.root
       ? 'repository: selected local Git repository "'+task.workspace.name+'". Actions: status, list, read(path,startLine optional,endLine optional), diff(path optional), write(path,content). Read all line ranges of an existing file before writing. Writes require user approval and cannot access .git or escape the selected repository.'
       : 'repository: unavailable because no local Git repository is attached to this task.',
@@ -3344,10 +3436,6 @@ async function callWorkModel(task,observation,attachments=[]){
 function validateWorkToolDecision(task,decision){
   const action=decision?.action||{};
   const type=String(action.type||'').toLowerCase();
-
-  if(process.platform==='linux'&&decision?.tool==='computer'){
-    return 'Computer Use is not enabled for Linux in this checkpoint.';
-  }
 
   if(decision?.tool==='mcp'){
     if(!['list','describe','call'].includes(type)){
@@ -3963,6 +4051,7 @@ app.on('before-quit',()=>{
   mcpSessions.clear();
   for(const active of activePrompts.values())active.controller.abort();
   activePrompts.clear();
+  if(linuxRemoteDesktopInstance)linuxRemoteDesktopInstance.shutdown().catch(()=>{});
 });
 
 app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
@@ -4251,8 +4340,11 @@ ipcMain.handle('browserUse:extensionAction',(_e,payload)=>requestExtensionBrowse
 
 ipcMain.handle('computer:performAction',(_e,payload)=>performWindowsComputerAction(payload));
 ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
+  if(process.platform==='linux'){
+    return linuxRemoteDesktopController().clickNormalized(nx,ny,'left',1);
+  }
   if(process.platform!=='win32'&&process.platform!=='darwin'){
-    throw new Error('Interactive desktop control is available on Windows and macOS. Linux currently supports screen preview and browser actions.');
+    throw new Error('Interactive desktop control is available on Windows, Linux, and macOS.');
   }
   const point=displayPoint(displayId,nx,ny);
   if(process.platform==='darwin')await clickMacPoint(point.x,point.y);
@@ -4260,8 +4352,16 @@ ipcMain.handle('computer:click',async(_e,{displayId,nx,ny}={})=>{
   return point;
 });
 ipcMain.handle('computer:clickAndType',async(_e,{displayId,nx,ny,text}={})=>{
+  if(process.platform==='linux'){
+    const controller=linuxRemoteDesktopController();
+    const point=await controller.clickNormalized(nx,ny,'left',1);
+    await new Promise(resolve=>setTimeout(resolve,120));
+    await clipboard.writeText(String(text||''));
+    await controller.keypress(['CTRL','V']);
+    return point;
+  }
   if(process.platform!=='win32'&&process.platform!=='darwin'){
-    throw new Error('Interactive desktop control is available on Windows and macOS.');
+    throw new Error('Interactive desktop control is available on Windows, Linux, and macOS.');
   }
   const point=displayPoint(displayId,nx,ny);
   if(process.platform==='darwin'){
