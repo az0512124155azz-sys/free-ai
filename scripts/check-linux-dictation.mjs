@@ -56,7 +56,12 @@ for(const [text,label] of [
   ["const TAG='v1.9.4';",'pinned whisper.cpp release'],
   ["https://github.com/ggml-org/whisper.cpp.git",'official whisper.cpp source'],
   ["'-DBUILD_SHARED_LIBS=OFF'",'self-contained Linux CLI build'],
+  ["'-DWHISPER_BUILD_IS_DEV=OFF'",'release-version whisper CLI'],
+  ["'-DGGML_OPENMP=OFF'",'portable build without host OpenMP runtime'],
   ["'--target','whisper-cli'",'whisper-cli build target'],
+  ["execFileSync(out,['--version']", 'packaged Whisper version smoke'],
+  ["execFileSync('ldd',[out]",'packaged Whisper dependency smoke'],
+  ["if(/libgomp\\.so/i.test(ldd))",'libgomp portability guard'],
   ["fs.chmodSync(out,0o755)",'executable packaged CLI']
 ]) requireText(prepare,text,label);
 
