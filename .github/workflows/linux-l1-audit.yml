@@ -133,11 +133,27 @@ jobs:
           file "$appimage" > artifacts/linux-audit/appimage-file.txt
           printf '%s\n' "$executable" > artifacts/linux-audit/appimage-executable.txt
 
-      - name: Build deterministic renderer from exact main
+      - name: Build deterministic QA AppImage from exact main
         working-directory: product
         env:
           VITE_VISUAL_TEST: '1'
-        run: npm run build:web
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run build:desktop
+          qa_appimage="$(find release -maxdepth 1 -type f -name '*.AppImage' -print -quit)"
+          test -n "$qa_appimage"
+          chmod +x "$qa_appimage"
+          (
+            cd release
+            rm -rf squashfs-root
+            "./$(basename "$qa_appimage")" --appimage-extract >/dev/null
+          )
+          qa_executable="$(realpath release/squashfs-root/free-ai)"
+          test -x "$qa_executable"
+          echo "FREEAI_LINUX_QA_EXECUTABLE=$qa_executable" >> "$GITHUB_ENV"
+          sha256sum "$qa_appimage" > artifacts/linux-audit/deterministic-qa-appimage-sha256.txt
+          printf '%s\n' "$qa_executable" > artifacts/linux-audit/deterministic-qa-executable.txt
 
       - name: Run packaged + full Linux UI audit under Xvfb
         id: linux_audit
