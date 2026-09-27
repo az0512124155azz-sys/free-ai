@@ -1,7 +1,7 @@
 import React,{useEffect,useMemo,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {createClient} from '@supabase/supabase-js';
-import {Capacitor,SystemBars,SystemBarsStyle} from '@capacitor/core';
+import {Capacitor,registerPlugin,SystemBars,SystemBarsStyle} from '@capacitor/core';
 import {App as CapacitorApp} from '@capacitor/app';
 import {Browser} from '@capacitor/browser';
 import {Haptics,ImpactStyle} from '@capacitor/haptics';
@@ -30,6 +30,7 @@ const isDesktop=!!window.desktopApi;
 const desktopPlatform=window.desktopApi?.platform||'';
 const isNative=Capacitor.isNativePlatform();
 const isAndroidNative=isNative&&Capacitor.getPlatform()==='android';
+const FreeAINativeWindow=registerPlugin('FreeAINativeWindow');
 
 function updateAndroidDictationQaState(patch={}){
   if(!isAndroidNative||!isVisualTestBuild||typeof window==='undefined')return;
@@ -673,7 +674,10 @@ function App(){
       const light=appPrefs.appearance==='light'||(appPrefs.appearance==='system'&&scheme?.matches);
       const requested=light?'light':'dark';
       updateAndroidSystemBarsQaState({requested,applied:'pending',error:''});
-      SystemBars.setStyle({style:light?SystemBarsStyle.Light:SystemBarsStyle.Dark})
+      Promise.all([
+        SystemBars.setStyle({style:light?SystemBarsStyle.Light:SystemBarsStyle.Dark}),
+        FreeAINativeWindow.setThemeBackground({theme:requested})
+      ])
         .then(()=>updateAndroidSystemBarsQaState({requested,applied:requested,error:''}))
         .catch(error=>updateAndroidSystemBarsQaState({requested,applied:'error',error:String(error?.message||error||'unknown')}));
       SystemBars.show().catch(()=>{});
