@@ -1,11 +1,11 @@
-name: Android A3 Visual Device Verification
+name: Android A3 Dark Bars Visual Verification
 
 on:
   push:
     branches: [audit/android-a1-ui]
     paths:
       - .github/workflows/android-a1-audit.yml
-      - scripts/android-a3-mode-menu-audit.py
+      - scripts/android-a3-bars-audit.py
   workflow_dispatch:
 
 permissions:
@@ -13,14 +13,14 @@ permissions:
   actions: read
 
 concurrency:
-  group: android-a3-pr141-visual-e539
+  group: android-a3-pr141-bars-f56
   cancel-in-progress: true
 
 jobs:
-  visual:
-    name: PR141 visual rerun on Android 16 Pixel 5
+  bars:
+    name: PR141 dark bars on Android 16 Pixel 5
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 18
     steps:
       - name: Check out audit harness
         uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
       - name: Check out exact PR product commit
         uses: actions/checkout@v4
         with:
-          ref: e539c33e334eef40bdf068b57c93b860f558942a
+          ref: f56cb8623768065dd7ee3612bee3bac75db09a02
           path: product
           persist-credentials: false
 
@@ -42,20 +42,20 @@ jobs:
           script: |
             const repo=context.repo;
             const {data:pr}=await github.rest.pulls.get({...repo,pull_number:141});
-            if(pr.state!=='open'||pr.merged||pr.head.sha!=='e539c33e334eef40bdf068b57c93b860f558942a'||pr.base.ref!=='main') throw new Error('PR moved');
+            if(pr.state!=='open'||pr.merged||pr.head.sha!=='f56cb8623768065dd7ee3612bee3bac75db09a02'||pr.base.ref!=='main') throw new Error('PR moved');
             const {data:main}=await github.rest.git.getRef({...repo,ref:'heads/main'});
             if(main.object.sha!=='07db982d6b409fa6c313ece8c2a99912815a0419') throw new Error('main moved');
-            const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:36281756552});
+            const {data:run}=await github.rest.actions.getWorkflowRun({...repo,run_id:36302948328});
             if(run.head_sha!==pr.head.sha||run.head_branch!=='android/a3-visual-system-bars'||run.event!=='pull_request'||run.status!=='completed'||run.conclusion!=='success'||run.run_attempt!==1) throw new Error('Unexpected source run');
-            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108514801974});
+            const {data:build}=await github.rest.actions.getJobForWorkflowRun({...repo,job_id:108573988502});
             if(build.head_sha!==pr.head.sha||build.status!=='completed'||build.conclusion!=='success') throw new Error('Android producer job not green');
-            const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:10919067217});
-            if(artifact.name!=='free-ai-android-runtime-qa'||artifact.expired||artifact.digest!=='sha256:6ae5fe3ae30dec0fe9cc501bdea29e3e45a66ae3f697ffafcf05e8f2bf3c13b6') throw new Error('Unexpected artifact');
+            const {data:artifact}=await github.rest.actions.getArtifact({...repo,artifact_id:10925984001});
+            if(artifact.name!=='free-ai-android-runtime-qa'||artifact.expired||artifact.digest!=='sha256:000e0d982f587838741e7ddb0dd37c572b4b6329b6e43e46cad30937ef6e80d6') throw new Error('Unexpected artifact');
 
       - uses: actions/download-artifact@v4
         with:
-          artifact-ids: '10919067217'
-          run-id: 36281756552
+          artifact-ids: '10925984001'
+          run-id: 36302948328
           github-token: ${{ github.token }}
           path: product/runtime-artifacts
 
@@ -65,7 +65,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Verify visual fixes
+      - name: Capture dark and light bars
         id: verify
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
@@ -80,17 +80,17 @@ jobs:
           disable-spellchecker: true
           enable-hw-keyboard: false
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: cd product && python3 ../audit-harness/scripts/android-a3-mode-menu-audit.py
+          script: cd product && python3 ../audit-harness/scripts/android-a3-bars-audit.py
 
-      - name: Upload evidence
+      - name: Upload visual evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: free-ai-pr141-android-visual-e539
-          path: product/artifacts/android-a3-pr141-visual/**
+          name: free-ai-pr141-android-bars-f56
+          path: product/artifacts/android-a3-pr141-bars/**
           if-no-files-found: error
 
-      - name: Enforce result
+      - name: Enforce capture state
         if: always()
         env:
           VERIFY_OUTCOME: ${{ steps.verify.outcome }}
@@ -99,12 +99,7 @@ jobs:
           cd product
           python3 - <<'PY'
           import json
-          rows=json.load(open('artifacts/android-a3-pr141-visual/results.json'))
-          assert len(rows)==7,rows
-          assert all(r['status']=='PASS' for r in rows),rows
-          summary=json.load(open('artifacts/android-a3-pr141-visual/summary.json'))
-          assert summary['initialWebViewBounds'][1] <= 2,summary
+          summary=json.load(open('artifacts/android-a3-pr141-bars/summary.json'))
           assert 'theme=dark' in summary['darkQa'] and 'systemBars=dark' in summary['darkQa'],summary
           assert 'theme=light' in summary['lightQa'] and 'systemBars=light' in summary['lightQa'],summary
-          assert summary['modeBounds']['Chat'] and summary['modeBounds']['Work'] and summary['modeBounds']['Select model'],summary
           PY
