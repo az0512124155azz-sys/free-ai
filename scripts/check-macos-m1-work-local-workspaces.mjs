@@ -32,7 +32,7 @@ for(const [text,label] of [
   ["if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('The local Work task loop is currently available on Windows, macOS, and Linux.');",'macOS Work backend gate'],
   ["const normalize=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');",'POSIX case-sensitive repository containment'],
   ["const localFolderStateKey=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');",'POSIX case-sensitive local-file read tracking'],
-  ["const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='linux';",'Browser Use intentionally not enabled on macOS in M1'],
+  ["const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='darwin'||process.platform==='linux';",'Browser Use promoted to shared desktop support after M1'],
   ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'dictation intentionally not enabled on macOS in M1'],
   ["if(process.platform==='linux')return performLinuxComputerAction(payload);",'Linux Computer Use routing retained'],
   ["if(process.platform!=='win32')throw new Error('This Computer Use action runtime is currently available on Windows and Linux.');",'Computer Use intentionally not enabled on macOS in M1']
