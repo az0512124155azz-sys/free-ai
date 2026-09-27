@@ -1154,7 +1154,7 @@ async function gitCommand(root,args,options={}){
 }
 
 async function canonicalRepositoryRoot(input){
-  if(process.platform!=='win32')throw new Error('Local repository workspace is currently available on Windows.');
+  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows and Linux.');
   const requested=path.resolve(String(input||''));
   if(!requested||!fs.existsSync(requested)||!fs.statSync(requested).isDirectory())throw new Error('Repository folder is not available.');
   let root;
@@ -1168,9 +1168,11 @@ async function canonicalRepositoryRoot(input){
 
 function repositoryContainsPath(root,candidate){
   const realRoot=fs.realpathSync(root);
-  const prefix=(realRoot.endsWith(path.sep)?realRoot:realRoot+path.sep).toLowerCase();
-  const value=String(candidate||'').toLowerCase();
-  return value===realRoot.toLowerCase()||value.startsWith(prefix);
+  const normalize=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');
+  const normalizedRoot=normalize(realRoot);
+  const prefix=normalizedRoot.endsWith(path.sep)?normalizedRoot:normalizedRoot+path.sep;
+  const value=normalize(candidate);
+  return value===normalizedRoot||value.startsWith(prefix);
 }
 
 function nearestExistingRepositoryAncestor(candidate){
@@ -1338,7 +1340,7 @@ async function repositoryWrite(inputRoot,relativePath,content){
 }
 
 async function chooseRepository(){
-  if(process.platform!=='win32')throw new Error('Local repository workspace is currently available on Windows.');
+  if(process.platform!=='win32'&&process.platform!=='linux')throw new Error('Local repository workspace is currently available on Windows and Linux.');
   if(!win||win.isDestroyed())throw new Error('Desktop window is not available.');
   const result=await dialog.showOpenDialog(win,{
     title:'Choose Git repository',
