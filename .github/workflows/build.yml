@@ -51,7 +51,7 @@ jobs:
 
       - name: Install Linux Whisper build toolchain
         if: matrix.artifact == 'linux'
-        run: sudo apt-get update && sudo apt-get install -y cmake build-essential
+        run: sudo apt-get update && sudo apt-get install -y cmake build-essential xvfb
 
       - name: Validate real-account Google QA PowerShell
         if: matrix.artifact == 'windows'
@@ -124,6 +124,18 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - name: Linux Dictation packaged runtime QA
+        if: steps.desktop_build.outcome == 'success' && matrix.artifact == 'linux' && github.event_name == 'pull_request' && github.head_ref == 'linux/dictation'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sample="$RUNNER_TEMP/jfk.wav"
+          curl --fail --location --retry 3 --retry-delay 2 \
+            "https://raw.githubusercontent.com/ggml-org/whisper.cpp/v1.9.4/samples/jfk.wav" \
+            --output "$sample"
+          appimage="$(ls release/*.AppImage | head -n 1)"
+          node scripts/qa-linux-dictation-runtime.mjs "$appimage" "$sample"
 
       - name: Report desktop build failure
         if: steps.desktop_build.outcome == 'failure'
