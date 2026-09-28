@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   release_mode_guard:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -237,7 +237,7 @@ jobs:
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          REQUIRE_WINDOWS_SIGNING: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}
+          REQUIRE_WINDOWS_SIGNING: 'false'
         run: |
           $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)
           $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_KEY_PASSWORD)
@@ -246,16 +246,12 @@ jobs:
             throw 'Windows signing is only partially configured. Set both WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD, or neither for an unsigned development build.'
           }
 
-          if ($env:REQUIRE_WINDOWS_SIGNING -eq 'true' -and -not $hasCertificate) {
-            throw 'Release validation/publishing requires Windows Authenticode signing. Configure WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD first.'
-          }
-
           $enabled = $hasCertificate.ToString().ToLowerInvariant()
           "enabled=$enabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($hasCertificate) {
             Write-Host 'Windows Authenticode signing credentials detected. electron-builder will sign the Windows executable and NSIS installer.'
           } else {
-            Write-Host 'Windows signing credentials are not configured. Continuing with an unsigned development/CI build.'
+            Write-Host 'Windows signing credentials are not configured. Continuing with an unsigned build; Windows signing is optional for Free AI releases.'
           }
 
       - id: macos_distribution
@@ -559,6 +555,9 @@ jobs:
 
   android:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
@@ -662,15 +661,110 @@ jobs:
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
 
-      - name: Build signed Android release APK
-        if: github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)
+      - name: Load Android production signing
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true))
         shell: bash
         env:
-          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
-          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
-          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
-          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
-          ANDROID_RELEASE_EXPECTED_SHA1: ${{ secrets.ANDROID_RELEASE_EXPECTED_SHA1 }}
+          SECRET_ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          SECRET_ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          SECRET_ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          SECRET_ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          SECRET_ANDROID_RELEASE_EXPECTED_SHA1: ${{ secrets.ANDROID_RELEASE_EXPECTED_SHA1 }}
+        run: |
+          set -euo pipefail
+
+          configured=0
+          for name in \
+            SECRET_ANDROID_RELEASE_KEYSTORE_BASE64 \
+            SECRET_ANDROID_RELEASE_STORE_PASSWORD \
+            SECRET_ANDROID_RELEASE_KEY_ALIAS \
+            SECRET_ANDROID_RELEASE_KEY_PASSWORD \
+            SECRET_ANDROID_RELEASE_EXPECTED_SHA1
+          do
+            [[ -n "${!name:-}" ]] && configured=$((configured+1))
+          done
+
+          if [[ "$configured" -eq 5 ]]; then
+            echo "::notice::Using Android production signing from GitHub Actions secrets."
+            node - "$GITHUB_ENV" <<'NODE'
+          const fs=require('node:fs');
+          const out=process.argv[2];
+          const map={
+            ANDROID_RELEASE_KEYSTORE_BASE64:process.env.SECRET_ANDROID_RELEASE_KEYSTORE_BASE64,
+            ANDROID_RELEASE_STORE_PASSWORD:process.env.SECRET_ANDROID_RELEASE_STORE_PASSWORD,
+            ANDROID_RELEASE_KEY_ALIAS:process.env.SECRET_ANDROID_RELEASE_KEY_ALIAS,
+            ANDROID_RELEASE_KEY_PASSWORD:process.env.SECRET_ANDROID_RELEASE_KEY_PASSWORD,
+            ANDROID_RELEASE_EXPECTED_SHA1:process.env.SECRET_ANDROID_RELEASE_EXPECTED_SHA1,
+          };
+          for(const [name,value] of Object.entries(map)){
+            if(!value)throw new Error('Missing Android release signing value: '+name);
+            console.log('::add-mask::'+value);
+            fs.appendFileSync(out,name+'='+value+'\n');
+          }
+          NODE
+          else
+            if [[ "$configured" -ne 0 ]]; then
+              echo "::warning::Android GitHub signing secrets are only partially configured; using the complete Supabase Vault bundle instead."
+            else
+              echo "::notice::Android GitHub signing secrets are not configured; loading the production bundle from Supabase Vault through GitHub OIDC."
+            fi
+
+            oidc_response="$RUNNER_TEMP/free-ai-release-signing-oidc.json"
+            oidc_token_file="$RUNNER_TEMP/free-ai-release-signing-oidc-token"
+            bundle_response="$RUNNER_TEMP/free-ai-release-signing-bundle.json"
+
+            curl --silent --show-error --fail \
+              --header "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=free-ai-release-signing" \
+              --output "$oidc_response"
+
+            node - "$oidc_response" "$oidc_token_file" <<'NODE'
+          const fs=require('node:fs');
+          const [responsePath,tokenPath]=process.argv.slice(2);
+          const response=JSON.parse(fs.readFileSync(responsePath,'utf8'));
+          if(typeof response.value!=='string'||!response.value)throw new Error('GitHub OIDC token response is missing value');
+          fs.writeFileSync(tokenPath,response.value,{mode:0o600});
+          NODE
+
+            http_code="$(curl --silent --show-error \
+              --output "$bundle_response" \
+              --write-out '%{http_code}' \
+              --request POST \
+              --header "Authorization: Bearer $(cat "$oidc_token_file")" \
+              "https://xquntkgjlmrxkwkrwsjl.supabase.co/functions/v1/free-ai-release-signing-bundle")"
+
+            rm -f "$oidc_response" "$oidc_token_file"
+
+            if [[ "$http_code" != "200" ]]; then
+              echo "::error::Supabase release-signing broker returned HTTP $http_code."
+              exit 1
+            fi
+
+            node - "$bundle_response" "$GITHUB_ENV" <<'NODE'
+          const fs=require('node:fs');
+          const [responsePath,out]=process.argv.slice(2);
+          const response=JSON.parse(fs.readFileSync(responsePath,'utf8'));
+          if(response.ok!==true||!response.android)throw new Error('Supabase release-signing broker returned an invalid bundle');
+          const map={
+            ANDROID_RELEASE_KEYSTORE_BASE64:response.android.keystore_base64,
+            ANDROID_RELEASE_STORE_PASSWORD:response.android.store_password,
+            ANDROID_RELEASE_KEY_ALIAS:response.android.key_alias,
+            ANDROID_RELEASE_KEY_PASSWORD:response.android.key_password,
+            ANDROID_RELEASE_EXPECTED_SHA1:response.android.expected_sha1,
+          };
+          for(const [name,value] of Object.entries(map)){
+            if(typeof value!=='string'||!value)throw new Error('Incomplete Android release signing bundle: '+name);
+            console.log('::add-mask::'+value);
+            fs.appendFileSync(out,name+'='+value+'\n');
+          }
+          NODE
+            rm -f "$bundle_response"
+          fi
+
+      - name: Build signed Android release APK
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true))
+        shell: bash
+        env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}
@@ -759,7 +853,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload signed Android release APK
-        if: github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true))
         uses: actions/upload-artifact@v4
         with:
           name: free-ai-android-release
@@ -1125,7 +1219,7 @@ jobs:
 
 
   release_validation:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.validate_release == true && inputs.publish_release != true
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.validate_release == true && inputs.publish_release != true))
     needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
     runs-on: ubuntu-latest
     permissions:
@@ -1332,7 +1426,9 @@ jobs:
 
           EXTRA_NOTES=""
           if [[ "${ALLOW_UNSIGNED_MACOS:-false}" == true ]]; then
-            EXTRA_NOTES=⚠️ macOS signing notice\n\nThe macOS DMG in this release is intentionally unsigned and not notarized. macOS Gatekeeper may warn or block it. Windows and Android release gates remain unchanged.\n'
+            printf -v EXTRA_NOTES '%s\n\n%s\n' \
+              '⚠️ macOS signing notice' \
+              'The macOS DMG in this release is intentionally unsigned and not notarized. macOS Gatekeeper may warn or block it. Windows signing is optional; Android release signing remains required.'
           fi
 
           gh release create "$TAG" "${ASSETS[@]}" \

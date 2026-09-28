@@ -21,7 +21,7 @@ Configure both GitHub Actions secrets:
 - `WIN_CSC_LINK`
 - `WIN_CSC_KEY_PASSWORD`
 
-A public release fails closed if Authenticode signing is unavailable.
+Windows Authenticode signing is optional. If the two signing secrets are present, the release is signed and CI verifies the signatures; otherwise the validated unsigned NSIS installer may be published.
 
 ### macOS
 
@@ -91,7 +91,7 @@ Use this before publishing after adding or rotating any signing credential.
 2. Open **Actions -> Build Free AI -> Run workflow** on `main`.
 3. Set **Validate production release without publishing** to `true`.
 4. Leave **Publish the final GitHub Release** set to `false`.
-5. The workflow requires the real Windows Authenticode certificate and Android production keystore. macOS Developer ID + notarization remains the default requirement; set `allow_unsigned_macos=true` only when intentionally validating an unsigned macOS DMG.
+5. The workflow requires the Android production keystore. Windows signing is optional. macOS Developer ID + notarization remains the default requirement; set `allow_unsigned_macos=true` only when intentionally validating an unsigned macOS DMG.
 6. It runs the same desktop, Android runtime, email/session, Google Credential Manager, and extension gates used by publication.
 7. It builds the signed Android release APK and the signed/notarized desktop artifacts, verifies the exact production asset set, verifies that the target tag/release does not already exist, generates `SHA256SUMS.txt`, and uploads a temporary Actions artifact named `free-ai-release-candidate`.
 8. It does **not** create a Git tag and does **not** create or modify a GitHub Release.

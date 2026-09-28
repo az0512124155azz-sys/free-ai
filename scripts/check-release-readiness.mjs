@@ -49,9 +49,19 @@ for(const [text,label] of [
   ['name: Reject conflicting release modes','explicit release-mode conflict rejection'],
   ['Choose either validate_release or publish_release, not both.','conflicting release-mode failure'],
   ['release_validation:','non-publishing release-validation job'],
+  ["if: github.ref == 'refs/heads/main' && ((github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.validate_release == true && inputs.publish_release != true))",'release candidate validation runs automatically on trusted main pushes'],
+  ["if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'",'release mode guard also covers trusted main pushes'],
+  ["(github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true))",'signed Android release runs on trusted main pushes and explicit release dispatches'],
   ["inputs.validate_release == true && inputs.publish_release != true",'dry-run cannot publish when publish_release is selected'],
   ['name: Validate release candidate without publishing','release candidate validation step'],
   ['name: Upload validated release candidate','release candidate artifact upload'],
+  ['name: Load Android production signing','Android production signing loader'],
+  ['id-token: write','Android release signing OIDC permission'],
+  ['audience=free-ai-release-signing','dedicated release-signing OIDC audience'],
+  ['free-ai-release-signing-bundle','Supabase Vault release-signing broker'],
+  ['SECRET_ANDROID_RELEASE_KEYSTORE_BASE64','GitHub secret compatibility path'],
+  ['::add-mask::','release signing values are masked before environment export'],
+  ['ANDROID_RELEASE_EXPECTED_SHA1','Android release fingerprint enforcement'],
   ['name: free-ai-release-candidate','validated release candidate artifact'],
   ['release_credentials_status:','non-blocking production credential readiness job'],
   ['name: Production credential readiness','credential readiness job name'],
@@ -83,6 +93,12 @@ if(!validationJob.includes('SHA256SUMS.txt')){
 }
 if(workflow.includes('name: free-ai-android\n          path: release-assets')){
   fail('release job still downloads the debug Android artifact');
+}
+if(workflow.includes('cat "$bundle_response"')||workflow.includes('cat $bundle_response')){
+  fail('release-signing broker response must never be printed to logs');
+}
+if(!workflow.includes('rm -f "$bundle_response"')){
+  fail('release-signing broker response is not deleted after loading');
 }
 
 for(const [text,label] of [
