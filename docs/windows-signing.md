@@ -26,6 +26,8 @@ If `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are configured, electron-builder si
 
 A partially configured signing pair still fails closed.
 
+When the final workflow is started with `publish_release=true`, the same optional-signing behavior applies: a complete signing pair produces a signed installer, while no signing pair publishes the fully tested unsigned installer.
+
 ## Publisher trust
 
 Use a certificate issued by a trusted code-signing provider. Do not use a self-signed certificate for public distribution.
