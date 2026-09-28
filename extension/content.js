@@ -518,7 +518,7 @@
     const containers=[...document.querySelectorAll('[role="menu"],[role="listbox"],[role="dialog"],[class*="menu"],[class*="popover"]')];
     for(const container of containers){
       const context=cleanLabel(container.getAttribute('aria-label')||container.getAttribute('data-testid')||container.textContent||'');
-      if(!/tool|plugin|connector|connected app/i.test(context))continue;
+      if(!/tool|plugin|connector|connected app|apps?/i.test(context))continue;
       for(const el of container.querySelectorAll('[role="menuitem"],[role="option"],button,a'))add(controlLabel(el));
     }
     return [...found].slice(0,60);

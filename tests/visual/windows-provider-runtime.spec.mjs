@@ -88,8 +88,9 @@ async function mountChatGpt(page){
       <main style="padding:20px">
         <div id="prompt-textarea" contenteditable="true" role="textbox" style="min-height:60px;border:1px solid #888"></div>
         <button id="chatgpt-tools" aria-label="Tools" aria-expanded="false">Tools</button>
-        <div id="chatgpt-tool-menu" role="menu" aria-label="Tools" style="display:none">
+        <div id="chatgpt-tool-menu" role="menu" aria-label="Apps" style="display:none">
           <button id="gmail-tool" role="menuitem" data-testid="connector-gmail">Gmail</button>
+          <button id="custom-tool" role="menuitem">Acme Ops</button>
         </div>
         <button id="chatgpt-send" data-testid="send-button" aria-label="Send prompt">Send</button>
         <div data-message-author-role="assistant" id="chatgpt-response" style="display:block;min-height:20px"></div>
@@ -156,6 +157,7 @@ test('Browser provider bridge sends prompts and returns text plus generated medi
       handler({type:'freeai:scanCapabilities',provider:'chatgpt',probeModels:false,probeTools:true},{},resolve);
     }));
     expect(capabilities?.mcps).toContain('Gmail');
+    expect(capabilities?.mcps).toContain('Acme Ops');
 
     const chatgpt=await invokePrompt(page,{provider:'chatgpt',text:'summarize my mail',toolRequest:{mcp:'Gmail'}});
     expect(chatgpt?.error).toBeUndefined();
