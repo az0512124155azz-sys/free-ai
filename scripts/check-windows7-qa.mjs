@@ -162,7 +162,7 @@ has(workflow,'- id: windows_signing','Windows CI must preflight signing configur
 has(workflow,'WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}','Windows certificate material must come from GitHub Actions secrets.');
 has(workflow,'WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}','Windows certificate password must come from GitHub Actions secrets.');
 has(workflow,'Windows signing is only partially configured. Set both WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD','Partial Windows signing configuration must fail closed.');
-has(workflow,'Release validation/publishing requires Windows Authenticode signing.','Release validation and publishing must be blocked when Windows signing credentials are absent.');
+has(workflow,'Windows signing credentials are not configured. Continuing with an unsigned build; Windows signing is optional for Free AI releases.','Unsigned Windows releases must remain explicitly supported when no Authenticode certificate is configured.');
 has(workflow,'FREEAI_EXPECT_SIGNED: ${{ steps.windows_signing.outputs.enabled }}','Installer smoke must know whether signing was expected for this build.');
 has(installerSmoke,'function Assert-ValidAuthenticodeSignature','Windows installer smoke must include Authenticode verification.');
 has(installerSmoke,'Get-AuthenticodeSignature -LiteralPath $Path','Windows signing verification must use the platform Authenticode status.');
@@ -170,8 +170,8 @@ has(installerSmoke,"[string]$signature.Status -ne 'Valid'",'Windows signing veri
 has(installerSmoke,"Assert-ValidAuthenticodeSignature $installer.FullName 'Windows installer'",'Signed CI must verify the NSIS installer signature.');
 has(installerSmoke,"Assert-ValidAuthenticodeSignature $appExe 'Installed Free AI.exe'",'Signed CI must verify the installed executable signature.');
 has(windowsSigningGuide,'WIN_CSC_LINK','Windows signing guide must document the certificate secret.');
-has(windowsSigningGuide,'validate_release=true','Windows signing guide must document the production release-validation gate.');
-has(windowsSigningGuide,'publish_release=true','Windows signing guide must document the signed-release gate.');
+has(windowsSigningGuide,'optional','Windows signing guide must state that Authenticode is optional for Free AI releases.');
+has(windowsSigningGuide,'publish_release=true','Windows signing guide must still document publication behavior.');
 has(windowsSigningGuide,'Microsoft Artifact Signing','Windows signing guide must document the cloud-signing alternative without fake credentials.');
 has(installerSmoke,"@('/S', \"/D=$installDir\")",'Installer smoke must perform a silent NSIS clean install to an isolated directory.');
 has(installerSmoke,"Join-Path $installDir 'Free AI.exe'",'Installer smoke must verify the installed Free AI executable.');
