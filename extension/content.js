@@ -788,15 +788,15 @@
       return;
     }
     const selection=getSelection?.();
+    let inserted=false;
     try{
       const range=document.createRange();
       range.selectNodeContents(el);
       selection?.removeAllRanges();
       selection?.addRange(range);
-      document.execCommand('insertText',false,text);
-    }catch{
-      el.textContent=text;
-    }
+      inserted=document.execCommand('insertText',false,text)===true;
+    }catch{}
+    if(!inserted&&String(el.innerText||el.textContent||'')!==text)el.textContent=text;
     el.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:text}));
     el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
     el.dispatchEvent(new Event('change',{bubbles:true}));

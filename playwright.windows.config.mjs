@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir:'./tests/visual',
-  testMatch:/windows-(?:shell|sidebar-search|browser-composer)\.spec\.mjs$/,
+  testMatch:/windows-(?:shell|sidebar-search|browser-composer|provider-runtime)\.spec\.mjs$/,
   timeout:60_000,
   workers:1,
   fullyParallel:false,
