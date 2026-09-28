@@ -3,6 +3,11 @@ name: Build Free AI
 on:
   workflow_dispatch:
     inputs:
+      validate_release:
+        description: Validate production signing and release assets without publishing
+        required: false
+        type: boolean
+        default: false
       publish_release:
         description: Publish the final GitHub Release
         required: false
@@ -96,7 +101,7 @@ jobs:
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          REQUIRE_WINDOWS_SIGNING: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release == true }}
+          REQUIRE_WINDOWS_SIGNING: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}
         run: |
           $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)
           $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_KEY_PASSWORD)
@@ -106,7 +111,7 @@ jobs:
           }
 
           if ($env:REQUIRE_WINDOWS_SIGNING -eq 'true' -and -not $hasCertificate) {
-            throw 'Release publishing requires Windows Authenticode signing. Configure WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD before publishing.'
+            throw 'Release validation/publishing requires Windows Authenticode signing. Configure WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD first.'
           }
 
           $enabled = $hasCertificate.ToString().ToLowerInvariant()
@@ -130,7 +135,7 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          REQUIRE_MAC_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release == true }}
+          REQUIRE_MAC_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}
         run: |
           set -euo pipefail
 
@@ -215,7 +220,7 @@ jobs:
             exit 1
           fi
           if [[ "${REQUIRE_MAC_DISTRIBUTION:-false}" == true && ( "$signed" != true || "$notarized" != true ) ]]; then
-            echo "Release publishing requires both Developer ID signing and Apple notarization. Configure MAC_CSC_LINK/MAC_CSC_KEY_PASSWORD plus one complete notarization credential set." >&2
+            echo "Release validation/publishing requires both Developer ID signing and Apple notarization. Configure MAC_CSC_LINK/MAC_CSC_KEY_PASSWORD plus one complete notarization credential set." >&2
             exit 1
           fi
 
@@ -467,7 +472,7 @@ jobs:
         run: cd android && ./gradlew assembleDebug
 
       - name: Validate Android release-signing pipeline
-        if: github.event_name != 'workflow_dispatch' || inputs.publish_release != true
+        if: github.event_name != 'workflow_dispatch' || (inputs.validate_release != true && inputs.publish_release != true)
         shell: bash
         run: |
           set -euo pipefail
@@ -517,7 +522,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
 
       - name: Build signed Android release APK
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+        if: github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)
         shell: bash
         env:
           ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
@@ -613,7 +618,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload signed Android release APK
-        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+        if: github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)
         uses: actions/upload-artifact@v4
         with:
           name: free-ai-android-release
@@ -690,7 +695,7 @@ jobs:
 
   android_auth_runtime:
     name: Android auth runtime (email/session)
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true))
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)))
     needs: android
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -977,6 +982,105 @@ jobs:
           path: free-ai-extension.zip
           if-no-files-found: error
 
+
+  release_validation:
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.validate_release == true && inputs.publish_release != true
+    needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows installer
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-windows
+          path: release-assets
+
+      - name: Download macOS installer
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-macos
+          path: release-assets
+
+      - name: Download Linux installer
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-linux
+          path: release-assets
+
+      - name: Download signed Android APK
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-android-release
+          path: release-assets
+
+      - name: Download Chrome extension
+        uses: actions/download-artifact@v4
+        with:
+          name: free-ai-chrome-extension
+          path: release-assets
+
+      - name: Validate release candidate without publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="v$VERSION"
+
+          expected=(
+            "Free-AI-Windows-$VERSION.exe"
+            "Free-AI-macOS-$VERSION.dmg"
+            "Free-AI-Linux-$VERSION.AppImage"
+            "Free-AI-Android-$VERSION.apk"
+            "free-ai-extension.zip"
+          )
+
+          for name in "${expected[@]}"; do
+            test -f "release-assets/$name" || {
+              echo "Missing expected release candidate asset: $name" >&2
+              exit 1
+            }
+          done
+
+          mapfile -d '' files < <(find release-assets -type f -print0)
+          if [[ "${#files[@]}" -ne "${#expected[@]}" ]]; then
+            echo "Unexpected release candidate asset count: ${#files[@]} (expected ${#expected[@]})." >&2
+            find release-assets -type f -print
+            exit 1
+          fi
+
+          if find release-assets -type f \( -iname '*debug*' -o -name 'android-oauth-info.txt' \) | grep -q .; then
+            echo "Debug/QA Android files must never enter a production release candidate." >&2
+            exit 1
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Increment package.json before validating another release candidate." >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Existing releases are immutable for this workflow." >&2
+            exit 1
+          fi
+
+          (
+            cd release-assets
+            sha256sum "${expected[@]}" > SHA256SUMS.txt
+          )
+
+          echo "Release candidate $TAG validated without creating a tag or GitHub Release."
+
+      - name: Upload validated release candidate
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-release-candidate
+          path: release-assets/*
+          if-no-files-found: error
 
   release:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
