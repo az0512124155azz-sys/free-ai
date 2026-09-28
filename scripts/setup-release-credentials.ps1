@@ -8,6 +8,16 @@ param(
     [string]$Repository = 'az0512124155azz-sys/free-ai',
 
     [string]$CertificatePath,
+
+    [ValidateSet('Pfx', 'ArtifactSigning')]
+    [string]$WindowsSigningMode = 'Pfx',
+    [string]$AzureTenantId,
+    [string]$AzureClientId,
+    [string]$AzureSigningEndpoint,
+    [string]$AzureSigningAccount,
+    [string]$AzureSigningProfile,
+    [string]$AzureSigningPublisher,
+
     [string]$KeystorePath,
     [string]$KeyAlias,
     [switch]$GenerateAndroidKeystore,
@@ -202,30 +212,75 @@ if (-not $DryRun) {
 
 switch ($Target) {
     'Windows' {
-        $certificate = Resolve-InputFile -Path $CertificatePath -Extensions @('.pfx', '.p12') -Label 'Windows code-signing certificate'
-        $password = Read-SecretPlainText 'Windows certificate password'
-        try {
-            $signingCertificate = Get-PrivateKeyCertificate -Path $certificate -Password $password
+        if ($WindowsSigningMode -eq 'Pfx') {
+            $certificate = Resolve-InputFile -Path $CertificatePath -Extensions @('.pfx', '.p12') -Label 'Windows code-signing certificate'
+            $password = Read-SecretPlainText 'Windows certificate password'
+            try {
+                $signingCertificate = Get-PrivateKeyCertificate -Path $certificate -Password $password
 
-            if ($signingCertificate.PublicKey.Oid.Value -ne '1.2.840.113549.1.1.1') {
-                throw 'Windows public distribution requires an RSA code-signing certificate for Smart App Control compatibility.'
+                if ($signingCertificate.PublicKey.Oid.Value -ne '1.2.840.113549.1.1.1') {
+                    throw 'Windows public distribution requires an RSA code-signing certificate for Smart App Control compatibility.'
+                }
+
+                Write-Host "Validated Windows certificate:"
+                Write-Host "  Subject:    $($signingCertificate.Subject)"
+                Write-Host "  Thumbprint: $($signingCertificate.Thumbprint)"
+                Write-Host "  Expires:    $($signingCertificate.NotAfter.ToString('u'))"
+
+                $base64 = Convert-FileToBase64 -Path $certificate
+                if ($base64.Length -gt 8192) {
+                    throw 'The base64 Windows certificate exceeds 8192 characters. Re-export the PFX without unnecessary certificate-chain entries or use Microsoft Artifact Signing.'
+                }
+                Set-RepositorySecret -Name 'WIN_CSC_LINK' -Value $base64
+                Set-RepositorySecret -Name 'WIN_CSC_KEY_PASSWORD' -Value $password
+                $base64 = $null
             }
-
-            Write-Host "Validated Windows certificate:"
-            Write-Host "  Subject:    $($signingCertificate.Subject)"
-            Write-Host "  Thumbprint: $($signingCertificate.Thumbprint)"
-            Write-Host "  Expires:    $($signingCertificate.NotAfter.ToString('u'))"
-
-            $base64 = Convert-FileToBase64 -Path $certificate
-            if ($base64.Length -gt 8192) {
-                throw 'The base64 Windows certificate exceeds 8192 characters. Re-export the PFX without unnecessary certificate-chain entries or use a cloud/HSM signing path supported by electron-builder.'
+            finally {
+                $password = $null
             }
-            Set-RepositorySecret -Name 'WIN_CSC_LINK' -Value $base64
-            Set-RepositorySecret -Name 'WIN_CSC_KEY_PASSWORD' -Value $password
-            $base64 = $null
         }
-        finally {
-            $password = $null
+        else {
+            $artifactSigningFields = [ordered]@{
+                AZURE_TENANT_ID = $AzureTenantId
+                AZURE_CLIENT_ID = $AzureClientId
+                WIN_AZURE_SIGN_ENDPOINT = $AzureSigningEndpoint
+                WIN_AZURE_SIGN_ACCOUNT = $AzureSigningAccount
+                WIN_AZURE_SIGN_PROFILE = $AzureSigningProfile
+                WIN_AZURE_SIGN_PUBLISHER = $AzureSigningPublisher
+            }
+
+            $missing = @(
+                $artifactSigningFields.GetEnumerator() |
+                    Where-Object { [string]::IsNullOrWhiteSpace([string]$_.Value) } |
+                    ForEach-Object { $_.Key }
+            )
+            if ($missing.Count -gt 0) {
+                throw ('Artifact Signing setup is missing required values: ' + ($missing -join ', '))
+            }
+
+            $endpointUri = $null
+            if (-not [Uri]::TryCreate($AzureSigningEndpoint.Trim(), [UriKind]::Absolute, [ref]$endpointUri) -or $endpointUri.Scheme -ne 'https') {
+                throw 'AzureSigningEndpoint must be an absolute HTTPS Artifact Signing endpoint.'
+            }
+
+            $clientSecret = Read-SecretPlainText 'Microsoft Entra application client secret'
+            try {
+                Write-Host 'Configuring Microsoft Artifact Signing for Windows:'
+                Write-Host "  Endpoint:    $($AzureSigningEndpoint.Trim())"
+                Write-Host "  Account:     $($AzureSigningAccount.Trim())"
+                Write-Host "  Profile:     $($AzureSigningProfile.Trim())"
+                Write-Host "  Publisher:   $($AzureSigningPublisher.Trim())"
+                Write-Host "  Tenant ID:   $($AzureTenantId.Trim())"
+                Write-Host "  Client ID:   $($AzureClientId.Trim())"
+
+                foreach ($entry in $artifactSigningFields.GetEnumerator()) {
+                    Set-RepositorySecret -Name $entry.Key -Value ([string]$entry.Value).Trim()
+                }
+                Set-RepositorySecret -Name 'AZURE_CLIENT_SECRET' -Value $clientSecret
+            }
+            finally {
+                $clientSecret = $null
+            }
         }
     }
 
