@@ -30,7 +30,7 @@ if(renderer.includes("if(isWindowsDesktop)setSidebarSearch('');setSidebarSearchO
 if(renderer.includes("{mode==='work'&&!isAndroidNative&&<MenuRow icon={Paperclip} label=\"Attach files\"")){
   fail('Linux Work duplicate Attach files action returned');
 }
-if(!renderer.includes("label={isWindowsDesktop?'Files':'Files and folders'}")){
+if(!renderer.includes("label={isChatDesktop?'Files':'Files and folders'}")){
   fail('Linux Files and folders action is missing');
 }
 
