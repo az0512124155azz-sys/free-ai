@@ -237,7 +237,7 @@ jobs:
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
-          REQUIRE_WINDOWS_SIGNING: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}
+          REQUIRE_WINDOWS_SIGNING: false
         run: |
           $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)
           $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_KEY_PASSWORD)
@@ -246,16 +246,12 @@ jobs:
             throw 'Windows signing is only partially configured. Set both WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD, or neither for an unsigned development build.'
           }
 
-          if ($env:REQUIRE_WINDOWS_SIGNING -eq 'true' -and -not $hasCertificate) {
-            throw 'Release validation/publishing requires Windows Authenticode signing. Configure WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD first.'
-          }
-
           $enabled = $hasCertificate.ToString().ToLowerInvariant()
           "enabled=$enabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
           if ($hasCertificate) {
             Write-Host 'Windows Authenticode signing credentials detected. electron-builder will sign the Windows executable and NSIS installer.'
           } else {
-            Write-Host 'Windows signing credentials are not configured. Continuing with an unsigned development/CI build.'
+            Write-Host 'Windows signing credentials are not configured. Continuing with an unsigned build; Windows signing is optional for Free AI releases.'
           }
 
       - id: macos_distribution
