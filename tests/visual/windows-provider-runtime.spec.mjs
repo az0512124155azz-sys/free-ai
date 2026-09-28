@@ -84,9 +84,21 @@ async function mountChatGpt(page){
     document.body.innerHTML=`
       <main style="padding:20px">
         <div id="prompt-textarea" contenteditable="true" role="textbox" style="min-height:60px;border:1px solid #888"></div>
+        <button id="chatgpt-tools" aria-label="Tools" aria-expanded="false">Tools</button>
+        <div id="chatgpt-tool-menu" role="menu" aria-label="Tools" style="display:none">
+          <button id="gmail-tool" role="menuitem" data-testid="connector-gmail">Gmail</button>
+        </div>
         <button id="chatgpt-send" data-testid="send-button" aria-label="Send prompt">Send</button>
         <div data-message-author-role="assistant" id="chatgpt-response" style="display:block;min-height:20px"></div>
       </main>`;
+    document.querySelector('#chatgpt-tools').addEventListener('click',event=>{
+      const menu=document.querySelector('#chatgpt-tool-menu');
+      menu.style.display='block';
+      event.currentTarget.setAttribute('aria-expanded','true');
+    });
+    document.querySelector('#gmail-tool').addEventListener('click',event=>{
+      event.currentTarget.dataset.activated='true';
+    });
     document.querySelector('#chatgpt-send').addEventListener('click',()=>{
       setTimeout(()=>{
         const response=document.querySelector('#chatgpt-response');
@@ -136,8 +148,15 @@ test('Browser provider bridge sends prompts and returns text plus generated medi
     expect(mediaOnly.media[0].dataUrl).toMatch(/^data:image\/png;base64,/);
 
     await mountChatGpt(page);
-    const chatgpt=await invokePrompt(page,{provider:'chatgpt',text:'create another runtime image'});
+    const capabilities=await page.evaluate(()=>new Promise(resolve=>{
+      const handler=globalThis.__freeAiMessageHandlers.at(-1);
+      handler({type:'freeai:scanCapabilities',provider:'chatgpt',probeModels:false,probeTools:true},{},resolve);
+    }));
+    expect(capabilities?.mcps).toContain('Gmail');
+
+    const chatgpt=await invokePrompt(page,{provider:'chatgpt',text:'summarize my mail',toolRequest:{mcp:'Gmail'}});
     expect(chatgpt?.error).toBeUndefined();
+    expect(await page.locator('#gmail-tool').getAttribute('data-activated')).toBe('true');
     expect(chatgpt?.text).toContain('ChatGPT runtime reply');
     expect(chatgpt?.media).toHaveLength(1);
     expect(chatgpt.media[0].dataUrl).toMatch(/^data:image\/png;base64,/);

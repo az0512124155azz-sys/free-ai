@@ -2458,7 +2458,8 @@ function App(){
         mcpDraft={mcpDraft} setMcpDraft={setMcpDraft} mcpError={mcpError}
         onAddMcp={addMcpConnection} onRemoveMcp={removeMcpConnection} onRefreshMcp={refreshMcpConnections}
         onBack={()=>setPage('chat')} onExplore={()=>setPage('explore')} onOpenPublicDirectory={openPublicPluginDirectory}
-        onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
+        onUseProviderTool={tool=>{setSelectedTool(tool);setMode('chat');setPage('chat');setPlusMenu(false);setMobileNavOpen(false)}}
+        onRefresh={()=>{window.desktopApi?.scanProviders?.({probeTools:true}).catch(()=>{});refreshMcpConnections().catch(()=>{})}}
       />}
       {page==='explore'&&<ExplorePage
         tools={mcpTools} chats={chats} directMcpConnections={mcpConnections}
@@ -3373,7 +3374,7 @@ function pluginSearchMatch(values,needle){
   return values.filter(Boolean).join(' ').toLowerCase().includes(needle);
 }
 
-function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,onRemoveMcp,onToggleMcp,selectedMcpIds=[]}){
+function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,onRemoveMcp,onToggleMcp,onUseProviderTool,selectedMcpIds=[]}){
   if(!item)return null;
   const direct=item.kind==='direct'?item.connection:null;
   const publicItem=item.kind==='public'?item.entry:null;
@@ -3436,13 +3437,14 @@ function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,on
       </>}
 
       {hint&&<>
-        <div className="pluginDetailsStatusRow"><span className="warningBadge">Unverified hint</span><span>{hint.ownerName||'Browser provider'}</span></div>
-        <div className="pluginDetailsBlock"><b>Detected label</b><span>{hint.mcp}</span></div>
+        <div className="pluginDetailsStatusRow"><span className="warningBadge">Provider-managed</span><span>{hint.ownerName||'Browser provider'}</span></div>
+        <div className="pluginDetailsBlock"><b>Detected app</b><span>{hint.mcp}</span></div>
         <div className="pluginDetailsBlock">
-          <b>What Free AI knows</b>
-          <span>This label was observed in a connected AI provider's browser UI.</span>
-          <small>It is not proof that an MCP server is reachable, that a tool exists, or that the provider used it. Provider authorization and permissions remain outside Free AI.</small>
+          <b>How it works</b>
+          <span>Free AI detected this app/tool in the connected provider UI and can ask that provider tab to activate it for the next Chat request.</span>
+          <small>Authorization and permissions stay with the provider account. Free AI only reports the provider response and never claims the app ran unless the provider returns a result.</small>
         </div>
+        <div className="pluginDetailsActions"><button className="primaryAction" onClick={()=>onUseProviderTool?.(hint)}>Use in Chat</button></div>
       </>}
     </div>
   </div>;
@@ -3458,10 +3460,10 @@ function PublicDirectoryCard({entry,onOpen}){
 
 function PluginsPage({
   tools,connected,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,
-  mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh,onExplore,onOpenPublicDirectory
+  mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh,onExplore,onOpenPublicDirectory,onUseProviderTool
 }){
   const [query,setQuery]=useState('');
-  const [view,setView]=useState(()=>isNative?'discover':'configured');
+  const [view,setView]=useState(()=>isNative?'discover':'hints');
   const [category,setCategory]=useState('All');
   const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
@@ -3518,7 +3520,7 @@ function PluginsPage({
           </section>}
         </div>
         {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
-          onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+          onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} onUseProviderTool={tool=>{onUseProviderTool?.(tool);setDetails(null)}} selectedMcpIds={selectedMcpIds}/>}
       </div>;
     }
     return <div className="contentPage">
@@ -3571,7 +3573,7 @@ function PluginsPage({
 
       <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isChatDesktop?'Search configured apps, public listings, or hints':'Search provider hints'}/></div>
       {isChatDesktop&&<div className="directoryTabs" role="tablist" aria-label="Plugin directory sections">
-        {[['configured','Configured'],['discover','Discover'],['hints','Provider hints'],['providers','AI providers']].map(([id,label])=>
+        {[['hints','Provider apps'],['configured','Direct MCP'],['discover','Discover'],['providers','AI providers']].map(([id,label])=>
           <button key={id} role="tab" aria-selected={view===id} className={view===id?'active':''} onClick={()=>setView(id)}>{label}</button>
         )}
       </div>}
@@ -3625,11 +3627,11 @@ function PluginsPage({
       </section>}
 
       {(!isChatDesktop||view==='hints')&&<section className="pluginSection">
-        <div className="sectionHeading"><div><h2>Provider-managed connector hints</h2><small>Labels observed in provider UI; not direct MCP verification.</small></div><span className="pluginMeta">{visibleTools.length} hints</span></div>
-        <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Unverified</b><span>These labels do not prove a tool exists, that it is connected, or that the provider used it. Free AI never promotes them to callable MCP tools.</span></div></div>
+        <div className="sectionHeading"><div><h2>Apps from connected providers</h2><small>Detected directly from the UI of connected ChatGPT, Claude, Gemini, and other provider tabs.</small></div><span className="pluginMeta">{visibleTools.length} apps</span></div>
+        <div className="pluginHint directoryNotice"><Chrome size={20}/><div><b>Uses your existing provider connection</b><span>Select an app to route the next Chat request through the provider tab that exposed it. Provider authorization and permissions stay with that provider.</span></div></div>
         <div className="hintGrid">
-          {visibleTools.map(t=><button key={t.key} className="hintCard" onClick={()=>setDetails({kind:'hint',hint:t})}><span className="pluginIcon"><Plug size={16}/></span><span><b>{t.mcp}</b><small>{t.ownerName||'Provider UI'} · unverified</small></span><ChevronRight size={14}/></button>)}
-          {!visibleTools.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{query?'No provider hint matches':'No provider-managed hints detected'}</b><span>Hints appear only when the browser extension can observe them in a connected provider UI.</span></div>}
+          {visibleTools.map(t=><button key={t.key} className="hintCard" onClick={()=>setDetails({kind:'hint',hint:t})}><span className="pluginIcon"><Plug size={16}/></span><span><b>{t.mcp}</b><small>{t.ownerName||'Provider UI'} · available in provider</small></span><ChevronRight size={14}/></button>)}
+          {!visibleTools.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{query?'No provider app matches':'No provider apps detected yet'}</b><span>Open the provider app/tool menu once, then press Refresh connections. Free AI only shows labels it can actually observe in that provider tab.</span></div>}
         </div>
       </section>}
 
@@ -3647,7 +3649,7 @@ function PluginsPage({
     </div>
 
     {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
-      onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+      onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} onUseProviderTool={tool=>{onUseProviderTool?.(tool);setDetails(null)}} selectedMcpIds={selectedMcpIds}/>}
   </div>;
 }
 

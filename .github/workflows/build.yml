@@ -543,6 +543,10 @@ jobs:
         shell: pwsh
         run: npx playwright test --config=playwright.windows.config.mjs
 
+      - name: Run Windows interaction audit
+        shell: pwsh
+        run: npx playwright test --config=playwright.windows.audit.config.mjs
+
       - name: Upload Windows visual evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -551,6 +555,10 @@ jobs:
           path: |
             tests/visual/baselines/*.png
             artifacts/windows-visual/**
+            artifacts/windows-known-fixes/**
+            artifacts/windows-w5a/**
+            artifacts/windows-w5b/**
+            artifacts/windows-w5c/**
           if-no-files-found: error
 
   android:
