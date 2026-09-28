@@ -62,6 +62,7 @@ for(const [text,label] of [
   ['SECRET_ANDROID_RELEASE_KEYSTORE_BASE64','GitHub secret compatibility path'],
   ['::add-mask::','release signing values are masked before environment export'],
   ['ANDROID_RELEASE_EXPECTED_SHA1','Android release fingerprint enforcement'],
+  ["awk -F': ' '/certificate SHA-1 digest/{print $NF; exit}'",'Android apksigner SHA-1 parser uses the final field'],
   ['name: free-ai-release-candidate','validated release candidate artifact'],
   ['release_credentials_status:','non-blocking production credential readiness job'],
   ['name: Production credential readiness','credential readiness job name'],
