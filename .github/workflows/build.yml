@@ -32,7 +32,7 @@ permissions:
 
 jobs:
   release_mode_guard:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -662,7 +662,7 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
 
       - name: Load Android production signing
-        if: github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true))
         shell: bash
         env:
           SECRET_ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
@@ -762,7 +762,7 @@ jobs:
           fi
 
       - name: Build signed Android release APK
-        if: github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true))
         shell: bash
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
@@ -853,7 +853,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload signed Android release APK
-        if: github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true)
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true))
         uses: actions/upload-artifact@v4
         with:
           name: free-ai-android-release
@@ -1219,7 +1219,7 @@ jobs:
 
 
   release_validation:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.validate_release == true && inputs.publish_release != true
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.validate_release == true && inputs.publish_release != true))
     needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
     runs-on: ubuntu-latest
     permissions:
