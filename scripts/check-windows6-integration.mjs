@@ -93,6 +93,15 @@ has(source,"window.desktopApi?.saveDataFile",'Windows data export must use the n
 
 has(source,'webSearchEnabled','Web Search state is missing.');
 has(source,'function MessageSources','Source cards are missing.');
+has(contentScript,"function responseSnapshot(config,provider='')",'Structured provider response capture is missing.');
+has(contentScript,'function responseMedia(root)','Provider generated-media extraction is missing.');
+has(contentScript,'return {...now,media:await materializePageMedia(now.media)};','Media-only provider responses must complete without requiring assistant text.');
+has(background,'async function hydrateResponseMedia(items)','Browser Bridge response-media hydration is missing.');
+has(main,'function persistResponseMedia(items)','Desktop durable assistant-media persistence is missing.');
+has(preload,'readChatMedia','Persisted assistant media is not exposed through the safe preload bridge.');
+has(source,'function AssistantMedia({items=[]})','Assistant media renderer is missing.');
+has(source,'media:Array.isArray(result.value?.media)','Parallel browser responses must retain generated media.');
+has(source,'const resultMedia=Array.isArray(result?.media)','Normal browser responses must retain generated media.');
 has(source,'deepResearchEnabled','Deep Research state is missing.');
 has(source,'function ResearchSetupDialog','Research-plan review dialog is missing.');
 has(source,'Only these sites','Research Only-sites control is missing.');

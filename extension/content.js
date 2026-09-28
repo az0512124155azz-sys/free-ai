@@ -26,6 +26,139 @@
     return '';
   }
 
+  function answerElements(config,provider=''){
+    for(const selector of config?.answers||[]){
+      const els=[...document.querySelectorAll(selector)].filter(visible);
+      if(els.length)return els;
+    }
+    if(provider==='chatgpt'){
+      const turns=[...document.querySelectorAll('article[data-testid^="conversation-turn-"],article[data-testid*="conversation-turn"]')].filter(visible);
+      const assistants=[];
+      for(const turn of turns){
+        const roleNode=turn.querySelector('[data-message-author-role="assistant"],[data-testid*="assistant" i]');
+        if(roleNode&&visible(roleNode))assistants.push(roleNode);
+      }
+      if(assistants.length)return assistants;
+    }
+    return [];
+  }
+
+  function responseScope(root){
+    return root?.closest?.('article[data-testid^="conversation-turn-"],article[data-testid*="conversation-turn"],article,[role="article"],[data-testid*="message"]')||root||null;
+  }
+
+  function responseMimeFromUrl(url,fallback='application/octet-stream'){
+    const value=String(url||'').toLowerCase().split(/[?#]/)[0];
+    if(value.endsWith('.png'))return 'image/png';
+    if(value.endsWith('.jpg')||value.endsWith('.jpeg'))return 'image/jpeg';
+    if(value.endsWith('.webp'))return 'image/webp';
+    if(value.endsWith('.gif'))return 'image/gif';
+    if(value.endsWith('.svg'))return 'image/svg+xml';
+    if(value.endsWith('.pdf'))return 'application/pdf';
+    if(value.endsWith('.docx'))return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    if(value.endsWith('.xlsx'))return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    if(value.endsWith('.pptx'))return 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+    if(value.endsWith('.zip'))return 'application/zip';
+    if(value.endsWith('.csv'))return 'text/csv';
+    if(value.endsWith('.txt'))return 'text/plain';
+    return fallback;
+  }
+
+  function responseNameFromUrl(url,fallback){
+    try{
+      const parsed=new URL(String(url||''),location.href);
+      const tail=decodeURIComponent(parsed.pathname.split('/').filter(Boolean).at(-1)||'').trim();
+      return tail.slice(0,140)||fallback;
+    }catch{return fallback}
+  }
+
+  function responseMedia(root){
+    const scope=responseScope(root);
+    if(!scope)return [];
+    const items=[];
+    const seen=new Set();
+    const add=item=>{
+      const key=String(item?.url||item?.dataUrl||'');
+      if(!key||seen.has(key))return;
+      seen.add(key);
+      items.push(item);
+    };
+    for(const img of scope.querySelectorAll?.('img[src],picture img[src]')||[]){
+      if(!visible(img))continue;
+      const src=String(img.currentSrc||img.src||img.getAttribute('src')||'').trim();
+      if(!/^(?:https?:|blob:|data:image/)/i.test(src))continue;
+      const rect=img.getBoundingClientRect();
+      const alt=cleanLabel(img.getAttribute('alt')||img.getAttribute('aria-label')||'');
+      const largeEnough=rect.width>=72&&rect.height>=72;
+      if(!largeEnough&&!/generated|image|photo|picture|illustration|art/i.test(alt))continue;
+      const mime=src.startsWith('data:')?String((src.match(/^data:([^;,]+)/i)||[])[1]||'image/png'):responseMimeFromUrl(src,'image/png');
+      add({
+        kind:'image',
+        url:src,
+        name:(alt||responseNameFromUrl(src,'Generated image')).slice(0,140),
+        mime,
+        width:Math.max(0,Math.round(img.naturalWidth||rect.width||0)),
+        height:Math.max(0,Math.round(img.naturalHeight||rect.height||0))
+      });
+      if(items.length>=8)break;
+    }
+    if(items.length<8){
+      const fileRe=/\.(?:png|jpe?g|webp|gif|pdf|docx?|xlsx?|pptx?|zip|csv|txt)(?:$|[?#])/i;
+      for(const link of scope.querySelectorAll?.('a[href]')||[]){
+        const href=String(link.href||link.getAttribute('href')||'').trim();
+        if(!/^(?:https?:|blob:|data:)/i.test(href))continue;
+        if(!link.hasAttribute('download')&&!fileRe.test(href))continue;
+        const mime=responseMimeFromUrl(href);
+        const kind=mime.startsWith('image/')?'image':'file';
+        add({
+          kind,
+          url:href,
+          name:(cleanLabel(link.getAttribute('download')||link.innerText||link.textContent||'')||responseNameFromUrl(href,kind==='image'?'Generated image':'Attachment')).slice(0,140),
+          mime
+        });
+        if(items.length>=8)break;
+      }
+    }
+    return items.slice(0,8);
+  }
+
+  function responseSnapshot(config,provider=''){
+    const elements=answerElements(config,provider);
+    const root=elements.at(-1)||null;
+    const text=String(root?.innerText||root?.textContent||'').trim();
+    const media=responseMedia(root);
+    const signature=[text,...media.map(item=>[item.kind,item.url,item.name,item.width||0,item.height||0].join('|'))].join('\n');
+    return {root,count:elements.length,text,media,signature};
+  }
+
+  async function pageMediaDataUrl(url){
+    const value=String(url||'');
+    if(!value.startsWith('blob:'))return '';
+    try{
+      const response=await fetch(value);
+      if(!response.ok)return '';
+      const blob=await response.blob();
+      if(!blob.size||blob.size>16*1024*1024)return '';
+      return await new Promise(resolve=>{
+        const reader=new FileReader();
+        reader.onload=()=>resolve(typeof reader.result==='string'?reader.result:'');
+        reader.onerror=()=>resolve('');
+        reader.readAsDataURL(blob);
+      });
+    }catch{return ''}
+  }
+
+  async function materializePageMedia(items){
+    const out=[];
+    for(const raw of Array.isArray(items)?items.slice(0,8):[]){
+      const item={...raw};
+      if(String(item.url||'').startsWith('data:'))item.dataUrl=item.url;
+      else if(String(item.url||'').startsWith('blob:'))item.dataUrl=await pageMediaDataUrl(item.url);
+      out.push(item);
+    }
+    return out;
+  }
+
   const genericConfig={
     inputs:['textarea:not([disabled])','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
     send:['button[type="submit"]','button[aria-label*="Send" i]','button[data-testid*="send" i]','button[data-test-id*="send" i]'],
@@ -570,12 +703,8 @@
       : 'This provider tab does not expose Deep Research in its current composer.');
   }
 
-  function latestAnswerElement(config){
-    for(const selector of config?.answers||[]){
-      const els=[...document.querySelectorAll(selector)].filter(visible);
-      if(els.length)return els.at(-1);
-    }
-    return null;
+  function latestAnswerElement(config,provider=''){
+    return answerElements(config,provider).at(-1)||null;
   }
 
   function unwrapSourceUrl(raw){
@@ -596,8 +725,8 @@
     }catch{return ''}
   }
 
-  function extractResponseSources(config){
-    const answer=latestAnswerElement(config);
+  function extractResponseSources(config,provider=''){
+    const answer=latestAnswerElement(config,provider);
     if(!answer)return [];
     const roots=[answer];
     const article=answer.closest?.('article,[role="article"],[data-testid*="message"]');
@@ -836,12 +965,13 @@
     return '';
   }
 
-  async function waitForAnswer(c,before,requestId,{deepResearch=false}={}){
-    let stable='';
+  async function waitForAnswer(c,before,requestId,{deepResearch=false,provider=''}={}){
+    let stableSignature='';
     let stableCount=0;
     let lastActivity='';
+    let lastStreamText='';
     const iterations=deepResearch?3600:360;
-    const requiredStable=deepResearch?24:8;
+    const requiredStable=deepResearch?24:4;
     for(let i=0;i<iterations;i++){
       await sleep(500);
       if(deepResearch&&requestId&&i%4===0){
@@ -851,15 +981,22 @@
           chrome.runtime.sendMessage({type:'freeai:activity',id:requestId,text:activity}).catch(()=>{});
         }
       }
-      const now=lastText(c.answers);
-      if(now&&now!==before){
-        if(now===stable) stableCount++;
-        else{
-          stable=now;stableCount=0;
-          if(requestId)chrome.runtime.sendMessage({type:'freeai:stream',id:requestId,text:now}).catch(()=>{});
+      const now=responseSnapshot(c,provider);
+      const changed=now.count>Number(before?.count||0)
+        ||(now.root&&before?.root&&now.root!==before.root)
+        ||now.signature!==String(before?.signature||'');
+      const hasPayload=!!(now.text||now.media.length);
+      if(changed&&hasPayload){
+        if(now.signature===stableSignature)stableCount++;
+        else{stableSignature=now.signature;stableCount=0}
+        if(requestId&&now.text&&now.text!==lastStreamText){
+          lastStreamText=now.text;
+          chrome.runtime.sendMessage({type:'freeai:stream',id:requestId,text:now.text}).catch(()=>{});
         }
         const stop=first(c.stop||[]);
-        if(stableCount>=requiredStable&&!stop) return now;
+        if(stableCount>=requiredStable&&!stop){
+          return {...now,media:await materializePageMedia(now.media)};
+        }
       }
     }
     throw new Error(deepResearch?'Deep Research timed out before the provider finished.':'Timed out waiting for the AI response.');
@@ -877,7 +1014,7 @@
     if(nativeTool==='deep-research')await activateProviderNativeTool('deep-research');
     const finalText=[...prefixes,String(text||'')].filter(Boolean).join('\n\n');
 
-    const before=lastText(c.answers);
+    const before=responseSnapshot(c,provider);
     await uploadAttachments(attachments);
     await setInput(input,finalText);
     await sleep(180);
@@ -892,12 +1029,13 @@
     }
 
     if(nativeTool==='deep-research'&&requestId)chrome.runtime.sendMessage({type:'freeai:activity',id:requestId,text:'Deep research started'}).catch(()=>{});
-    const answer=await waitForAnswer(c,before,requestId,{deepResearch:nativeTool==='deep-research'});
+    const answer=await waitForAnswer(c,before,requestId,{deepResearch:nativeTool==='deep-research',provider});
     return {
-      text:answer,
+      text:answer.text,
+      media:Array.isArray(answer.media)?answer.media:[],
       requestedTool:toolRequest?.mcp||null,
       requestedNativeTool:nativeTool||null,
-      sources:(nativeTool==='search'||nativeTool==='deep-research')?extractResponseSources(c):[]
+      sources:(nativeTool==='search'||nativeTool==='deep-research')?extractResponseSources(c,provider):[]
     };
   }
 

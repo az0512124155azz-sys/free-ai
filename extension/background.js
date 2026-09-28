@@ -92,6 +92,53 @@ async function imageUrlToDataUrl(url){
   }catch{return ''}
 }
 
+function responseMediaBytesToDataUrl(bytes,type){
+  let binary='';
+  const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk)binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));
+  return 'data:'+(type||'application/octet-stream')+';base64,'+btoa(binary);
+}
+
+async function hydrateResponseMedia(items){
+  const out=[];
+  let totalBytes=0;
+  const maxTotal=24*1024*1024;
+  for(const raw of Array.isArray(items)?items.slice(0,8):[]){
+    const item={
+      kind:raw?.kind==='file'?'file':'image',
+      name:String(raw?.name||'').slice(0,140),
+      mime:String(raw?.mime||'application/octet-stream').slice(0,120),
+      width:Number(raw?.width)||0,
+      height:Number(raw?.height)||0,
+      url:String(raw?.url||'')
+    };
+    let dataUrl=String(raw?.dataUrl||'');
+    if(!dataUrl&&item.url.startsWith('data:'))dataUrl=item.url;
+    if(!dataUrl&&/^https:\/\//i.test(item.url)){
+      try{
+        const response=await fetch(item.url,{credentials:'include',cache:'no-store'});
+        if(response.ok){
+          const bytes=new Uint8Array(await response.arrayBuffer());
+          if(bytes.length&&bytes.length<=16*1024*1024&&totalBytes+bytes.length<=maxTotal){
+            totalBytes+=bytes.length;
+            item.mime=String(response.headers.get('content-type')||item.mime).split(';')[0]||item.mime;
+            dataUrl=responseMediaBytesToDataUrl(bytes,item.mime);
+          }
+        }
+      }catch{}
+    }
+    if(dataUrl){
+      const approxBytes=Math.ceil(dataUrl.length*0.75);
+      if(approxBytes<=16*1024*1024&&totalBytes+approxBytes<=maxTotal){
+        if(!item.url.startsWith('https://'))totalBytes+=approxBytes;
+        item.dataUrl=dataUrl;
+      }
+    }
+    out.push(item);
+  }
+  return out;
+}
+
 async function providerIconDataUrl(tab){
   const urls=[];
   if(tab?.favIconUrl)urls.push(String(tab.favIconUrl));
@@ -499,10 +546,12 @@ function connect(){
 
     try{
       const result=await handlePrompt(m);
+      const media=await hydrateResponseMedia(result?.media);
       safeSend({
         type:'response',
         id:m.id,
         text:result?.text||'',
+        media,
         requestedTool:result?.requestedTool||null,
         requestedNativeTool:result?.requestedNativeTool||null,
         sources:Array.isArray(result?.sources)?result.sources:[]

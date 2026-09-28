@@ -334,6 +334,41 @@ function MessageSources({sources,onOpen}){
   </div>;
 }
 
+function AssistantMedia({items=[]}){
+  const media=Array.isArray(items)?items.filter(Boolean).slice(0,8):[];
+  const [resolved,setResolved]=useState({});
+  const key=media.map(item=>String(item.storageId||item.url||item.name||'')).join('|');
+  useEffect(()=>{
+    let active=true;
+    if(!media.length)return()=>{active=false};
+    for(const item of media){
+      const id=String(item.storageId||'');
+      if(!id||resolved[id]||!window.desktopApi?.readChatMedia)continue;
+      window.desktopApi.readChatMedia({storageId:id,mime:item.mime}).then(result=>{
+        if(!active||!result?.dataUrl)return;
+        setResolved(current=>current[id]?current:{...current,[id]:result.dataUrl});
+      }).catch(()=>{});
+    }
+    return()=>{active=false};
+  },[key]);
+  if(!media.length)return null;
+  return <div className="assistantMediaGrid" aria-label="Assistant media">
+    {media.map((item,index)=>{
+      const id=String(item.storageId||'');
+      const src=(id&&resolved[id])||String(item.url||'');
+      const isImage=item.kind!=='file'&&String(item.mime||'').startsWith('image/');
+      if(isImage)return <figure className="assistantMediaItem" key={(id||item.url||item.name||'media')+'::'+index}>
+        {src?<img src={src} alt={item.name||'Generated image'} loading="lazy"/>:<div className="assistantMediaLoading"><Image size={18}/><span>Loading image…</span></div>}
+        {item.name&&item.name!=='Generated image'&&<figcaption>{item.name}</figcaption>}
+      </figure>;
+      return <button type="button" className="assistantFileItem" key={(id||item.url||item.name||'file')+'::'+index}
+        disabled={!item.url} onClick={()=>item.url&&window.desktopApi?.openExternal?.(item.url)}>
+        <File size={16}/><span><b>{item.name||'Attachment'}</b><small>{item.mime||'File'}{item.persisted?' · saved with chat':''}</small></span>
+      </button>;
+    })}
+  </div>;
+}
+
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
@@ -1679,7 +1714,7 @@ function App(){
       const responses=settled.map((result,index)=>{
         const model=targets[index];
         const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
-        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,deepResearch:deepResearchEnabled,researchCompleted:deepResearchEnabled,research:deepResearchEnabled?{status:'complete',mode:'provider-native',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'}}:null,...meta};
+        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),media:Array.isArray(result.value?.media)?result.value.media.slice(0,8):[],sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,deepResearch:deepResearchEnabled,researchCompleted:deepResearchEnabled,research:deepResearchEnabled?{status:'complete',mode:'provider-native',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'}}:null,...meta};
         return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
       });
       const next=[...withUser,...responses];
@@ -1802,7 +1837,8 @@ function App(){
       const researchMeta=nativeDeepResearch
         ? (result?.research||{status:'complete',mode:'provider-native',title:userText.slice(0,96)||'Research report',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'},completedAt:new Date().toISOString()})
         : null;
-      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch,research:researchMeta}];
+      const resultMedia=Array.isArray(result?.media)?result.media.slice(0,8):[];
+      const next=[...withUser,{role:'assistant',text:finalText,media:resultMedia,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch,research:researchMeta}];
       setMessages(next);saveCurrentChat(next,model,{chatId:generationChatId||undefined,mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
       if(chatAttachmentPlatform&&!retryContext){
         for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
@@ -2349,6 +2385,7 @@ function App(){
                     {m.role!=='user'&&!isChatDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isChatDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody" dir="auto">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
+                    {isChatDesktop&&m.role==='assistant'&&<AssistantMedia items={m.media}/>}
                     {isChatDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
                       <Sparkles size={13}/><span>{m.streaming?(m.activity||'Deep research in progress…'):'Deep research report'}</span>{!m.streaming&&<Check size={13}/>}
                       {!m.streaming&&<div className="researchReportActions" aria-label="Export research report">
