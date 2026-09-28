@@ -18,13 +18,13 @@ The workflow deliberately supports two modes:
 
 A partial configuration (only one of the two secrets) fails the Windows job.
 
-## Release gates
+## Release behavior
 
-A workflow-dispatched production validation with `validate_release=true` and a public release with `publish_release=true` both require Windows signing credentials.
+Windows Authenticode is optional for Free AI releases.
 
-The validation mode is the safe first step: it exercises the real Authenticode certificate and signed installer verification, then uploads a temporary release-candidate artifact without creating a Git tag or GitHub Release. Publication remains a separate manual run.
+If `WIN_CSC_LINK` and `WIN_CSC_KEY_PASSWORD` are configured, electron-builder signs the Windows executable and NSIS installer and CI verifies both signatures. If neither secret is configured, validation and publication continue with the unsigned installer after the normal clean-install, launch, restart, protocol-registration, uninstall and visual-regression checks pass.
 
-This prevents both release validation and publication from accepting an unsigned Windows installer.
+A partially configured signing pair still fails closed.
 
 ## Publisher trust
 
