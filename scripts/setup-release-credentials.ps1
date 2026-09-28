@@ -344,6 +344,7 @@ switch ($Target) {
 
         $tempDirectory = Join-Path ([IO.Path]::GetTempPath()) ('free-ai-signing-' + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $tempDirectory | Out-Null
+        $generatedKeystoreValidated = $false
 
         $oldStore = $env:FREEAI_ANDROID_STOREPASS
         $oldKey = $env:FREEAI_ANDROID_KEYPASS
@@ -405,6 +406,7 @@ switch ($Target) {
             }
 
             $sha1 = $releaseCertificate.Thumbprint.ToUpperInvariant()
+            $generatedKeystoreValidated = $true
             $pairs = for ($i = 0; $i -lt $sha1.Length; $i += 2) { $sha1.Substring($i, 2) }
             $sha1Display = $pairs -join ':'
 
@@ -429,8 +431,13 @@ switch ($Target) {
         }
         catch {
             if ($GenerateAndroidKeystore -and (Test-Path -LiteralPath $keystore)) {
-                Remove-Item -LiteralPath $keystore -Force -ErrorAction SilentlyContinue
-                Write-Warning 'Removed the newly generated keystore because validation/setup did not complete successfully.'
+                if ($generatedKeystoreValidated) {
+                    Write-Warning "The generated keystore was validated and has been kept at $keystore. Fix the setup error and rerun the helper with -KeystorePath instead of generating a new key."
+                }
+                else {
+                    Remove-Item -LiteralPath $keystore -Force -ErrorAction SilentlyContinue
+                    Write-Warning 'Removed the newly generated keystore because key generation/validation did not complete successfully.'
+                }
             }
             throw
         }
