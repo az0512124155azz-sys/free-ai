@@ -154,7 +154,7 @@ capture() {
 
 press_back() {
   stabilize_system_ui
-  press_back
+  adb shell input keyevent 4
 }
 
 adb install -r "$APK" >/dev/null
