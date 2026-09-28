@@ -83,6 +83,11 @@ function Set-RepositorySecret {
         [Parameter(Mandatory = $true)][string]$Value
     )
 
+    $secretBytes = [Text.Encoding]::UTF8.GetByteCount($Value)
+    if ($secretBytes -gt (48 * 1024)) {
+        throw "GitHub Actions secret $Name is $secretBytes bytes; repository secrets are limited to 48 KB."
+    }
+
     if ($DryRun) {
         Write-Host "[dry-run] Would set GitHub Actions secret: $Name"
         return
@@ -211,6 +216,9 @@ switch ($Target) {
             Write-Host "  Expires:    $($signingCertificate.NotAfter.ToString('u'))"
 
             $base64 = Convert-FileToBase64 -Path $certificate
+            if ($base64.Length -gt 8192) {
+                throw 'The base64 Windows certificate exceeds 8192 characters. Re-export the PFX without unnecessary certificate-chain entries or use a cloud/HSM signing path supported by electron-builder.'
+            }
             Set-RepositorySecret -Name 'WIN_CSC_LINK' -Value $base64
             Set-RepositorySecret -Name 'WIN_CSC_KEY_PASSWORD' -Value $password
             $base64 = $null
