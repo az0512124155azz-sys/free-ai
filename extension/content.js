@@ -133,9 +133,9 @@
 
   async function pageMediaDataUrl(url){
     const value=String(url||'');
-    if(!value.startsWith('blob:'))return '';
+    if(!/^(?:blob:|https?:)/i.test(value))return '';
     try{
-      const response=await fetch(value);
+      const response=await fetch(value,{credentials:'include',cache:'no-store'});
       if(!response.ok)return '';
       const blob=await response.blob();
       if(!blob.size||blob.size>16*1024*1024)return '';
@@ -145,7 +145,19 @@
         reader.onerror=()=>resolve('');
         reader.readAsDataURL(blob);
       });
-    }catch{return ''}
+    }catch{
+      try{
+        const image=[...document.images].find(img=>String(img.currentSrc||img.src||'')===value&&img.complete&&img.naturalWidth>0);
+        if(!image)return '';
+        const canvas=document.createElement('canvas');
+        canvas.width=Math.min(image.naturalWidth,4096);
+        canvas.height=Math.min(image.naturalHeight,4096);
+        const context=canvas.getContext('2d');
+        if(!context)return '';
+        context.drawImage(image,0,0,canvas.width,canvas.height);
+        return canvas.toDataURL('image/png');
+      }catch{return ''}
+    }
   }
 
   async function materializePageMedia(items){

@@ -69,7 +69,10 @@ async function mountGemini(page,{mediaOnly=false}={}){
           response.append(p);
         }
         const img=document.createElement('img');
-        img.src=png;
+        const binary=atob(png.split(',')[1]);
+        const bytes=new Uint8Array(binary.length);
+        for(let index=0;index<binary.length;index++)bytes[index]=binary.charCodeAt(index);
+        img.src=URL.createObjectURL(new Blob([bytes],{type:'image/png'}));
         img.alt='Generated runtime image';
         img.style.width='220px';
         img.style.height='180px';
