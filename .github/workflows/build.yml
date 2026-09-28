@@ -45,6 +45,100 @@ jobs:
           fi
           echo "Release mode selection is valid."
 
+  release_credentials_status:
+    name: Production credential readiness
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+      WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+      MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+      APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+      ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+      ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+      ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+      ANDROID_RELEASE_EXPECTED_SHA1: ${{ secrets.ANDROID_RELEASE_EXPECTED_SHA1 }}
+      VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+      VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+      VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}
+    steps:
+      - name: Report production credential presence
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          count_present() {
+            local count=0
+            local name
+            for name in "$@"; do
+              [[ -n "${!name:-}" ]] && count=$((count+1))
+            done
+            printf '%s' "$count"
+          }
+
+          group_status() {
+            local present="$1"
+            local required="$2"
+            if [[ "$present" -eq 0 ]]; then
+              printf 'MISSING'
+            elif [[ "$present" -eq "$required" ]]; then
+              printf 'READY'
+            else
+              printf 'PARTIAL'
+            fi
+          }
+
+          windows_present="$(count_present WIN_CSC_LINK WIN_CSC_KEY_PASSWORD)"
+          windows_status="$(group_status "$windows_present" 2)"
+
+          mac_sign_present="$(count_present MAC_CSC_LINK MAC_CSC_KEY_PASSWORD)"
+          mac_sign_status="$(group_status "$mac_sign_present" 2)"
+          mac_api_present="$(count_present APPLE_API_KEY_BASE64 APPLE_API_KEY_ID APPLE_API_ISSUER)"
+          mac_apple_id_present="$(count_present APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID)"
+          if [[ "$mac_api_present" -eq 3 || "$mac_apple_id_present" -eq 3 ]]; then
+            mac_notary_status='READY'
+          elif [[ "$mac_api_present" -eq 0 && "$mac_apple_id_present" -eq 0 ]]; then
+            mac_notary_status='MISSING'
+          else
+            mac_notary_status='PARTIAL'
+          fi
+          if [[ "$mac_sign_status" == 'READY' && "$mac_notary_status" == 'READY' ]]; then
+            mac_status='READY'
+          elif [[ "$mac_sign_status" == 'MISSING' && "$mac_notary_status" == 'MISSING' ]]; then
+            mac_status='MISSING'
+          else
+            mac_status='PARTIAL'
+          fi
+
+          android_present="$(count_present             ANDROID_RELEASE_KEYSTORE_BASE64             ANDROID_RELEASE_STORE_PASSWORD             ANDROID_RELEASE_KEY_ALIAS             ANDROID_RELEASE_KEY_PASSWORD             ANDROID_RELEASE_EXPECTED_SHA1)"
+          android_status="$(group_status "$android_present" 5)"
+
+          auth_present="$(count_present VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY VITE_GOOGLE_WEB_CLIENT_ID)"
+          auth_status="$(group_status "$auth_present" 3)"
+
+          echo "release_credentials_status windows=$windows_status macos=$mac_status android=$android_status auth=$auth_status"
+          {
+            echo '### Production credential readiness (presence only)'
+            echo
+            echo '| Group | Status |'
+            echo '| --- | --- |'
+            echo "| Windows Authenticode | $windows_status |"
+            echo "| macOS Developer ID + notarization | $mac_status |"
+            echo "| Android production signing | $android_status |"
+            echo "| Supabase + Google public build config | $auth_status |"
+            echo
+            echo 'No secret values are printed by this job. A READY status only confirms that the required secret fields are non-empty; the production dry-run validates the credentials themselves.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   desktop:
     strategy:
       fail-fast: false
