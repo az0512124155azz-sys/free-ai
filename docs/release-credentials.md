@@ -21,12 +21,14 @@ You can validate local files without writing any GitHub secrets by adding `-DryR
 
 ## Windows Authenticode
 
-Free AI public Windows builds require:
+Windows Authenticode signing is optional for Free AI releases.
+
+If you choose to sign Windows builds, configure:
 
 - `WIN_CSC_LINK`
 - `WIN_CSC_KEY_PASSWORD`
 
-Use a trusted RSA code-signing certificate exported with its private key as `.pfx` or `.p12`.
+Use a trusted RSA code-signing certificate exported with its private key as `.pfx` or `.p12`. If neither secret is configured, the validated unsigned NSIS installer may still be published.
 
 Microsoft currently documents that Smart App Control accepts trusted RSA-signed applications and does not support ECC signatures for this check:
 
