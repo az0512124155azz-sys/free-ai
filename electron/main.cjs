@@ -6,7 +6,7 @@ const crypto=require('crypto');
 const {execFile}=require('child_process');
 const {WebSocketServer,WebSocket}=require('ws');
 const {runOwnedResearch,exportResearchReport,apiTransportUrl}=require('./research.cjs');
-const linuxDictation=require('./linux-dictation.cjs');
+const localDictation=require('./local-dictation.cjs');
 
 let win;
 let extensionSocket=null;
@@ -4374,22 +4374,34 @@ ipcMain.handle('dictation:start',async()=>{
   await startWindowsVoiceTyping();
   return {ok:true,mode:'windows-voice-typing'};
 });
-ipcMain.handle('dictation:linuxStatus',async event=>{
-  if(process.platform!=='linux')return {available:false,binaryReady:false,modelReady:false,localOnly:true};
-  if(!trustedMainRenderer(event.sender))throw new Error('Linux dictation status is only available to the Free AI renderer.');
-  return linuxDictation.status(app);
+ipcMain.handle('dictation:requestMicrophone',async event=>{
+  if(!trustedMainRenderer(event.sender))throw new Error('Microphone permission is only available to the Free AI renderer.');
+  if(process.platform!=='darwin')return {granted:true,status:'system-managed'};
+  const before=systemPreferences.getMediaAccessStatus('microphone');
+  if(before==='granted')return {granted:true,status:before};
+  const granted=await systemPreferences.askForMediaAccess('microphone');
+  return {granted,status:systemPreferences.getMediaAccessStatus('microphone')};
 });
-ipcMain.handle('dictation:linuxTranscribe',async(event,payload={})=>{
-  if(process.platform!=='linux')throw new Error('Local Whisper dictation is currently available on Linux.');
-  if(!trustedMainRenderer(event.sender))throw new Error('Linux dictation is only available to the Free AI renderer.');
+ipcMain.handle('dictation:localStatus',async event=>{
+  if(process.platform!=='linux'&&process.platform!=='darwin')return {available:false,binaryReady:false,modelReady:false,localOnly:true};
+  if(!trustedMainRenderer(event.sender))throw new Error('Local dictation status is only available to the Free AI renderer.');
+  const status=await localDictation.status(app);
+  return {
+    ...status,
+    microphoneStatus:process.platform==='darwin'?systemPreferences.getMediaAccessStatus('microphone'):'system-managed'
+  };
+});
+ipcMain.handle('dictation:localTranscribe',async(event,payload={})=>{
+  if(process.platform!=='linux'&&process.platform!=='darwin')throw new Error('Local Whisper dictation is currently available on Linux and macOS.');
+  if(!trustedMainRenderer(event.sender))throw new Error('Local dictation is only available to the Free AI renderer.');
   const raw=payload?.wav;
   let wav;
   if(Buffer.isBuffer(raw))wav=raw;
   else if(raw instanceof Uint8Array)wav=Buffer.from(raw);
   else if(raw instanceof ArrayBuffer)wav=Buffer.from(new Uint8Array(raw));
   else if(ArrayBuffer.isView(raw))wav=Buffer.from(raw.buffer,raw.byteOffset,raw.byteLength);
-  else throw new Error('Linux dictation audio payload is invalid.');
-  return linuxDictation.transcribe(app,{wav,language:payload.language});
+  else throw new Error('Local dictation audio payload is invalid.');
+  return localDictation.transcribe(app,{wav,language:payload.language});
 });
 
 
