@@ -1347,7 +1347,7 @@ function App(){
     if(!isChatDesktop||!isDesktop)return;
     setAttachmentError('');
     try{await window.desktopApi.scanProviders({probeModels:true})}
-    catch(error){setAttachmentError(error?.message||String(error))}
+    catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   async function selectProviderModelOption(modelName){
     if(!isChatDesktop||!isDesktop||selected?.source!=='browser')return;
@@ -1355,7 +1355,7 @@ function App(){
     try{
       await window.desktopApi.setProviderModel(selected.id,modelName);
       await window.desktopApi.scanProviders({probeModels:true});
-    }catch(error){setAttachmentError(error?.message||String(error))}
+    }catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   async function selectProviderEffortOption(nextEffort){
     if(!isChatDesktop||!isDesktop||selected?.source!=='browser'){setEffort(nextEffort);return}
@@ -1364,7 +1364,7 @@ function App(){
       await window.desktopApi.setProviderEffort(selected.id,nextEffort);
       setEffort(nextEffort);
       await window.desktopApi.scanProviders({probeModels:true});
-    }catch(error){setAttachmentError(error?.message||String(error))}
+    }catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   function openPluginsPage(){
     stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false);
@@ -1635,7 +1635,7 @@ function App(){
     }catch(e){
       if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
       setWorkTask(null);
-      const failed=[...next,{role:'error',text:e?.message||String(e)}];
+      const failed=[...next,{role:'error',text:desktopIpcErrorMessage(e,'Work task failed.')}];
       setMessages(failed);
       saveCurrentChat(failed,selected,{
         chatId:masterChatId||undefined,
@@ -1725,7 +1725,7 @@ function App(){
         const model=targets[index];
         const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
         if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),media:Array.isArray(result.value?.media)?result.value.media.slice(0,8):[],sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,deepResearch:deepResearchEnabled,researchCompleted:deepResearchEnabled,research:deepResearchEnabled?{status:'complete',mode:'provider-native',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'}}:null,...meta};
-        return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
+        return {role:'error',text:desktopIpcErrorMessage(result.reason,'Parallel model request failed.'),...meta};
       });
       const next=[...withUser,...responses];
       setMessages(next);saveCurrentChat(next,selected,{chatId:parallelChatId||undefined});
@@ -1856,7 +1856,7 @@ function App(){
       }
     }catch(e){
       if(requestId&&cancelledRequestRef.current===requestId)return;
-      const next=[...withUser,{role:'error',text:e?.message||String(e)}];
+      const next=[...withUser,{role:'error',text:desktopIpcErrorMessage(e,'AI request failed.')}];
       setMessages(next);saveCurrentChat(next,model,{chatId:generationChatId||undefined,mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
     }finally{
       if(activeRequestRef.current===requestId)activeRequestRef.current=null;
@@ -1958,7 +1958,7 @@ function App(){
           sources:Array.isArray(message.sources)?message.sources:[]
         }
       });
-    }catch(error){setAttachmentError(error?.message||String(error))}
+    }catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   async function copyMessage(text,index){
     try{
@@ -1985,7 +1985,7 @@ function App(){
       const added=await window.desktopApi.addMcpConnection(mcpDraft);
       setMcpConnections(current=>[...current.filter(item=>item.id!==added.id),added]);
       setMcpDraft({name:'',url:'',token:''});
-    }catch(error){setMcpError(error?.message||String(error))}
+    }catch(error){setMcpError(desktopIpcErrorMessage(error,'MCP connection failed.'))}
   }
   async function removeMcpConnection(id){
     if(!isChatDesktop)return;
@@ -1994,7 +1994,7 @@ function App(){
       const items=await window.desktopApi.removeMcpConnection(id);
       setMcpConnections(Array.isArray(items)?items:[]);
       setSelectedMcpIds(current=>current.filter(value=>value!==id));
-    }catch(error){setMcpError(error?.message||String(error))}
+    }catch(error){setMcpError(desktopIpcErrorMessage(error,'MCP connection failed.'))}
   }
   async function refreshMcpConnections(){
     if(!isChatDesktop)return;
@@ -2002,7 +2002,7 @@ function App(){
     try{
       const items=await window.desktopApi.refreshAllMcpConnections();
       setMcpConnections(Array.isArray(items)?items:[]);
-    }catch(error){setMcpError(error?.message||String(error))}
+    }catch(error){setMcpError(desktopIpcErrorMessage(error,'MCP connection failed.'))}
   }
   function toggleMcpConnection(id){
     if(workBusy)return;

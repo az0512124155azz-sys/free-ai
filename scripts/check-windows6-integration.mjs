@@ -81,6 +81,8 @@ has(source,'parentChatId','Agent parent linkage is missing.');
 has(source,'function ChatContextMenu','Chat context menu is missing.');
 has(source,"if(model?.source==='api')return model?.name||model?.modelName||model?.model",'API model display names must take precedence over raw model IDs.');
 has(source,'function desktopIpcErrorMessage','Desktop IPC validation errors must be normalized for user-facing forms.');
+has(source,"text:desktopIpcErrorMessage(e,'AI request failed.')",'Chat runtime errors must not expose Electron remote-method wrappers.');
+has(source,"text:desktopIpcErrorMessage(e,'Work task failed.')",'Work runtime errors must not expose Electron remote-method wrappers.');
 has(source,'const generationChatId=saveCurrentChat(withUser,model','Normal chat generation must reuse the initial chat ID for final/error saves.');
 has(source,'const parallelChatId=saveCurrentChat(withUser,selected)','Parallel generation must reuse the initial chat ID for final saves.');
 has(source,'Export chat','Chat export action is missing.');
