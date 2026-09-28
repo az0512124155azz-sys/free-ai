@@ -2289,8 +2289,8 @@ function App(){
           {isWindowsDesktop&&!sidebarOpen&&<DesktopProductSwitcher compact product={product} open={productMenu} setOpen={setProductMenu} onSelect={selectProduct}/>}
         </div>
         {product==='free'?<div className={'modeSwitch '+(isWindowsDesktop?'windowsModeSwitch':'')} role="tablist" aria-label="Chat or Work">
-          <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>isWindowsDesktop?selectExperience('chat'):setMode('chat')}>Chat</button>
-          <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>isWindowsDesktop?selectExperience('work'):setMode('work')}>Work</button>
+          <button role="tab" aria-selected={mode==='chat'} className={mode==='chat'?'active':''} onClick={()=>isChatDesktop?selectExperience('chat'):setMode('chat')}>Chat</button>
+          <button role="tab" aria-selected={mode==='work'} className={mode==='work'?'active':''} onClick={()=>isChatDesktop?selectExperience('work'):setMode('work')}>Work</button>
         </div>:(!isWindowsDesktop&&<div className="superHeaderLabel"><BrandMark size={16}/><span>Super AI</span></div>)}
         <div className="mobileModeAnchor">
           <button className="mobileModeButton" aria-haspopup={product==='free'?'menu':undefined} aria-expanded={product==='free'?mobileModeMenu:undefined} onClick={()=>product==='free'&&setMobileModeMenu(v=>!v)}>
@@ -2347,7 +2347,7 @@ function App(){
                   {m.role!=='user'&&!isWindowsDesktop&&<div className="assistantMark"><Sparkles size={16}/></div>}
                   <div className="messageBubble">
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
-                    {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
+                    {isChatDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody" dir="auto">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
                     {isChatDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
                       <Sparkles size={13}/><span>{m.streaming?(m.activity||'Deep research in progress…'):'Deep research report'}</span>{!m.streaming&&<Check size={13}/>}
@@ -3526,10 +3526,10 @@ function PluginsPage({
     <PageTop onBack={onBack} title={pageName} action={isChatDesktop?'Explore':null} onAction={onExplore}/>
     <div className="contentInner pluginsDirectoryInner">
       <div className="pluginPageHero">
-        <div><h1>{pageName}</h1><p className="pageLead">{isWindowsDesktop
+        <div><h1>{pageName}</h1><p className="pageLead">{isChatDesktop
           ? 'Manage apps Free AI can actually call, and separately browse public directory listings and unverified provider hints.'
           : 'Provider-managed connectors are surfaced only when a connected AI provider exposes them in its own interface.'}</p></div>
-        {isWindowsDesktop&&<button className="secondaryAction" onClick={onRefresh}><RefreshCw size={14}/>Refresh connections</button>}
+        {isChatDesktop&&<button className="secondaryAction" onClick={onRefresh}><RefreshCw size={14}/>Refresh connections</button>}
       </div>
 
       <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isChatDesktop?'Search configured apps, public listings, or hints':'Search provider hints'}/></div>
@@ -4285,7 +4285,7 @@ function ConfigurationSettings({prefs,setPrefs}){
     <h3>Work</h3><div className="settingBlock">
       <SettingRow title="Bottom panel" desc="Show project, plugin and browser actions below the Work composer." control={<Toggle value={prefs.showBottomPanel!==false} onChange={v=>setPrefs({...prefs,showBottomPanel:v})}/>}/>
     </div>
-    {isWindowsDesktop&&<><h3>Independent research</h3><div className="settingBlock">
+    {isChatDesktop&&<><h3>Independent research</h3><div className="settingBlock">
       <label className="formLabel">SearXNG Search API<input value={prefs.researchSearchUrl||''} onChange={e=>setPrefs({...prefs,researchSearchUrl:e.target.value})} placeholder="https://search.example.com"/><small>Used only when an API model runs Free AI-owned Deep Research. The instance must allow JSON search responses.</small></label>
     </div></>}
   </div>
