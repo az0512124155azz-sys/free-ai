@@ -64,6 +64,13 @@ jobs:
     env:
       WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
       WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+      WIN_AZURE_SIGN_ENDPOINT: ${{ secrets.WIN_AZURE_SIGN_ENDPOINT }}
+      WIN_AZURE_SIGN_ACCOUNT: ${{ secrets.WIN_AZURE_SIGN_ACCOUNT }}
+      WIN_AZURE_SIGN_PROFILE: ${{ secrets.WIN_AZURE_SIGN_PROFILE }}
+      WIN_AZURE_SIGN_PUBLISHER: ${{ secrets.WIN_AZURE_SIGN_PUBLISHER }}
       MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
       MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
       APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
@@ -107,8 +114,17 @@ jobs:
             fi
           }
 
-          windows_present="$(count_present WIN_CSC_LINK WIN_CSC_KEY_PASSWORD)"
-          windows_status="$(group_status "$windows_present" 2)"
+          windows_pfx_present="$(count_present WIN_CSC_LINK WIN_CSC_KEY_PASSWORD)"
+          windows_azure_present="$(count_present AZURE_TENANT_ID AZURE_CLIENT_ID AZURE_CLIENT_SECRET WIN_AZURE_SIGN_ENDPOINT WIN_AZURE_SIGN_ACCOUNT WIN_AZURE_SIGN_PROFILE WIN_AZURE_SIGN_PUBLISHER)"
+          if [[ "$windows_pfx_present" -eq 2 && "$windows_azure_present" -eq 0 ]]; then
+            windows_status='READY'
+          elif [[ "$windows_pfx_present" -eq 0 && "$windows_azure_present" -eq 7 ]]; then
+            windows_status='READY'
+          elif [[ "$windows_pfx_present" -eq 0 && "$windows_azure_present" -eq 0 ]]; then
+            windows_status='MISSING'
+          else
+            windows_status='PARTIAL'
+          fi
 
           mac_sign_present="$(count_present MAC_CSC_LINK MAC_CSC_KEY_PASSWORD)"
           mac_sign_status="$(group_status "$mac_sign_present" 2)"
@@ -237,24 +253,58 @@ jobs:
         env:
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WIN_AZURE_SIGN_ENDPOINT: ${{ secrets.WIN_AZURE_SIGN_ENDPOINT }}
+          WIN_AZURE_SIGN_ACCOUNT: ${{ secrets.WIN_AZURE_SIGN_ACCOUNT }}
+          WIN_AZURE_SIGN_PROFILE: ${{ secrets.WIN_AZURE_SIGN_PROFILE }}
+          WIN_AZURE_SIGN_PUBLISHER: ${{ secrets.WIN_AZURE_SIGN_PUBLISHER }}
           REQUIRE_WINDOWS_SIGNING: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}
         run: |
           $hasCertificate = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_LINK)
           $hasPassword = -not [string]::IsNullOrWhiteSpace($env:WIN_CSC_KEY_PASSWORD)
 
           if ($hasCertificate -xor $hasPassword) {
-            throw 'Windows signing is only partially configured. Set both WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD, or neither for an unsigned development build.'
+            throw 'Windows PFX signing is only partially configured. Set both WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD, or neither.'
           }
 
-          if ($env:REQUIRE_WINDOWS_SIGNING -eq 'true' -and -not $hasCertificate) {
-            throw 'Release validation/publishing requires Windows Authenticode signing. Configure WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD first.'
+          $azureNames = @(
+            'AZURE_TENANT_ID',
+            'AZURE_CLIENT_ID',
+            'AZURE_CLIENT_SECRET',
+            'WIN_AZURE_SIGN_ENDPOINT',
+            'WIN_AZURE_SIGN_ACCOUNT',
+            'WIN_AZURE_SIGN_PROFILE',
+            'WIN_AZURE_SIGN_PUBLISHER'
+          )
+          $azurePresent = @($azureNames | Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
+          if ($azurePresent.Count -ne 0 -and $azurePresent.Count -ne $azureNames.Count) {
+            $missing = @($azureNames | Where-Object { [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_)) })
+            throw ('Microsoft Artifact Signing is only partially configured. Missing: ' + ($missing -join ', '))
           }
 
-          $enabled = $hasCertificate.ToString().ToLowerInvariant()
-          "enabled=$enabled" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          if ($hasCertificate) {
-            Write-Host 'Windows Authenticode signing credentials detected. electron-builder will sign the Windows executable and NSIS installer.'
+          $hasPfx = $hasCertificate -and $hasPassword
+          $hasAzure = $azurePresent.Count -eq $azureNames.Count
+
+          if ($hasPfx -and $hasAzure) {
+            throw 'Configure exactly one Windows signing method: PFX/Authenticode or Microsoft Artifact Signing, not both.'
+          }
+
+          $enabled = $hasPfx -or $hasAzure
+          if ($env:REQUIRE_WINDOWS_SIGNING -eq 'true' -and -not $enabled) {
+            throw 'Release validation/publishing requires Windows signing. Configure either WIN_CSC_LINK/WIN_CSC_KEY_PASSWORD or the complete Microsoft Artifact Signing secret set.'
+          }
+
+          "enabled=$($enabled.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          if ($hasPfx) {
+            "mode=pfx" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host 'Windows PFX Authenticode signing credentials detected. electron-builder will sign the executable and NSIS installer.'
+          } elseif ($hasAzure) {
+            "mode=azure" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+            Write-Host 'Microsoft Artifact Signing credentials detected. electron-builder will use Azure Trusted Signing for the executable and NSIS installer.'
           } else {
+            "mode=none" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
             Write-Host 'Windows signing credentials are not configured. Continuing with an unsigned development/CI build.'
           }
 
@@ -389,6 +439,13 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          WIN_AZURE_SIGN_ENDPOINT: ${{ secrets.WIN_AZURE_SIGN_ENDPOINT }}
+          WIN_AZURE_SIGN_ACCOUNT: ${{ secrets.WIN_AZURE_SIGN_ACCOUNT }}
+          WIN_AZURE_SIGN_PROFILE: ${{ secrets.WIN_AZURE_SIGN_PROFILE }}
+          WIN_AZURE_SIGN_PUBLISHER: ${{ secrets.WIN_AZURE_SIGN_PUBLISHER }}
 
       - name: Report desktop build failure
         if: steps.desktop_build.outcome == 'failure'
