@@ -1328,7 +1328,13 @@ jobs:
 
           EXTRA_NOTES=""
           if [[ "${ALLOW_UNSIGNED_MACOS:-false}" == true ]]; then
-            EXTRA_NOTES=⚠️ macOS signing notice\n\nThe macOS DMG in this release is intentionally unsigned and not notarized. macOS Gatekeeper may warn or block it. Windows and Android release gates remain unchanged.\n'
+            EXTRA_NOTES=
+          gh release create "$TAG" "${ASSETS[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "$TITLE" \
+            --notes "$EXTRA_NOTES" \
+            --generate-notes
+⚠️ macOS signing notice\n\nThe macOS DMG in this release is intentionally unsigned and not notarized. macOS Gatekeeper may warn or block it. Windows signing is optional; Android release signing remains required.\n'
           fi
 
           gh release create "$TAG" "${ASSETS[@]}" \
