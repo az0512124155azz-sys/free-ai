@@ -6,14 +6,16 @@ Free AI is a cross-platform AI workspace that can use AI services already open i
 
 ### Stable installers
 
-The latest published GitHub Release is the stable channel for Windows, macOS, Linux and Android:
+The next production release line is **v0.7.0**. Starting with v0.7.0, the release workflow requires signed Windows and Android builds plus signed/notarized macOS distribution before publication, and publishes `SHA256SUMS.txt`.
 
-- **Windows:** NSIS installer from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
-- **macOS:** DMG from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
-- **Linux:** AppImage from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
-- **Android:** production-signed APK from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
+The currently published **v0.6.0** release was created by the older pipeline. In particular, its Android asset is `app-debug.apk`; do **not** treat that APK as a production-signed Android release. v0.6.0 desktop assets also predate the new fail-closed signing/notarization gates.
 
-Public releases also include `SHA256SUMS.txt` so downloaded installers can be verified.
+When v0.7.0 is published, platform installers will be available from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest):
+
+- **Windows:** signed NSIS installer
+- **macOS:** Developer ID signed and notarized DMG
+- **Linux:** AppImage
+- **Android:** production-signed APK
 
 ### Browser extension
 
