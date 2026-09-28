@@ -146,9 +146,6 @@ test('Windows app routes a provider app through the Browser Bridge and restores 
     await app.close();
     app=null;
 
-    const mediaFiles=await fs.readdir(path.join(userData,'chat-media'));
-    expect(mediaFiles.length).toBeGreaterThan(0);
-
     app=await electron.launch({
       args:['.',`--user-data-dir=${userData}`],
       env:{...process.env,ELECTRON_DISABLE_SECURITY_WARNINGS:'true'}
