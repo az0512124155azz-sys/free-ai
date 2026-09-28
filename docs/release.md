@@ -68,6 +68,17 @@ Keep the production values configured for:
 
 The release workflow also runs the Android email/session and Google Credential Manager runtime gates before the release job is allowed to start.
 
+## Credential readiness status
+
+Trusted `main` pushes and manual workflow runs include a non-blocking **Production credential readiness** job. It reports only whether each required secret group is `READY`, `PARTIAL`, or `MISSING`:
+
+- Windows Authenticode
+- macOS Developer ID + notarization
+- Android production signing
+- Supabase + Google public build configuration
+
+The job never prints secret values. A `READY` status only confirms that every required field in that group is non-empty; the production dry-run is still required to prove that certificates, passwords, fingerprints, OAuth configuration, signing, and notarization actually work.
+
 ## Production release dry-run
 
 Use this before publishing after adding or rotating any signing credential.
