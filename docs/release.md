@@ -44,7 +44,7 @@ Alternative Apple ID path:
 - `APPLE_APP_SPECIFIC_PASSWORD`
 - `APPLE_TEAM_ID`
 
-A public release requires both Developer ID signing and notarization. The packaged DMG is verified with `codesign`, `stapler`, and Gatekeeper before publication.
+By default, a public release requires both Developer ID signing and notarization. When Apple signing is intentionally unavailable, an operator may explicitly set `allow_unsigned_macos=true` for the validation/publication run. In that mode the DMG is published unsigned and the GitHub Release notes receive a prominent warning.
 
 ### Android
 
@@ -91,7 +91,7 @@ Use this before publishing after adding or rotating any signing credential.
 2. Open **Actions -> Build Free AI -> Run workflow** on `main`.
 3. Set **Validate production release without publishing** to `true`.
 4. Leave **Publish the final GitHub Release** set to `false`.
-5. The workflow requires the real Windows Authenticode certificate, macOS Developer ID + notarization credentials, and Android production keystore.
+5. The workflow requires the real Windows Authenticode certificate and Android production keystore. macOS Developer ID + notarization remains the default requirement; set `allow_unsigned_macos=true` only when intentionally validating an unsigned macOS DMG.
 6. It runs the same desktop, Android runtime, email/session, Google Credential Manager, and extension gates used by publication.
 7. It builds the signed Android release APK and the signed/notarized desktop artifacts, verifies the exact production asset set, verifies that the target tag/release does not already exist, generates `SHA256SUMS.txt`, and uploads a temporary Actions artifact named `free-ai-release-candidate`.
 8. It does **not** create a Git tag and does **not** create or modify a GitHub Release.
@@ -106,8 +106,9 @@ Do not enable both validation and publication in the same manual run. The workfl
 4. Open **Actions -> Build Free AI -> Run workflow** on `main` again.
 5. Leave **Validate production release without publishing** set to `false`.
 6. Set **Publish the final GitHub Release** to `true`.
-7. The workflow builds and validates Windows, macOS, Linux, Android and the browser extension again from the publication commit.
-8. The release job verifies the exact expected production assets, writes `SHA256SUMS.txt`, refuses an existing tag, and creates the GitHub Release with generated notes.
+7. If the corresponding green validation run intentionally used an unsigned macOS DMG, set `allow_unsigned_macos=true` again. Otherwise leave it `false`.
+8. The workflow builds and validates Windows, macOS, Linux, Android and the browser extension again from the publication commit.
+9. The release job verifies the exact expected production assets, writes `SHA256SUMS.txt`, refuses an existing tag, and creates the GitHub Release with generated notes. An unsigned macOS publication automatically prepends a Gatekeeper warning to the Release notes.
 
 Expected public assets for version `x.y.z`:
 
