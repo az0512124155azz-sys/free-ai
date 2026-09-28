@@ -86,7 +86,7 @@ ok(!main.includes("startsWith('freeai://auth')"),'Desktop auth callback must not
 ok(!source.includes("startsWith('freeai://auth')"),'Renderer auth callback must not regress to prefix matching.');
 
 // Windows 7.12 update/offline coverage.
-has(main,'async function checkForWindowsUpdates()','Windows update-check runtime is missing.');
+has(main,'async function checkForDesktopUpdates()','Shared Windows/macOS update-check runtime is missing.');
 has(main,'if(!net.isOnline())','Update check must fail fast when Electron reports the device offline.');
 has(main,'const WINDOWS_UPDATE_TIMEOUT_MS=15000;','Update check timeout guard is missing.');
 has(main,'const controller=new AbortController();','Update check cancellation controller is missing.');
