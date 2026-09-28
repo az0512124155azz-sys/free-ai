@@ -466,6 +466,56 @@ jobs:
       - name: Build APK
         run: cd android && ./gradlew assembleDebug
 
+      - name: Validate Android release-signing pipeline
+        if: github.event_name != 'workflow_dispatch' || inputs.publish_release != true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test_keystore="$RUNNER_TEMP/free-ai-release-ci.jks"
+          store_password="FreeAiCiRelease123!"
+          key_alias="free-ai-ci-release"
+          keytool -genkeypair \
+            -keystore "$test_keystore" \
+            -storepass "$store_password" \
+            -keypass "$store_password" \
+            -alias "$key_alias" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 2 \
+            -dname "CN=Free AI CI, OU=QA, O=Free AI, L=CI, ST=CI, C=US" \
+            -noprompt >/dev/null 2>&1
+
+          expected_sha1="$(keytool -list -v -keystore "$test_keystore" -storepass "$store_password" -alias "$key_alias" | awk -F': ' '/SHA1:/{print $2; exit}')"
+          keystore_base64="$(base64 -w 0 "$test_keystore")"
+
+          original_gradle="$RUNNER_TEMP/free-ai-release-ci-build.gradle"
+          cp android/app/build.gradle "$original_gradle"
+          cleanup() {
+            cp "$original_gradle" android/app/build.gradle || true
+            rm -f android/app/free-ai-release.keystore "$test_keystore"
+          }
+          trap cleanup EXIT
+
+          ANDROID_RELEASE_KEYSTORE_BASE64="$keystore_base64" \
+          ANDROID_RELEASE_STORE_PASSWORD="$store_password" \
+          ANDROID_RELEASE_KEY_ALIAS="$key_alias" \
+          ANDROID_RELEASE_KEY_PASSWORD="$store_password" \
+          ANDROID_RELEASE_EXPECTED_SHA1="$expected_sha1" \
+            npm run android:configure-release-signing
+
+          cd android
+          ANDROID_RELEASE_STORE_PASSWORD="$store_password" \
+          ANDROID_RELEASE_KEY_ALIAS="$key_alias" \
+          ANDROID_RELEASE_KEY_PASSWORD="$store_password" \
+            ./gradlew assembleRelease
+          cd ..
+
+          test -f android/app/build/outputs/apk/release/app-release.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner -print | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
+
       - name: Build signed Android release APK
         if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
         shell: bash
