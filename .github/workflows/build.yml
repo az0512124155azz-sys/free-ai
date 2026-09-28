@@ -1292,7 +1292,7 @@ jobs:
 
 
   release_validation:
-    if: github.ref == 'refs/heads/main' && ((github.event_name == 'push') || (github.event_name == 'workflow_dispatch' && inputs.validate_release == true && inputs.publish_release != true))
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'push' && !contains(github.event.head_commit.message, '[publish-v0.7.0]')) || (github.event_name == 'workflow_dispatch' && inputs.validate_release == true && inputs.publish_release != true))
     needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
     runs-on: ubuntu-latest
     permissions:
@@ -1391,7 +1391,7 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
+    if: github.ref == 'refs/heads/main' && ((github.event_name == 'workflow_dispatch' && inputs.publish_release == true) || (github.event_name == 'push' && github.actor == 'az0512124155azz-sys' && contains(github.event.head_commit.message, '[publish-v0.7.0]')))
     needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
     runs-on: ubuntu-latest
     permissions:
@@ -1439,6 +1439,11 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           TAG="v$VERSION"
 
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$VERSION" != "0.7.0" ]]; then
+            echo "One-shot v0.7.0 publication marker can only publish package version 0.7.0." >&2
+            exit 1
+          fi
+
           expected=(
             "Free-AI-Windows-$VERSION.exe"
             "Free-AI-macOS-$VERSION.dmg"
@@ -1483,7 +1488,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          ALLOW_UNSIGNED_MACOS: ${{ inputs.allow_unsigned_macos }}
+          ALLOW_UNSIGNED_MACOS: ${{ (github.event_name == 'push' && contains(github.event.head_commit.message, '[publish-v0.7.0]')) || inputs.allow_unsigned_macos }}
         shell: bash
         run: |
           set -euo pipefail
