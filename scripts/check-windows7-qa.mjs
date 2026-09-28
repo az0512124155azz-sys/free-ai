@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {spawnSync} from 'node:child_process';
 
 const main=fs.readFileSync('electron/main.cjs','utf8');
 const research=fs.readFileSync('electron/research.cjs','utf8');
@@ -184,6 +185,29 @@ has(builderConfig,'WIN_AZURE_SIGN_PROFILE','electron-builder config must read th
 has(builderConfig,'azureSignOptions','electron-builder config must enable Azure Artifact Signing when configured.');
 has(builderConfig,"fileDigest:'SHA256'",'Artifact Signing file digest must remain SHA256.');
 has(builderConfig,"timestampRfc3161:'http://timestamp.acs.microsoft.com'",'Artifact Signing must use the Microsoft RFC3161 timestamp service.');
+
+const azureConfigProbe=spawnSync(process.execPath,[
+  '-e',
+  "process.stdout.write(JSON.stringify(require('./electron-builder.config.cjs').win.azureSignOptions||null))"
+],{
+  cwd:process.cwd(),
+  encoding:'utf8',
+  env:{
+    ...process.env,
+    WIN_AZURE_SIGN_PUBLISHER:'CN=Free AI Test',
+    WIN_AZURE_SIGN_ENDPOINT:'https://example.codesigning.azure.net/',
+    WIN_AZURE_SIGN_ACCOUNT:'free-ai-test-account',
+    WIN_AZURE_SIGN_PROFILE:'free-ai-test-profile'
+  }
+});
+ok(azureConfigProbe.status===0,'electron-builder Artifact Signing config probe failed: '+String(azureConfigProbe.stderr||''));
+let probedAzureConfig=null;
+try{probedAzureConfig=JSON.parse(String(azureConfigProbe.stdout||'null'))}catch{}
+ok(probedAzureConfig?.publisherName==='CN=Free AI Test','Artifact Signing config probe lost publisherName.');
+ok(probedAzureConfig?.endpoint==='https://example.codesigning.azure.net/','Artifact Signing config probe lost endpoint.');
+ok(probedAzureConfig?.codeSigningAccountName==='free-ai-test-account','Artifact Signing config probe lost account name.');
+ok(probedAzureConfig?.certificateProfileName==='free-ai-test-profile','Artifact Signing config probe lost certificate profile.');
+ok(probedAzureConfig?.fileDigest==='SHA256','Artifact Signing config probe must use SHA256.');
 
 has(credentialHelper,"ValidateSet('Pfx', 'ArtifactSigning')",'Credential helper must expose both Windows signing modes.');
 has(credentialHelper,"Read-SecretPlainText 'Microsoft Entra application client secret'",'Artifact Signing client secret must be prompted securely.');
