@@ -179,10 +179,10 @@
       answers:['[data-testid*="assistant"]','.font-claude-message']
     },
     gemini:{
-      inputs:['rich-textarea div[contenteditable="true"]','div[contenteditable="true"][role="textbox"]','textarea'],
-      send:['button.send-button','button[aria-label*="Send"]','button[aria-label*="send"]','button[mattooltip*="Send"]','button[mattooltip*="send"]','button[data-test-id*="send"]','button[data-testid*="send"]','button[type="submit"]','.send-button-container button'],
-      stop:['button[aria-label*="Stop"]','button[aria-label*="stop"]','button[mattooltip*="Stop"]'],
-      answers:['model-response','.model-response-text','[data-test-id*="response"]']
+      inputs:['div.ql-editor[contenteditable="true"]','rich-textarea [contenteditable="true"]','rich-textarea div[contenteditable="true"]','[aria-label="Enter a prompt here"]','[aria-label*="prompt" i][contenteditable="true"]','div[contenteditable="true"][role="textbox"]','textarea'],
+      send:['button[aria-label="Send message"]','button.send-button','button[aria-label*="Send" i]','button[mattooltip*="Send" i]','button[data-test-id*="send" i]','button[data-testid*="send" i]','.send-button-container button','button[type="submit"]'],
+      stop:['button[aria-label*="Stop" i]','button[mattooltip*="Stop" i]'],
+      answers:['model-response','.model-response-text','[data-test-id*="response"]','[data-testid*="response"]']
     },
     deepseek:{
       inputs:['textarea','div[contenteditable="true"][role="textbox"]','div[contenteditable="true"]'],
@@ -782,14 +782,31 @@
       const setter=Object.getOwnPropertyDescriptor(proto,'value')?.set;
       if(setter) setter.call(el,text);
       else el.value=text;
+      el.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:text}));
       el.dispatchEvent(new Event('input',{bubbles:true}));
       el.dispatchEvent(new Event('change',{bubbles:true}));
       return;
     }
-    el.textContent='';
-    try{document.execCommand('insertText',false,text)}
-    catch{el.textContent=text}
+    const selection=getSelection?.();
+    try{
+      const range=document.createRange();
+      range.selectNodeContents(el);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+      document.execCommand('insertText',false,text);
+    }catch{
+      el.textContent=text;
+    }
+    el.dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:text}));
     el.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:text}));
+    el.dispatchEvent(new Event('change',{bubbles:true}));
+    try{
+      const range=document.createRange();
+      range.selectNodeContents(el);
+      range.collapse(false);
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    }catch{}
   }
 
   function sendButtonLabel(el){
@@ -828,6 +845,33 @@
       const button=findSendButton(config,input);
       if(button)return button;
       await sleep(100);
+    }
+    return null;
+  }
+
+  function sendControlDiagnostics(input){
+    const root=input?.closest?.('form,input-area-v2,rich-textarea')||input?.parentElement?.parentElement||input?.parentElement||document.body;
+    const controls=[...root.querySelectorAll?.('button,[role="button"]')||[]].filter(visible).slice(0,16);
+    return controls.map(el=>({
+      label:sendButtonLabel(el).slice(0,90),
+      disabled:!!el.disabled||el.getAttribute('aria-disabled')==='true',
+      testId:String(el.getAttribute('data-testid')||el.getAttribute('data-test-id')||'').slice(0,80),
+      className:String(el.className||'').slice(0,100)
+    }));
+  }
+
+  async function recoverGeminiComposer(input,finalText,config){
+    await setInput(input,finalText);
+    await sleep(420);
+    let send=await waitForSendButton(config,input,4200);
+    if(send)return send;
+    const rich=input.closest?.('rich-textarea')||document.querySelector('rich-textarea');
+    const alternate=rich?.querySelector?.('div.ql-editor[contenteditable="true"],[contenteditable="true"][role="textbox"],[contenteditable="true"]');
+    if(alternate&&alternate!==input){
+      await setInput(alternate,finalText);
+      await sleep(420);
+      send=await waitForSendButton(config,alternate,4200);
+      if(send)return send;
     }
     return null;
   }
@@ -1017,15 +1061,20 @@
     const before=responseSnapshot(c,provider);
     await uploadAttachments(attachments);
     await setInput(input,finalText);
-    await sleep(180);
+    await sleep(provider==='gemini'?420:180);
 
-    const send=await waitForSendButton(c,input);
+    let send=await waitForSendButton(c,input,provider==='gemini'?5200:3200);
+    if(!send&&provider==='gemini')send=await recoverGeminiComposer(input,finalText,c);
     if(send){
       send.click();
     }else{
       const form=input.closest?.('form');
       if(form&&typeof form.requestSubmit==='function')form.requestSubmit();
-      else throw new Error('Could not find the send control for '+provider+' on '+location.hostname+'. The provider UI may have changed.');
+      else{
+        const controls=sendControlDiagnostics(input);
+        console.warn('[FreeAI provider adapter] send control missing',{provider,host:location.hostname,controls});
+        throw new Error('Could not find an enabled send control for '+provider+' on '+location.hostname+'. Reload the provider tab and refresh connections; the provider composer may have changed.');
+      }
     }
 
     if(nativeTool==='deep-research'&&requestId)chrome.runtime.sendMessage({type:'freeai:activity',id:requestId,text:'Deep research started'}).catch(()=>{});
