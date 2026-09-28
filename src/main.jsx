@@ -2273,7 +2273,7 @@ function App(){
           <span className="profileName">{sidebarName}</span>
           <span className={'connectionDot '+((isDesktop?status.extension:status.relay)?'online':'')}></span>
         </button>
-        {!isNative&&(!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
+        {!isNative&&(!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux'||desktopPlatform==='darwin')&&<button className="voiceButton" onClick={()=>{setPage('chat');setMobileNavOpen(false);window.dispatchEvent(new CustomEvent('freeai:start-voice'))}}><Mic2 size={15}/>Dictate</button>}
         <button className="circleIcon" title="Help" onClick={openHelp}><HelpCircle size={16}/></button>
         {profileMenu&&<ProfileMenu session={session} onSettings={()=>{stopActiveWorkTask();setProfileMenu(false);setMobileNavOpen(false);setMobileSettingsList(true);setSettingsOpen(true)}} onLogout={()=>{setProfileMenu(false);signOutAccount().catch(()=>{})}}/>}
       </div>
@@ -3086,7 +3086,7 @@ function Composer(props){
           <button className="effortButton" aria-haspopup="dialog" aria-expanded={effortMenu} onClick={()=>setEffortMenu(v=>!v)}><Brain size={14}/>{effortLabel}<ChevronDown size={12}/></button>
           {effortMenu&&<EffortMenu effort={effort} levels={selected.effortLevels} choose={v=>{onSelectProviderEffort?.(v);setEffortMenu(false)}}/>}
         </div>}
-        {(isNative||!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':desktopPlatform==='linux'?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')} aria-label={windowsDesktop?'Dictate with Windows':desktopPlatform==='linux'?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')}><Mic2 size={18}/></button>}
+        {(isNative||!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux'||desktopPlatform==='darwin')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':(desktopPlatform==='linux'||desktopPlatform==='darwin')?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')} aria-label={windowsDesktop?'Dictate with Windows':(desktopPlatform==='linux'||desktopPlatform==='darwin')?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')}><Mic2 size={18}/></button>}
         {(busy||prompt.trim()||attachments.length>0)&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||attachments.length>0)&&selected?'sendReady':'')}
           onClick={busy?(windowsDesktop||isAndroidNative?stopGeneration:undefined):send}
           disabled={busy?!(windowsDesktop||isAndroidNative):!selected}
@@ -3098,7 +3098,7 @@ function Composer(props){
     </div>
     {attachmentError&&<div className="dictationError" role="alert">{attachmentError}</div>}
     {dictationError&&<div className="dictationError voiceDictationError" role="alert">{dictationError}</div>}
-    {dictationNotice&&(windowsDesktop||desktopPlatform==='linux')&&<div className="dictationStatus">{dictationNotice}</div>}
+    {dictationNotice&&(windowsDesktop||desktopPlatform==='linux'||desktopPlatform==='darwin')&&<div className="dictationStatus">{dictationNotice}</div>}
     {listening&&<div className="dictationStatus"><span className="dictationPulse"/>Listening… tap the microphone to stop</div>}
     {mode==='work'&&showBottomPanel!==false&&<div className="workActions">
       {product==='super'&&isWorkDesktop&&<button onClick={onChooseRepository}><GitBranch size={15}/>{repositoryWorkspace?.name||'Choose repository'}</button>}
@@ -4216,14 +4216,14 @@ function ProfileSettings({session}){
 }
 function VoiceSettings({prefs,setPrefs}){
   const [permission,setPermission]=useState('unknown');
-  const [linuxStatus,setLinuxStatus]=useState(null);
+  const [localStatus,setLocalStatus]=useState(null);
   useEffect(()=>{
     if(isNative){
       SpeechRecognition.checkPermissions().then(p=>setPermission(p?.speechRecognition||'unknown')).catch(()=>setPermission('unknown'));
       return;
     }
-    if(isDesktop&&desktopPlatform==='linux'){
-      window.desktopApi?.getLocalDictationStatus?.().then(setLinuxStatus).catch(()=>setLinuxStatus({available:false,modelReady:false}));
+    if(isDesktop&&(desktopPlatform==='linux'||desktopPlatform==='darwin')){
+      window.desktopApi?.getLocalDictationStatus?.().then(setLocalStatus).catch(()=>setLocalStatus({available:false,modelReady:false}));
     }
   },[]);
   async function request(){
@@ -4233,11 +4233,11 @@ function VoiceSettings({prefs,setPrefs}){
     <h3>Dictation</h3>
     <div className="settingBlock">
       {isDesktop&&desktopPlatform==='win32'&&<SettingRow title="Engine" desc="Uses Windows Voice Typing. Its language follows your current Windows input language." control={<span className="valuePill">Windows + H</span>}/>}
-      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Engine" desc="Runs Whisper locally on this computer. Recorded audio is transcribed locally and is not sent to an AI provider." control={<span className="valuePill">Local Whisper</span>}/>}
-      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Model" desc="Multilingual Whisper base q5_1. The verified ~60 MB model downloads on first use and is then reused offline." control={<span className="valuePill">{linuxStatus?.modelReady?'Ready':'First use download'}</span>}/>}
-      {isDesktop&&desktopPlatform!=='win32'&&desktopPlatform!=='linux'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
-      {(!isDesktop||desktopPlatform==='linux')&&<SettingRow title="Language" desc={desktopPlatform==='linux'?'Language hint for local Whisper transcription. Auto-detect keeps multilingual dictation flexible.':'Language used by the microphone dictation button.'} control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Auto detect</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
-      {isDesktop&&desktopPlatform==='linux'&&<SettingRow title="Microphone permission" desc="Requested only when you start dictation. Free AI allows audio capture for its own renderer and denies camera access." control={<span className="valuePill">On demand</span>}/>}
+      {isDesktop&&(desktopPlatform==='linux'||desktopPlatform==='darwin')&&<SettingRow title="Engine" desc="Runs Whisper locally on this computer. Recorded audio is transcribed locally and is not sent to Apple or an AI provider." control={<span className="valuePill">Local Whisper</span>}/>}
+      {isDesktop&&(desktopPlatform==='linux'||desktopPlatform==='darwin')&&<SettingRow title="Model" desc="Multilingual Whisper base q5_1. The verified ~60 MB model downloads on first use and is then reused offline." control={<span className="valuePill">{localStatus?.modelReady?'Ready':'First use download'}</span>}/>}
+      {isDesktop&&desktopPlatform!=='win32'&&desktopPlatform!=='linux'&&desktopPlatform!=='darwin'&&<SettingRow title="Desktop dictation" desc="No reliable native dictation engine is configured for this platform yet." control={<span className="valuePill">Unavailable</span>}/>}
+      {(!isDesktop||desktopPlatform==='linux'||desktopPlatform==='darwin')&&<SettingRow title="Language" desc={(desktopPlatform==='linux'||desktopPlatform==='darwin')?'Language hint for local Whisper transcription. Auto-detect keeps multilingual dictation flexible.':'Language used by the microphone dictation button.'} control={<select value={prefs.voiceLanguage||'auto'} onChange={e=>setPrefs({...prefs,voiceLanguage:e.target.value})}><option value="auto">Auto detect</option><option value="he-IL">עברית</option><option value="en-US">English (US)</option><option value="fr-FR">Français</option><option value="ar">العربية</option></select>}/>}
+      {isDesktop&&(desktopPlatform==='linux'||desktopPlatform==='darwin')&&<SettingRow title="Microphone permission" desc={desktopPlatform==='darwin'?'Requested by macOS only when you start dictation. If denied, re-enable Free AI in System Settings → Privacy & Security → Microphone.':'Requested only when you start dictation. Free AI allows audio capture for its own renderer and denies camera access.'} control={<span className="valuePill">{desktopPlatform==='darwin'&&localStatus?.microphoneStatus==='granted'?'Granted':'On demand'}</span>}/>}
       {isNative&&<SettingRow title="Microphone permission" desc={permission==='denied'?'Microphone access is denied. Enable it in Android Settings, then retry.':'Required for native Android dictation.'} control={<button className="settingsInlineButton" onClick={request}>{permission==='granted'?'Granted':permission==='denied'?'Denied · retry':'Request access'}</button>}/>}
     </div>
   </div>
