@@ -34,8 +34,8 @@ for(const [marker,label] of [
   ["{section==='App'&&isChatDesktop&&<DesktopAppSettings/>}",'shared desktop App settings surface'],
   ["function DesktopAppSettings(){",'shared desktop App settings component'],
   ["desktopPlatform==='darwin'?'macOS app':'Windows app'",'macOS App heading'],
-  ["Production macOS releases are Developer ID signed and notarized before publication.",'macOS update trust copy'],
-  ["macOS releases use a DMG. Release publishing is blocked unless Developer ID signing and Apple notarization credentials are configured.",'macOS distribution settings copy']
+  ["Signed macOS releases use Developer ID and Apple notarization; an explicitly marked release may be published unsigned when Apple signing is unavailable.",'macOS update trust copy'],
+  ["macOS releases use a DMG. The release workflow requires Developer ID signing and Apple notarization by default, but can publish an explicitly marked unsigned DMG when the release operator opts in.",'macOS distribution settings copy']
 ]) requireText(renderer,marker,label);
 
 for(const [marker,label] of [
@@ -70,7 +70,9 @@ for(const [marker,label] of [
   ["APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}",'App Store Connect issuer'],
   ["APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}",'Apple ID app-specific password option'],
   ["REQUIRE_MAC_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}",'release-validation/publication macOS distribution requirement'],
+  ["ALLOW_UNSIGNED_MACOS: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_unsigned_macos == true }}",'explicit unsigned macOS release exception'],
   ["Release validation/publishing requires both Developer ID signing and Apple notarization.",'release validation/publication hard gate'],
+  ["Explicit unsigned macOS exception enabled.",'unsigned macOS release warning'],
   ["FREEAI_MAC_NOTARIZE=$notarized",'notarization environment toggle'],
   ["name: macOS packaged distribution and dictation smoke",'packaged macOS production verification'],
   ["codesign --verify --deep --strict --verbose=2",'Developer ID signature verification'],
