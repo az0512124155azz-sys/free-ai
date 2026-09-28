@@ -137,16 +137,16 @@ function isVersionNewer(candidate,current){
   return false;
 }
 
-function windowsAppInfo(){
+function desktopAppInfo(){
   return {
     version:app.getVersion(),
     platform:process.platform,
     packaged:app.isPackaged,
-    authProtocolRegistered:process.platform==='win32'?app.isDefaultProtocolClient(AUTH_SCHEME):false
+    authProtocolRegistered:(process.platform==='win32'||process.platform==='darwin')?app.isDefaultProtocolClient(AUTH_SCHEME):false
   };
 }
 
-const WINDOWS_UPDATE_TIMEOUT_MS=15000;
+const DESKTOP_UPDATE_TIMEOUT_MS=15000;
 
 function trustedFreeAiReleaseUrl(value){
   try{
@@ -157,11 +157,11 @@ function trustedFreeAiReleaseUrl(value){
   }catch{return ''}
 }
 
-async function checkForWindowsUpdates(){
-  if(process.platform!=='win32')throw new Error('Update checks are currently available on Windows.');
+async function checkForDesktopUpdates(){
+  if(process.platform!=='win32'&&process.platform!=='darwin')throw new Error('Update checks are currently available on Windows and macOS.');
   if(!net.isOnline())throw new Error('You appear to be offline. Connect to the internet and try again.');
   const controller=new AbortController();
-  const timer=setTimeout(()=>controller.abort(),WINDOWS_UPDATE_TIMEOUT_MS);
+  const timer=setTimeout(()=>controller.abort(),DESKTOP_UPDATE_TIMEOUT_MS);
   let response;
   try{
     response=await net.fetch('https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest',{
@@ -4242,8 +4242,8 @@ app.on('window-all-closed',()=>{if(process.platform!=='darwin')app.quit()});
 
 ipcMain.handle('shell:showMenu',(_e,label)=>showAppMenu(String(label||'')));
 ipcMain.handle('shell:setTitleBarTheme',(_e,theme)=>setWindowChromeTheme(theme||{}));
-ipcMain.handle('shell:getAppInfo',()=>windowsAppInfo());
-ipcMain.handle('shell:checkForUpdates',()=>checkForWindowsUpdates());
+ipcMain.handle('shell:getAppInfo',()=>desktopAppInfo());
+ipcMain.handle('shell:checkForUpdates',()=>checkForDesktopUpdates());
 ipcMain.handle('shell:openExternal',async(_e,url)=>{const value=String(url||'');if(!/^https:\/\//i.test(value))throw new Error('Only HTTPS links can be opened.');await shell.openExternal(value);return true;});
 ipcMain.handle('shell:saveTextFile',async(_e,payload={})=>{
   const content=String(payload.content||'');

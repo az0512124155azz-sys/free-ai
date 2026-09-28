@@ -90,7 +90,7 @@ for(const [text,label] of [
 ]) requireText(pkg,text,label);
 
 for(const [text,label] of [
-  ["name: macOS packaged dictation smoke",'packaged macOS dictation QA step'],
+  ["name: macOS packaged distribution and dictation smoke",'packaged macOS dictation QA step after M6'],
   ["hdiutil attach", 'DMG mount smoke'],
   ["Contents/Resources/whisper/whisper-cli",'packaged Whisper binary verification'],
   ["PlistBuddy", 'Info.plist microphone verification']
