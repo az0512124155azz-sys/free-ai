@@ -10,6 +10,7 @@ param(
     [string]$CertificatePath,
     [string]$KeystorePath,
     [string]$KeyAlias,
+    [switch]$GenerateAndroidKeystore,
 
     [ValidateSet('ApiKey', 'AppleId')]
     [string]$NotarizationMode = 'ApiKey',
@@ -290,22 +291,90 @@ switch ($Target) {
     }
 
     'Android' {
-        $keystore = Resolve-InputFile -Path $KeystorePath -Extensions @('.jks', '.keystore', '.p12', '.pfx') -Label 'Android production keystore'
+        $keytool = Find-Keytool
+
         if ([string]::IsNullOrWhiteSpace($KeyAlias)) {
-            throw 'KeyAlias is required for Android signing.'
+            $KeyAlias = 'free-ai'
         }
 
-        $keytool = Find-Keytool
-        $storePassword = Read-SecretPlainText 'Android keystore password'
-        $keyPassword = Read-SecretPlainText 'Android key password'
+        if ($GenerateAndroidKeystore) {
+            if ([string]::IsNullOrWhiteSpace($KeystorePath)) {
+                $signingDirectory = Join-Path $HOME '.free-ai\signing'
+                New-Item -ItemType Directory -Force -Path $signingDirectory | Out-Null
+                $KeystorePath = Join-Path $signingDirectory 'free-ai-release.jks'
+            }
+
+            $keystore = [IO.Path]::GetFullPath($KeystorePath)
+            $extension = [IO.Path]::GetExtension($keystore).ToLowerInvariant()
+            if (@('.jks', '.keystore') -notcontains $extension) {
+                throw 'A newly generated Android keystore must use .jks or .keystore.'
+            }
+            if (Test-Path -LiteralPath $keystore) {
+                throw "Refusing to overwrite existing Android keystore: $keystore"
+            }
+
+            $repoRoot = $null
+            if (Get-Command git -ErrorAction SilentlyContinue) {
+                $candidateRoot = (& git rev-parse --show-toplevel 2>$null)
+                if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace($candidateRoot)) {
+                    $repoRoot = [IO.Path]::GetFullPath($candidateRoot.Trim())
+                }
+            }
+            if ($repoRoot) {
+                $separator = [IO.Path]::DirectorySeparatorChar
+                $repoPrefix = $repoRoot.TrimEnd($separator) + $separator
+                if ($keystore.StartsWith($repoPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+                    throw 'Refusing to generate a production signing key inside the Git repository. Choose a path outside the repository.'
+                }
+            }
+
+            $parent = Split-Path -Parent $keystore
+            if (-not [string]::IsNullOrWhiteSpace($parent)) {
+                New-Item -ItemType Directory -Force -Path $parent | Out-Null
+            }
+
+            $storePassword = Read-SecretPlainText 'Choose a new Android keystore password'
+            $keyPassword = Read-SecretPlainText 'Choose a new Android key password'
+        }
+        else {
+            $keystore = Resolve-InputFile -Path $KeystorePath -Extensions @('.jks', '.keystore', '.p12', '.pfx') -Label 'Android production keystore'
+            $storePassword = Read-SecretPlainText 'Android keystore password'
+            $keyPassword = Read-SecretPlainText 'Android key password'
+        }
+
         $tempDirectory = Join-Path ([IO.Path]::GetTempPath()) ('free-ai-signing-' + [Guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $tempDirectory | Out-Null
+        $generatedKeystoreValidated = $false
 
         $oldStore = $env:FREEAI_ANDROID_STOREPASS
         $oldKey = $env:FREEAI_ANDROID_KEYPASS
         try {
             $env:FREEAI_ANDROID_STOREPASS = $storePassword
             $env:FREEAI_ANDROID_KEYPASS = $keyPassword
+
+            if ($GenerateAndroidKeystore) {
+                Invoke-External -FilePath $keytool -Arguments @(
+                    '-genkeypair',
+                    '-v',
+                    '-keystore', $keystore,
+                    '-storetype', 'JKS',
+                    '-alias', $KeyAlias,
+                    '-keyalg', 'RSA',
+                    '-keysize', '4096',
+                    '-sigalg', 'SHA256withRSA',
+                    '-validity', '10000',
+                    '-dname', 'CN=Free AI,O=Free AI',
+                    '-storepass:env', 'FREEAI_ANDROID_STOREPASS',
+                    '-keypass:env', 'FREEAI_ANDROID_KEYPASS'
+                ) | Out-Null
+
+                if (-not (Test-Path -LiteralPath $keystore)) {
+                    throw 'keytool did not create the requested Android keystore.'
+                }
+
+                Write-Host "Generated Android production keystore: $keystore"
+                Write-Host 'Back up this file in at least two secure locations. Never commit it to Git.'
+            }
 
             $csr = Join-Path $tempDirectory 'verify.csr'
             $cer = Join-Path $tempDirectory 'release.cer'
@@ -331,12 +400,18 @@ switch ($Target) {
             if ($releaseCertificate.NotAfter -le (Get-Date)) {
                 throw "The Android signing certificate expired on $($releaseCertificate.NotAfter.ToString('u'))."
             }
+            $minimumAndroidExpiry = [DateTime]::SpecifyKind([DateTime]::Parse('2033-10-22T00:00:00'), [DateTimeKind]::Utc)
+            if ($releaseCertificate.NotAfter.ToUniversalTime() -le $minimumAndroidExpiry) {
+                throw "Android release certificates must remain valid after October 22, 2033. Current expiry: $($releaseCertificate.NotAfter.ToString('u'))"
+            }
 
             $sha1 = $releaseCertificate.Thumbprint.ToUpperInvariant()
+            $generatedKeystoreValidated = $true
             $pairs = for ($i = 0; $i -lt $sha1.Length; $i += 2) { $sha1.Substring($i, 2) }
             $sha1Display = $pairs -join ':'
 
             Write-Host 'Validated Android production key:'
+            Write-Host "  Keystore:   $keystore"
             Write-Host "  Alias:      $KeyAlias"
             Write-Host "  Subject:    $($releaseCertificate.Subject)"
             Write-Host "  SHA-1:      $sha1Display"
@@ -353,6 +428,18 @@ switch ($Target) {
             Write-Host 'Google Cloud must have an Android OAuth client for:'
             Write-Host '  Package: com.freeai.mobile'
             Write-Host "  SHA-1:   $sha1Display"
+        }
+        catch {
+            if ($GenerateAndroidKeystore -and (Test-Path -LiteralPath $keystore)) {
+                if ($generatedKeystoreValidated) {
+                    Write-Warning "The generated keystore was validated and has been kept at $keystore. Fix the setup error and rerun the helper with -KeystorePath instead of generating a new key."
+                }
+                else {
+                    Remove-Item -LiteralPath $keystore -Force -ErrorAction SilentlyContinue
+                    Write-Warning 'Removed the newly generated keystore because key generation/validation did not complete successfully.'
+                }
+            }
+            throw
         }
         finally {
             if ($null -eq $oldStore) {

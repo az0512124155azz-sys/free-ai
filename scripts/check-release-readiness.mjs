@@ -93,6 +93,13 @@ for(const [text,label] of [
   ["-storepass:env', 'FREEAI_ANDROID_STOREPASS'",'Android store password avoids process arguments'],
   ["-keypass:env', 'FREEAI_ANDROID_KEYPASS'",'Android key password avoids process arguments'],
   ["ANDROID_RELEASE_EXPECTED_SHA1",'Android fingerprint secret setup'],
+  ["GenerateAndroidKeystore",'Android one-command keystore generation switch'],
+  ["'-genkeypair'",'Android keytool generation command'],
+  ["'-keysize', '4096'",'Android RSA-4096 generation'],
+  ["'-validity', '10000'",'Android long-lived release certificate'],
+  ["2033-10-22T00:00:00",'Android minimum signing-certificate validity guard'],
+  ["Refusing to generate a production signing key inside the Git repository.",'Android private-key repository guard'],
+  ["generatedKeystoreValidated",'validated generated-key preservation guard'],
   ["WIN_CSC_LINK",'Windows certificate secret setup'],
   ["MAC_CSC_LINK",'macOS certificate secret setup']
 ]) requireText(credentialHelper,text,label);
@@ -117,6 +124,7 @@ for(const [text,label] of [
   ['-Target Windows','Windows credential helper example'],
   ['-Target MacOS','macOS credential helper example'],
   ['-Target Android','Android credential helper example'],
+  ['-GenerateAndroidKeystore','Android one-command production key generation example'],
   ['validate_release=true','production dry-run instruction'],
   ['publish_release=false','non-publishing dry-run instruction'],
   ['allow_unsigned_macos','explicit unsigned macOS release documentation'],
