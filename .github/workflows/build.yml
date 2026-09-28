@@ -13,6 +13,11 @@ on:
         required: false
         type: boolean
         default: false
+      allow_unsigned_macos:
+        description: Explicitly allow an unsigned/not-notarized macOS DMG for this release
+        required: false
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -37,10 +42,15 @@ jobs:
         env:
           VALIDATE_RELEASE: ${{ inputs.validate_release }}
           PUBLISH_RELEASE: ${{ inputs.publish_release }}
+          ALLOW_UNSIGNED_MACOS: ${{ inputs.allow_unsigned_macos }}
         run: |
           set -euo pipefail
           if [[ "$VALIDATE_RELEASE" == "true" && "$PUBLISH_RELEASE" == "true" ]]; then
             echo "Choose either validate_release or publish_release, not both." >&2
+            exit 1
+          fi
+          if [[ "$ALLOW_UNSIGNED_MACOS" == "true" && "$VALIDATE_RELEASE" != "true" && "$PUBLISH_RELEASE" != "true" ]]; then
+            echo "allow_unsigned_macos is only valid with validate_release or publish_release." >&2
             exit 1
           fi
           echo "Release mode selection is valid."
@@ -262,6 +272,7 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           REQUIRE_MAC_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}
+          ALLOW_UNSIGNED_MACOS: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_unsigned_macos == true }}
         run: |
           set -euo pipefail
 
@@ -346,8 +357,12 @@ jobs:
             exit 1
           fi
           if [[ "${REQUIRE_MAC_DISTRIBUTION:-false}" == true && ( "$signed" != true || "$notarized" != true ) ]]; then
-            echo "Release validation/publishing requires both Developer ID signing and Apple notarization. Configure MAC_CSC_LINK/MAC_CSC_KEY_PASSWORD plus one complete notarization credential set." >&2
-            exit 1
+            if [[ "${ALLOW_UNSIGNED_MACOS:-false}" == true && "$signed" == false && "$notarized" == false ]]; then
+              echo "::warning::Explicit unsigned macOS exception enabled. The DMG will not have Developer ID signing or Apple notarization and may be blocked or warned by Gatekeeper."
+            else
+              echo "Release validation/publishing requires both Developer ID signing and Apple notarization. Configure MAC_CSC_LINK/MAC_CSC_KEY_PASSWORD plus one complete notarization credential set, or explicitly choose allow_unsigned_macos for an unsigned DMG." >&2
+              exit 1
+            fi
           fi
 
           echo "signed=$signed" >> "$GITHUB_OUTPUT"
@@ -1301,6 +1316,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          ALLOW_UNSIGNED_MACOS: ${{ inputs.allow_unsigned_macos }}
         shell: bash
         run: |
           set -euo pipefail
@@ -1314,7 +1330,13 @@ jobs:
             exit 1
           fi
 
+          EXTRA_NOTES=""
+          if [[ "${ALLOW_UNSIGNED_MACOS:-false}" == true ]]; then
+            EXTRA_NOTES=⚠️ macOS signing notice\n\nThe macOS DMG in this release is intentionally unsigned and not notarized. macOS Gatekeeper may warn or block it. Windows and Android release gates remain unchanged.\n'
+          fi
+
           gh release create "$TAG" "${ASSETS[@]}" \
             --target "$GITHUB_SHA" \
             --title "$TITLE" \
+            --notes "$EXTRA_NOTES" \
             --generate-notes
