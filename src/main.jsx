@@ -2653,8 +2653,8 @@ function Composer(props){
   const nativeSpeechFinalizing=useRef(false);
   const nativeLastTranscript=useRef('');
   const webRecognition=useRef(null);
-  const linuxAudioRef=useRef(null);
-  const linuxDictationTimerRef=useRef(null);
+  const localAudioRef=useRef(null);
+  const localDictationTimerRef=useRef(null);
   const dictationBase=useRef('');
   const startVoiceRef=useRef(null);
   const stopVoiceRef=useRef(null);
@@ -2696,14 +2696,14 @@ function Composer(props){
     if(/no[_ -]?match|speech[_ -]?timeout|no speech/i.test(detail))return 'No speech was detected. Try again.';
     return event?.message||event?.code||'Dictation failed.';
   }
-  function linuxFlattenAudio(chunks){
+  function localFlattenAudio(chunks){
     const total=chunks.reduce((sum,chunk)=>sum+chunk.length,0);
     const out=new Float32Array(total);
     let offset=0;
     for(const chunk of chunks){out.set(chunk,offset);offset+=chunk.length}
     return out;
   }
-  function linuxDownsampleAudio(input,inputRate,targetRate=16000){
+  function localDownsampleAudio(input,inputRate,targetRate=16000){
     if(!input.length)return new Float32Array();
     if(inputRate===targetRate)return input;
     const ratio=inputRate/targetRate;
@@ -2718,7 +2718,7 @@ function Composer(props){
     }
     return output;
   }
-  function linuxPcmWav(samples,sampleRate=16000){
+  function localPcmWav(samples,sampleRate=16000){
     const buffer=new ArrayBuffer(44+samples.length*2);
     const view=new DataView(buffer);
     const write=(offset,text)=>{for(let i=0;i<text.length;i++)view.setUint8(offset+i,text.charCodeAt(i))};
@@ -2743,11 +2743,11 @@ function Composer(props){
     }
     return new Uint8Array(buffer);
   }
-  async function stopLinuxVoice({discard=false}={}){
-    const state=linuxAudioRef.current;
+  async function stopLocalVoice({discard=false}={}){
+    const state=localAudioRef.current;
     if(!state)return;
-    linuxAudioRef.current=null;
-    if(linuxDictationTimerRef.current){clearTimeout(linuxDictationTimerRef.current);linuxDictationTimerRef.current=null}
+    localAudioRef.current=null;
+    if(localDictationTimerRef.current){clearTimeout(localDictationTimerRef.current);localDictationTimerRef.current=null}
     try{state.processor.onaudioprocess=null}catch{}
     try{state.source.disconnect()}catch{}
     try{state.processor.disconnect()}catch{}
@@ -2756,14 +2756,14 @@ function Composer(props){
     await state.context.close().catch(()=>{});
     setListening(false);
     if(discard)return;
-    const pcm=linuxDownsampleAudio(linuxFlattenAudio(state.chunks),state.sampleRate,16000);
+    const pcm=localDownsampleAudio(localFlattenAudio(state.chunks),state.sampleRate,16000);
     if(pcm.length<3200){setDictationError('No speech was detected. Try again.');return}
     setDictationNotice('Transcribing locally with Whisper…');
     try{
-      const status=await window.desktopApi.getLinuxDictationStatus?.().catch(()=>null);
+      const status=await window.desktopApi.getLocalDictationStatus?.().catch(()=>null);
       if(status&&!status.modelReady)setDictationNotice('Preparing local Whisper model (~60 MB) for first use…');
-      const result=await window.desktopApi.transcribeLinuxDictation({
-        wav:linuxPcmWav(pcm,16000),
+      const result=await window.desktopApi.transcribeLocalDictation({
+        wav:localPcmWav(pcm,16000),
         language:voiceLanguage||'auto'
       });
       const text=String(result?.text||'').trim();
@@ -2776,15 +2776,21 @@ function Composer(props){
       setDictationError(e?.message||'Local dictation failed.');
     }
   }
-  async function startLinuxVoice(){
-    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone capture is not available in this Linux runtime.');
-    if(!window.desktopApi?.transcribeLinuxDictation)throw new Error('Local Whisper dictation is missing from this Free AI build.');
+  async function startLocalVoice(){
+    if(!navigator.mediaDevices?.getUserMedia)throw new Error('Microphone capture is not available in this desktop runtime.');
+    if(!window.desktopApi?.transcribeLocalDictation)throw new Error('Local Whisper dictation is missing from this Free AI build.');
+    if(desktopPlatform==='darwin'){
+      const permission=await window.desktopApi.requestDictationMicrophoneAccess?.();
+      if(permission&&permission.granted===false){
+        throw new Error('Microphone access is denied. Enable Free AI in System Settings → Privacy & Security → Microphone, restart Free AI, and try again.');
+      }
+    }
     const stream=await navigator.mediaDevices.getUserMedia({
       audio:{channelCount:1,echoCancellation:true,noiseSuppression:true,autoGainControl:true},
       video:false
     });
     const AudioContextClass=window.AudioContext||window.webkitAudioContext;
-    if(!AudioContextClass){stream.getTracks().forEach(track=>track.stop());throw new Error('Audio capture is not supported by this Linux runtime.')}
+    if(!AudioContextClass){stream.getTracks().forEach(track=>track.stop());throw new Error('Audio capture is not supported by this desktop runtime.')}
     const context=new AudioContextClass();
     await context.resume();
     const source=context.createMediaStreamSource(stream);
@@ -2796,10 +2802,10 @@ function Composer(props){
     source.connect(processor);
     processor.connect(silent);
     silent.connect(context.destination);
-    linuxAudioRef.current={stream,context,source,processor,silent,chunks,sampleRate:context.sampleRate};
+    localAudioRef.current={stream,context,source,processor,silent,chunks,sampleRate:context.sampleRate};
     setListening(true);
     setDictationNotice('Listening locally… tap the microphone to stop.');
-    linuxDictationTimerRef.current=setTimeout(()=>stopLinuxVoice().catch(()=>{}),60000);
+    localDictationTimerRef.current=setTimeout(()=>stopLocalVoice().catch(()=>{}),60000);
   }
 
   async function stopVoice(){
@@ -2818,8 +2824,8 @@ function Composer(props){
           setListening(false);
           updateAndroidDictationQaState({stopped:true,finalized:true});
         }
-      }else if(desktopPlatform==='linux'&&linuxAudioRef.current){
-        await stopLinuxVoice();
+      }else if((desktopPlatform==='linux'||desktopPlatform==='darwin')&&localAudioRef.current){
+        await stopLocalVoice();
       }else if(webRecognition.current){
         webRecognition.current.stop();
         webRecognition.current=null;
@@ -2839,16 +2845,18 @@ function Composer(props){
     dictationBase.current=prompt.trimEnd();
 
     if(isDesktop){
-      if(desktopPlatform==='linux'){
+      if(desktopPlatform==='linux'||desktopPlatform==='darwin'){
         try{
-          await startLinuxVoice();
+          await startLocalVoice();
         }catch(e){
           setListening(false);
           setDictationNotice('');
           const detail=String(e?.message||e||'');
-          setDictationError(/permission|notallowed/i.test(detail)
-            ? 'Microphone access is denied. Allow microphone access for Free AI and try again.'
-            : (e?.message||'Linux dictation could not start.'));
+          setDictationError(/permission|notallowed|denied/i.test(detail)
+            ? (desktopPlatform==='darwin'
+                ? 'Microphone access is denied. Enable Free AI in System Settings → Privacy & Security → Microphone, restart Free AI, and try again.'
+                : 'Microphone access is denied. Allow microphone access for Free AI and try again.')
+            : (e?.message||'Local dictation could not start.'));
         }
         return;
       }
@@ -3001,7 +3009,7 @@ function Composer(props){
         SpeechRecognition.removeAllListeners().catch(()=>{});
       }else{
         webRecognition.current?.abort?.();
-        if(linuxAudioRef.current)stopLinuxVoice({discard:true}).catch(()=>{});
+        if(localAudioRef.current)stopLocalVoice({discard:true}).catch(()=>{});
       }
     };
   },[]);
@@ -4215,7 +4223,7 @@ function VoiceSettings({prefs,setPrefs}){
       return;
     }
     if(isDesktop&&desktopPlatform==='linux'){
-      window.desktopApi?.getLinuxDictationStatus?.().then(setLinuxStatus).catch(()=>setLinuxStatus({available:false,modelReady:false}));
+      window.desktopApi?.getLocalDictationStatus?.().then(setLinuxStatus).catch(()=>setLinuxStatus({available:false,modelReady:false}));
     }
   },[]);
   async function request(){
