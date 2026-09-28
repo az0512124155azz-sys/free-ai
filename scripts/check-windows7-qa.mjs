@@ -145,7 +145,7 @@ has(workflow,"VITE_VISUAL_TEST: '1'",'Windows visual build must use the explicit
 has(source,"const isVisualTestBuild=import.meta.env.VITE_VISUAL_TEST==='1';",'Visual auth bypass must be an explicit build-time test flag.');
 has(source,'const supabase=!isVisualTestBuild&&supabaseUrl&&supabaseKey','Visual auth bypass must not change normal production auth.');
 has(workflow,'free-ai-windows-visual','Windows visual evidence must be uploaded for review.');
-has(workflow,'needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','Release publishing must depend on the Windows visual gate plus Android runtime and auth QA.');
+has(workflow,'needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','Release validation/publishing must depend on the conflict guard, Windows visual gate, and Android runtime/auth QA.');
 has(windowsVisualConfig,"snapshotPathTemplate:'{testDir}/baselines/{arg}{ext}'",'Windows visual snapshots must use the committed baseline directory.');
 has(windowsVisualSpec,"_electron as electron",'Visual regression must launch the real Electron app through Playwright.');
 has(windowsVisualSpec,"--user-data-dir=",'Visual regression must isolate its Electron profile.');
@@ -162,7 +162,7 @@ has(workflow,'- id: windows_signing','Windows CI must preflight signing configur
 has(workflow,'WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}','Windows certificate material must come from GitHub Actions secrets.');
 has(workflow,'WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}','Windows certificate password must come from GitHub Actions secrets.');
 has(workflow,'Windows signing is only partially configured. Set both WIN_CSC_LINK and WIN_CSC_KEY_PASSWORD','Partial Windows signing configuration must fail closed.');
-has(workflow,'Release publishing requires Windows Authenticode signing.','Release publishing must be blocked when Windows signing credentials are absent.');
+has(workflow,'Release validation/publishing requires Windows Authenticode signing.','Release validation and publishing must be blocked when Windows signing credentials are absent.');
 has(workflow,'FREEAI_EXPECT_SIGNED: ${{ steps.windows_signing.outputs.enabled }}','Installer smoke must know whether signing was expected for this build.');
 has(installerSmoke,'function Assert-ValidAuthenticodeSignature','Windows installer smoke must include Authenticode verification.');
 has(installerSmoke,'Get-AuthenticodeSignature -LiteralPath $Path','Windows signing verification must use the platform Authenticode status.');
@@ -170,6 +170,7 @@ has(installerSmoke,"[string]$signature.Status -ne 'Valid'",'Windows signing veri
 has(installerSmoke,"Assert-ValidAuthenticodeSignature $installer.FullName 'Windows installer'",'Signed CI must verify the NSIS installer signature.');
 has(installerSmoke,"Assert-ValidAuthenticodeSignature $appExe 'Installed Free AI.exe'",'Signed CI must verify the installed executable signature.');
 has(windowsSigningGuide,'WIN_CSC_LINK','Windows signing guide must document the certificate secret.');
+has(windowsSigningGuide,'validate_release=true','Windows signing guide must document the production release-validation gate.');
 has(windowsSigningGuide,'publish_release=true','Windows signing guide must document the signed-release gate.');
 has(windowsSigningGuide,'Microsoft Artifact Signing','Windows signing guide must document the cloud-signing alternative without fake credentials.');
 has(installerSmoke,"@('/S', \"/D=$installDir\")",'Installer smoke must perform a silent NSIS clean install to an isolated directory.');

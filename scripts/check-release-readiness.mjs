@@ -32,7 +32,17 @@ for(const [text,label] of [
   ['name: Validate Android release-signing pipeline','CI exercise of Android production-signing path'],
   ['name: Build signed Android release APK','signed Android release build'],
   ['name: free-ai-android-release','signed Android release artifact'],
-  ['needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','release waits for all Android runtime/auth gates'],
+  ['validate_release:','manual non-publishing release-validation input'],
+  ["inputs.validate_release == true || inputs.publish_release == true",'shared production-signing gate for validation and publishing'],
+  ['release_mode_guard:','manual release-mode conflict guard'],
+  ['name: Reject conflicting release modes','explicit release-mode conflict rejection'],
+  ['Choose either validate_release or publish_release, not both.','conflicting release-mode failure'],
+  ['release_validation:','non-publishing release-validation job'],
+  ["inputs.validate_release == true && inputs.publish_release != true",'dry-run cannot publish when publish_release is selected'],
+  ['name: Validate release candidate without publishing','release candidate validation step'],
+  ['name: Upload validated release candidate','release candidate artifact upload'],
+  ['name: free-ai-release-candidate','validated release candidate artifact'],
+  ['needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','release modes wait for the conflict guard plus all Android runtime/auth gates'],
   ['name: Verify release assets and tag availability','release asset/tag preflight'],
   ['Free-AI-Android-$VERSION.apk','versioned Android production asset'],
   ['SHA256SUMS.txt','release checksums'],
@@ -41,6 +51,19 @@ for(const [text,label] of [
 
 if(workflow.includes('gh release upload "$TAG"')||workflow.includes('--clobber')){
   fail('release workflow can overwrite assets on an existing tag');
+}
+
+const validationStart=workflow.indexOf('  release_validation:');
+const releaseStart=workflow.indexOf('  release:',validationStart+1);
+if(validationStart<0||releaseStart<0||releaseStart<=validationStart){
+  fail('release-validation job boundaries are missing');
+}
+const validationJob=workflow.slice(validationStart,releaseStart);
+if(validationJob.includes('gh release create')||validationJob.includes('gh release upload')||validationJob.includes('git tag')){
+  fail('release validation must never create or mutate a GitHub release/tag');
+}
+if(!validationJob.includes('SHA256SUMS.txt')){
+  fail('release validation does not generate checksums');
 }
 if(workflow.includes('name: free-ai-android\n          path: release-assets')){
   fail('release job still downloads the debug Android artifact');

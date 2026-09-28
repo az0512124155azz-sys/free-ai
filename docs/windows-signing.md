@@ -18,11 +18,13 @@ The workflow deliberately supports two modes:
 
 A partial configuration (only one of the two secrets) fails the Windows job.
 
-## Release gate
+## Release gates
 
-A workflow-dispatched release with `publish_release=true` is not allowed to continue without Windows signing credentials. This prevents the release workflow from publishing a new unsigned Windows installer by accident.
+A workflow-dispatched production validation with `validate_release=true` and a public release with `publish_release=true` both require Windows signing credentials.
 
-This checkpoint does not publish a release or change the application version.
+The validation mode is the safe first step: it exercises the real Authenticode certificate and signed installer verification, then uploads a temporary release-candidate artifact without creating a Git tag or GitHub Release. Publication remains a separate manual run.
+
+This prevents both release validation and publication from accepting an unsigned Windows installer.
 
 ## Publisher trust
 

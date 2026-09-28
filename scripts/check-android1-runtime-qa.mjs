@@ -53,7 +53,7 @@ has(workflow,'free-ai-runtime-qa.apk','CI must preserve a dedicated auth-indepen
 has(workflow,'name: free-ai-android-runtime-qa','Runtime QA APK must use a CI-only artifact.');
 has(workflow,'Download Android runtime QA build','Runtime emulator jobs must consume the CI-only QA artifact.');
 ok(!/name: free-ai-android\n[\s\S]{0,300}free-ai-runtime-qa\.apk/.test(workflow),'Runtime QA APK must never be bundled into the release Android artifact.');
-has(workflow,'needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','Release publishing must depend on runtime Android QA and auth gates.');
+has(workflow,'needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','Release validation/publishing must depend on the release-mode guard plus runtime Android QA and auth gates.');
 
 ok(pkg?.scripts?.['android:configure-runtime-qa']==='node scripts/configure-android-runtime-qa.mjs','Android runtime QA bridge script is not wired.');
 ok(String(pkg?.scripts?.validate||'').includes('check-android1-runtime-qa.mjs'),'Android 1C regression check is not part of validation.');

@@ -1,6 +1,6 @@
 # Free AI release process
 
-The normal `main` workflow produces development and QA artifacts. A public GitHub Release is intentionally stricter and must be started manually with `publish_release=true`.
+The normal `main` workflow produces development and QA artifacts. Production signing can be exercised safely with a manual `validate_release=true` dry-run. A public GitHub Release is intentionally stricter and must be started manually with `publish_release=true`.
 
 ## Current release line
 
@@ -68,14 +68,31 @@ Keep the production values configured for:
 
 The release workflow also runs the Android email/session and Google Credential Manager runtime gates before the release job is allowed to start.
 
+## Production release dry-run
+
+Use this before publishing after adding or rotating any signing credential.
+
+1. Add the required repository secrets under **Settings -> Secrets and variables -> Actions**.
+2. Open **Actions -> Build Free AI -> Run workflow** on `main`.
+3. Set **Validate production release without publishing** to `true`.
+4. Leave **Publish the final GitHub Release** set to `false`.
+5. The workflow requires the real Windows Authenticode certificate, macOS Developer ID + notarization credentials, and Android production keystore.
+6. It runs the same desktop, Android runtime, email/session, Google Credential Manager, and extension gates used by publication.
+7. It builds the signed Android release APK and the signed/notarized desktop artifacts, verifies the exact production asset set, verifies that the target tag/release does not already exist, generates `SHA256SUMS.txt`, and uploads a temporary Actions artifact named `free-ai-release-candidate`.
+8. It does **not** create a Git tag and does **not** create or modify a GitHub Release.
+
+Do not enable both validation and publication in the same manual run. The workflow has an explicit release-mode guard and fails when both inputs are true. Use validation first, inspect the green result and release-candidate artifact, then start a separate publication run.
+
 ## Publication
 
 1. Merge the release-readiness change to `main` only after the full PR build matrix is green.
 2. Confirm `package.json` contains the intended new version and that no matching tag exists.
-3. Open **Actions -> Build Free AI -> Run workflow** on `main`.
-4. Set **Publish the final GitHub Release** to `true`.
-5. The workflow builds and validates Windows, macOS, Linux, Android and the browser extension.
-6. The release job verifies the exact expected production assets, writes `SHA256SUMS.txt`, refuses an existing tag, and creates the GitHub Release with generated notes.
+3. Complete a green production release dry-run as described above.
+4. Open **Actions -> Build Free AI -> Run workflow** on `main` again.
+5. Leave **Validate production release without publishing** set to `false`.
+6. Set **Publish the final GitHub Release** to `true`.
+7. The workflow builds and validates Windows, macOS, Linux, Android and the browser extension again from the publication commit.
+8. The release job verifies the exact expected production assets, writes `SHA256SUMS.txt`, refuses an existing tag, and creates the GitHub Release with generated notes.
 
 Expected public assets for version `x.y.z`:
 
