@@ -29,6 +29,7 @@ for(const [text,label] of [
   ['ANDROID_RELEASE_KEY_ALIAS','Android release key-alias gate'],
   ['ANDROID_RELEASE_KEY_PASSWORD','Android release key-password gate'],
   ['ANDROID_RELEASE_EXPECTED_SHA1','Android release certificate fingerprint gate'],
+  ['name: Validate Android release-signing pipeline','CI exercise of Android production-signing path'],
   ['name: Build signed Android release APK','signed Android release build'],
   ['name: free-ai-android-release','signed Android release artifact'],
   ['needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','release waits for all Android runtime/auth gates'],
