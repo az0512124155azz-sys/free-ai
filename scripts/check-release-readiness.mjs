@@ -16,9 +16,13 @@ const releaseSigning=fs.readFileSync('scripts/configure-android-release-signing.
 const credentialHelper=fs.readFileSync('scripts/setup-release-credentials.ps1','utf8');
 const releaseDocs=fs.readFileSync('docs/release.md','utf8');
 const credentialDocs=fs.readFileSync('docs/release-credentials.md','utf8');
+const extensionManifest=JSON.parse(fs.readFileSync('extension/manifest.json','utf8'));
 
 if(!/^\d+\.\d+\.\d+$/.test(String(pkg.version||'')))fail('package version must be stable x.y.z');
 if(pkg.version==='0.6.0')fail('package version still reuses the already-published v0.6.0 tag');
+if(String(extensionManifest.version||'')!==String(pkg.version||'')){
+  fail('Chrome extension manifest version must match package.json version');
+}
 
 for(const [text,label] of [
   ['"android:configure-release-signing": "node scripts/configure-android-release-signing.mjs"','Android production signing npm command'],
