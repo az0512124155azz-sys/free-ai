@@ -13,6 +13,9 @@ const pkg=JSON.parse(pkgText);
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const readme=fs.readFileSync('README.md','utf8');
 const releaseSigning=fs.readFileSync('scripts/configure-android-release-signing.mjs','utf8');
+const credentialHelper=fs.readFileSync('scripts/setup-release-credentials.ps1','utf8');
+const releaseDocs=fs.readFileSync('docs/release.md','utf8');
+const credentialDocs=fs.readFileSync('docs/release-credentials.md','utf8');
 
 if(!/^\d+\.\d+\.\d+$/.test(String(pkg.version||'')))fail('package version must be stable x.y.z');
 if(pkg.version==='0.6.0')fail('package version still reuses the already-published v0.6.0 tag');
@@ -73,6 +76,43 @@ if(!validationJob.includes('SHA256SUMS.txt')){
 if(workflow.includes('name: free-ai-android\n          path: release-assets')){
   fail('release job still downloads the debug Android artifact');
 }
+
+for(const [text,label] of [
+  ["ValidateSet('Windows', 'MacOS', 'Android')",'credential helper platform allow-list'],
+  ["Read-Host -Prompt $Prompt -AsSecureString",'secure local password prompts'],
+  ['RedirectStandardInput = $true','GitHub CLI secret stdin transport'],
+  ['StandardInput.Write($Value)','exact secret stdin write'],
+  ["-storepass:env', 'FREEAI_ANDROID_STOREPASS'",'Android store password avoids process arguments'],
+  ["-keypass:env', 'FREEAI_ANDROID_KEYPASS'",'Android key password avoids process arguments'],
+  ["ANDROID_RELEASE_EXPECTED_SHA1",'Android fingerprint secret setup'],
+  ["WIN_CSC_LINK",'Windows certificate secret setup'],
+  ["MAC_CSC_LINK",'macOS certificate secret setup']
+]) requireText(credentialHelper,text,label);
+
+const helperParamBlock=credentialHelper.slice(0,credentialHelper.indexOf('Set-StrictMode'));
+for(const unsafeParam of ['$Password', '$StorePassword', '$KeyPassword', '$AppPassword']){
+  if(helperParamBlock.includes(unsafeParam)){
+    fail('credential helper accepts a secret password as a command-line parameter: '+unsafeParam);
+  }
+}
+if(credentialHelper.includes('gh secret set')&&credentialHelper.includes('--body')){
+  fail('credential helper passes secret values through GitHub CLI command-line arguments');
+}
+for(const unsafeLog of ['Write-Host $password','Write-Host $storePassword','Write-Host $keyPassword','Write-Host $appPassword','Write-Host $base64']){
+  if(credentialHelper.includes(unsafeLog)){
+    fail('credential helper can print a secret value: '+unsafeLog);
+  }
+}
+
+requireText(releaseDocs,'release-credentials.md','release process link to credential onboarding guide');
+for(const [text,label] of [
+  ['-Target Windows','Windows credential helper example'],
+  ['-Target MacOS','macOS credential helper example'],
+  ['-Target Android','Android credential helper example'],
+  ['validate_release=true','production dry-run instruction'],
+  ['publish_release=false','non-publishing dry-run instruction'],
+  ['com.freeai.mobile','Android OAuth package instruction']
+]) requireText(credentialDocs,text,label);
 
 for(const [text,label] of [
   ['System.getenv("ANDROID_RELEASE_STORE_PASSWORD")','Gradle store password from environment'],
