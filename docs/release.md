@@ -81,7 +81,7 @@ Use this before publishing after adding or rotating any signing credential.
 7. It builds the signed Android release APK and the signed/notarized desktop artifacts, verifies the exact production asset set, verifies that the target tag/release does not already exist, generates `SHA256SUMS.txt`, and uploads a temporary Actions artifact named `free-ai-release-candidate`.
 8. It does **not** create a Git tag and does **not** create or modify a GitHub Release.
 
-Do not enable both validation and publication in the same manual run. Use validation first, inspect the green result and release-candidate artifact, then start a separate publication run.
+Do not enable both validation and publication in the same manual run. The workflow has an explicit release-mode guard and fails when both inputs are true. Use validation first, inspect the green result and release-candidate artifact, then start a separate publication run.
 
 ## Publication
 
