@@ -86,7 +86,7 @@
     for(const img of scope.querySelectorAll?.('img[src],picture img[src]')||[]){
       if(!visible(img))continue;
       const src=String(img.currentSrc||img.src||img.getAttribute('src')||'').trim();
-      if(!/^(?:https?:|blob:|data:image/)/i.test(src))continue;
+      if(!/^(?:https?:|blob:|data:image\/)/i.test(src))continue;
       const rect=img.getBoundingClientRect();
       const alt=cleanLabel(img.getAttribute('alt')||img.getAttribute('aria-label')||'');
       const largeEnough=rect.width>=72&&rect.height>=72;
