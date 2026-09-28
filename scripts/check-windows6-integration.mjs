@@ -32,8 +32,8 @@ has(source,"const BRAND_LOGO_SRC=new URL('free-ai-logo.svg',document.baseURI).hr
 for(const platform of ['win','mac','linux'])ok(pkg?.build?.[platform]?.icon==='build/free-ai-symbol.svg',platform+' package icon is not canonical.');
 
 has(source,'function SettingsView','Settings integration is missing.');
-has(source,'function WindowsAppSettings','Windows app settings are missing.');
-has(source,"{section==='App'&&isWindowsDesktop&&<WindowsAppSettings/>}",'Windows App settings navigation must render WindowsAppSettings.');
+has(source,'function DesktopAppSettings','Shared desktop App settings are missing.');
+has(source,"{section==='App'&&isChatDesktop&&<DesktopAppSettings/>}",'Windows App settings navigation must render the shared DesktopAppSettings.');
 has(source,'Check for updates','Update-check UI is missing.');
 has(main,"https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest",'Update check is not using the official GitHub Releases feed.');
 has(source,'function AppearanceSettings','Appearance settings are missing.');
