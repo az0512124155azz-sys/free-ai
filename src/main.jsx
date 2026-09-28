@@ -4163,7 +4163,7 @@ function DesktopAppSettings(){
     <div className="settingBlock">
       <SettingRow title="Version" desc="The installed Free AI desktop version." control={<span className="valuePill">{info?.version||'Loading…'}</span>}/>
       <SettingRow title="Authentication link handler" desc="Free AI uses the freeai:// protocol to return securely from desktop sign-in." control={<span className={'connectionStatus '+(info?.authProtocolRegistered?'good':'')}>{info?.authProtocolRegistered?'Registered':'Not registered'}</span>}/>
-      <SettingRow title="Updates" desc={desktopPlatform==='darwin'?'Check the official Free AI GitHub Releases feed. Production macOS releases are Developer ID signed and notarized before publication.':'Check the official Free AI GitHub Releases feed. Free AI does not silently install an update.'} control={<button className="settingsInlineButton" disabled={checking} onClick={check}>{checking?'Checking…':'Check for updates'}</button>}/>
+      <SettingRow title="Updates" desc={desktopPlatform==='darwin'?'Check the official Free AI GitHub Releases feed. Signed macOS releases use Developer ID and Apple notarization; an explicitly marked release may be published unsigned when Apple signing is unavailable.':'Check the official Free AI GitHub Releases feed. Free AI does not silently install an update.'} control={<button className="settingsInlineButton" disabled={checking} onClick={check}>{checking?'Checking…':'Check for updates'}</button>}/>
     </div>
     {update&&<div className="settingsStatus">
       {update.updateAvailable
@@ -4173,7 +4173,7 @@ function DesktopAppSettings(){
     {error&&<div className="settingsStatus">{error}</div>}
     <h3>Install</h3>
     <div className="settingBlock">
-      <SettingRow title={desktopPlatform==='darwin'?'Distribution package':'Installer'} desc={desktopPlatform==='darwin'?'macOS releases use a DMG. Release publishing is blocked unless Developer ID signing and Apple notarization credentials are configured.':'Windows builds use the NSIS installer produced by the Free AI release workflow.'} control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
+      <SettingRow title={desktopPlatform==='darwin'?'Distribution package':'Installer'} desc={desktopPlatform==='darwin'?'macOS releases use a DMG. The release workflow requires Developer ID signing and Apple notarization by default, but can publish an explicitly marked unsigned DMG when the release operator opts in.':'Windows builds use the NSIS installer produced by the Free AI release workflow.'} control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
     </div>
   </div>
 }
