@@ -57,12 +57,14 @@ The helper prompts for the certificate password, verifies that the bundle contai
 
 ## macOS Developer ID and notarization
 
-Free AI public macOS builds require:
+Free AI public macOS builds require Developer ID signing and notarization by default:
 
 - `MAC_CSC_LINK`
 - `MAC_CSC_KEY_PASSWORD`
 
 and one complete notarization credential set.
+
+For v0.7.0, Apple signing may be intentionally deferred. In that case, leave all macOS signing/notarization secrets unset and use the explicit `allow_unsigned_macos=true` workflow input during both validation and publication. The release workflow will warn that the DMG is unsigned/not notarized. Do not use the exception with a partially configured Apple credential set.
 
 Apple documents Developer ID Application certificates for apps distributed outside the Mac App Store:
 
@@ -187,10 +189,12 @@ Use:
 
 - `validate_release=true`
 - `publish_release=false`
+- `allow_unsigned_macos=false` for normal signed macOS validation, or `true` only when intentionally deferring Apple signing
 
-The validation run must be green before publication. It performs the real signing, notarization, Android certificate fingerprint check, runtime/auth QA, exact release asset validation, and checksum generation, but it does not create a tag or GitHub Release.
+The validation run must be green before publication. It performs Windows/Android production signing checks, runtime/auth QA, exact release asset validation, checksum generation, and macOS signing/notarization when the unsigned exception is not selected. It does not create a tag or GitHub Release.
 
 Only after that dry-run succeeds should a separate publication run use:
 
 - `validate_release=false`
 - `publish_release=true`
+- the same `allow_unsigned_macos` value that was used by the successful validation run
