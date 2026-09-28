@@ -12,15 +12,15 @@ function has(text,marker,message){
   if(!text.includes(marker))fail(message||('Missing marker: '+marker));
 }
 
-has(source,"const chatAttachmentPlatform=isWindowsDesktop||isAndroidNative;",'Android chat must participate in real attachment routing.');
-has(source,"if(isWindowsDesktop||isAndroidNative){await addChatAttachments(files)",'Android file/photo/camera selection must retain real File objects.');
-has(source,"const requestId=((isWindowsDesktop&&isDesktop)||isAndroidNative)?crypto.randomUUID():null;",'Android chat requests must have stable request IDs for streaming and cancellation.');
+has(source,"const chatAttachmentPlatform=isChatDesktop||isAndroidNative;",'Android chat must participate in real attachment routing.');
+has(source,"if(isChatDesktop||isAndroidNative){await addChatAttachments(files)",'Android file/photo/camera selection must retain real File objects.');
+has(source,"const requestId=((isChatDesktop&&isDesktop)||isAndroidNative)?crypto.randomUUID():null;",'Android chat requests must have stable request IDs for streaming and cancellation.');
 has(source,"history:chatAttachmentPlatform?history:undefined",'Android relay requests must preserve multi-turn chat history.');
 has(source,"const outboundAttachments=chatAttachmentPlatform&&canUploadFiles&&!retryContext",'Android browser-model attachments must be serialized for the desktop/provider upload path.');
 has(source,"onStream:text=>",'Android remote generation must consume incremental stream updates.');
 has(source,"activeRemoteRequestRef.current?.cancel?.()",'Android Stop must cancel the active relay request.');
-has(source,"windowsDesktop||isAndroidNative?stopGeneration:undefined",'Android busy composer action must expose Stop.');
-has(source,"(windowsDesktop||isAndroidNative)&&attachments.length>0",'Android composer must show selected attachment chips.');
+has(source,"isChatDesktop||isAndroidNative?stopGeneration:undefined",'Android busy composer action must expose Stop.');
+has(source,"(isChatDesktop||isAndroidNative)&&attachments.length>0",'Android composer must show selected attachment chips.');
 has(source,'<input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={attachFiles}/>','Android composer must keep a photo picker input.');
 has(source,'<input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={attachFiles}/>','Android composer must keep a camera capture input.');
 has(source,'function MobileConversationPicker','Android chat must keep the mobile model picker.');

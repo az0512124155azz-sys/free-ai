@@ -72,7 +72,7 @@ ok(!source.includes('label="Computer" sub="View or control your desktop"'),'Wind
 ok(!source.includes("sidePanel==='computer'"),'Windows renderer must not mount a user-facing Computer screen-mirror panel.');
 ok(!source.includes('function ComputerPane('),'Retired Computer screen-mirror component must not ship in the renderer.');
 has(source,'Screenshots are used internally by the active AI task; no screen-mirror panel is shown','Computer Use settings must explain background agent control without a screen mirror.');
-has(source,"!(mode==='work'&&isWindowsDesktop&&showBottomPanel)",'Windows Work Add menu must hide actions already exposed in the visible bottom shortcut row.');
+has(source,"!(mode==='work'&&isChatDesktop&&showBottomPanel)",'Windows Work Add menu must hide actions already exposed in the visible bottom shortcut row through the shared Chat desktop gate.');
 
 // Windows 7.13 OAuth deep-link boundary coverage.
 has(main,"const AUTH_CALLBACK_URL='freeai://auth/callback';",'Desktop auth callback must use the exact registered callback URL.');
