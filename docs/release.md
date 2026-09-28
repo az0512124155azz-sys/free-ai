@@ -8,6 +8,10 @@ The normal `main` workflow produces development and QA artifacts. Production sig
 - The next prepared release line is `v0.7.0`.
 - Do not reuse or overwrite an existing tag. The release workflow fails if the package tag already exists.
 
+## Production credential setup helper
+
+Use [release-credentials.md](release-credentials.md) for the local validation and GitHub Secrets setup workflow. The helper script validates signing material locally and sends secret values to GitHub through stdin instead of command-line arguments.
+
 ## Required production credentials
 
 ### Windows
