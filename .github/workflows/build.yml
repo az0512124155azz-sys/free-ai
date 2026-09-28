@@ -115,6 +115,123 @@ jobs:
             Write-Host 'Windows signing credentials are not configured. Continuing with an unsigned development/CI build.'
           }
 
+      - id: macos_distribution
+        name: Check macOS signing and notarization readiness
+        if: matrix.artifact == 'macos'
+        shell: bash
+        env:
+          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          REQUIRE_MAC_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release == true }}
+        run: |
+          set -euo pipefail
+
+          sign_link=false
+          sign_password=false
+          [[ -n "${MAC_CSC_LINK:-}" ]] && sign_link=true
+          [[ -n "${MAC_CSC_KEY_PASSWORD:-}" ]] && sign_password=true
+          if [[ "$sign_link" != "$sign_password" ]]; then
+            echo "macOS signing is only partially configured. Set both MAC_CSC_LINK and MAC_CSC_KEY_PASSWORD, or neither for an unsigned development build." >&2
+            exit 1
+          fi
+
+          api_key=false
+          api_id=false
+          api_issuer=false
+          [[ -n "${APPLE_API_KEY_BASE64:-}" ]] && api_key=true
+          [[ -n "${APPLE_API_KEY_ID:-}" ]] && api_id=true
+          [[ -n "${APPLE_API_ISSUER:-}" ]] && api_issuer=true
+          api_count=0
+          [[ "$api_key" == true ]] && api_count=$((api_count+1))
+          [[ "$api_id" == true ]] && api_count=$((api_count+1))
+          [[ "$api_issuer" == true ]] && api_count=$((api_count+1))
+          if [[ "$api_count" -ne 0 && "$api_count" -ne 3 ]]; then
+            echo "App Store Connect notarization is only partially configured. Set APPLE_API_KEY_BASE64, APPLE_API_KEY_ID, and APPLE_API_ISSUER together." >&2
+            exit 1
+          fi
+
+          apple_id=false
+          apple_password=false
+          apple_team=false
+          [[ -n "${APPLE_ID:-}" ]] && apple_id=true
+          [[ -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" ]] && apple_password=true
+          [[ -n "${APPLE_TEAM_ID:-}" ]] && apple_team=true
+          apple_count=0
+          [[ "$apple_id" == true ]] && apple_count=$((apple_count+1))
+          [[ "$apple_password" == true ]] && apple_count=$((apple_count+1))
+          [[ "$apple_team" == true ]] && apple_count=$((apple_count+1))
+          if [[ "$apple_count" -ne 0 && "$apple_count" -ne 3 ]]; then
+            echo "Apple ID notarization is only partially configured. Set APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID together." >&2
+            exit 1
+          fi
+
+          signed=false
+          if [[ "$sign_link" == true ]]; then
+            signed=true
+            {
+              echo 'CSC_LINK<<FREEAI_CSC_EOF'
+              printf '%s\n' "$MAC_CSC_LINK"
+              echo 'FREEAI_CSC_EOF'
+              echo 'CSC_KEY_PASSWORD<<FREEAI_CSC_PASSWORD_EOF'
+              printf '%s\n' "$MAC_CSC_KEY_PASSWORD"
+              echo 'FREEAI_CSC_PASSWORD_EOF'
+            } >> "$GITHUB_ENV"
+          fi
+
+          notarized=false
+          if [[ "$api_count" -eq 3 ]]; then
+            notarized=true
+            key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+            printf '%s' "$APPLE_API_KEY_BASE64" | base64 -D > "$key_path"
+            chmod 600 "$key_path"
+            {
+              echo "APPLE_API_KEY=$key_path"
+              echo "APPLE_API_KEY_ID=$APPLE_API_KEY_ID"
+              echo "APPLE_API_ISSUER=$APPLE_API_ISSUER"
+            } >> "$GITHUB_ENV"
+          elif [[ "$apple_count" -eq 3 ]]; then
+            notarized=true
+            {
+              echo 'APPLE_ID<<FREEAI_APPLE_ID_EOF'
+              printf '%s\n' "$APPLE_ID"
+              echo 'FREEAI_APPLE_ID_EOF'
+              echo 'APPLE_APP_SPECIFIC_PASSWORD<<FREEAI_APP_PASSWORD_EOF'
+              printf '%s\n' "$APPLE_APP_SPECIFIC_PASSWORD"
+              echo 'FREEAI_APP_PASSWORD_EOF'
+              echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+            } >> "$GITHUB_ENV"
+          fi
+
+          if [[ "$notarized" == true && "$signed" != true ]]; then
+            echo "macOS notarization credentials are configured without Developer ID signing credentials." >&2
+            exit 1
+          fi
+          if [[ "${REQUIRE_MAC_DISTRIBUTION:-false}" == true && ( "$signed" != true || "$notarized" != true ) ]]; then
+            echo "Release publishing requires both Developer ID signing and Apple notarization. Configure MAC_CSC_LINK/MAC_CSC_KEY_PASSWORD plus one complete notarization credential set." >&2
+            exit 1
+          fi
+
+          echo "signed=$signed" >> "$GITHUB_OUTPUT"
+          echo "notarized=$notarized" >> "$GITHUB_OUTPUT"
+          echo "FREEAI_MAC_NOTARIZE=$notarized" >> "$GITHUB_ENV"
+
+          if [[ "$signed" == true ]]; then
+            echo "Developer ID signing credentials detected."
+          else
+            echo "No macOS signing credentials detected; continuing with an unsigned development/CI build."
+          fi
+          if [[ "$notarized" == true ]]; then
+            echo "Apple notarization credentials detected; electron-builder notarization is enabled."
+          else
+            echo "No notarization credentials detected; notarization is disabled for this development/CI build."
+          fi
+
       - id: desktop_build
         name: Build desktop app
         continue-on-error: true
@@ -205,9 +322,12 @@ jobs:
           FREEAI_EXPECT_SIGNED: ${{ steps.windows_signing.outputs.enabled }}
         run: ./scripts/windows7-installer-smoke.ps1
 
-      - name: macOS packaged dictation smoke
+      - name: macOS packaged distribution and dictation smoke
         if: steps.desktop_build.outcome == 'success' && matrix.artifact == 'macos'
         shell: bash
+        env:
+          FREEAI_EXPECT_MAC_SIGNED: ${{ steps.macos_distribution.outputs.signed }}
+          FREEAI_EXPECT_MAC_NOTARIZED: ${{ steps.macos_distribution.outputs.notarized }}
         run: |
           set -euo pipefail
           dmg="$(find release -maxdepth 1 -name '*.dmg' -print -quit)"
@@ -221,10 +341,30 @@ jobs:
           hdiutil attach "$dmg" -mountpoint "$mount_dir" -nobrowse -readonly -quiet
           app_bundle="$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)"
           test -n "$app_bundle"
+
           whisper="$app_bundle/Contents/Resources/whisper/whisper-cli"
           test -x "$whisper"
           "$whisper" --version | grep -E 'whisper\.cpp version: 1\.9\.4'
           /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app_bundle/Contents/Info.plist" | grep -F 'Free AI uses the microphone'
+
+          if [[ "${FREEAI_EXPECT_MAC_SIGNED:-false}" == true ]]; then
+            codesign --verify --deep --strict --verbose=2 "$app_bundle"
+            codesign --display --verbose=4 "$app_bundle" 2>&1 | grep -F 'Authority=Developer ID Application'
+            entitlements_file="$(mktemp)"
+            codesign --display --entitlements :- "$app_bundle" > "$entitlements_file" 2>/dev/null
+            grep -F '<key>com.apple.security.cs.allow-jit</key>' "$entitlements_file"
+            grep -F '<key>com.apple.security.device.audio-input</key>' "$entitlements_file"
+          else
+            if codesign --verify --deep --strict "$app_bundle" >/dev/null 2>&1; then
+              echo 'Expected an unsigned development build, but codesign verification unexpectedly succeeded.' >&2
+              exit 1
+            fi
+          fi
+
+          if [[ "${FREEAI_EXPECT_MAC_NOTARIZED:-false}" == true ]]; then
+            xcrun stapler validate "$app_bundle"
+            spctl --assess --type execute --verbose=4 "$app_bundle"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: steps.desktop_build.outcome == 'success'
