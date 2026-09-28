@@ -8,7 +8,8 @@ function requireText(source,text,label){
   if(!source.includes(text))fail('missing '+label);
 }
 
-const pkg=JSON.parse(fs.readFileSync('package.json','utf8'));
+const pkgText=fs.readFileSync('package.json','utf8');
+const pkg=JSON.parse(pkgText);
 const workflow=fs.readFileSync('.github/workflows/build.yml','utf8');
 const readme=fs.readFileSync('README.md','utf8');
 const releaseSigning=fs.readFileSync('scripts/configure-android-release-signing.mjs','utf8');
@@ -20,7 +21,7 @@ for(const [text,label] of [
   ['"android:configure-release-signing": "node scripts/configure-android-release-signing.mjs"','Android production signing npm command'],
   ['node --check scripts/configure-android-release-signing.mjs','release-signing syntax validation'],
   ['node scripts/check-release-readiness.mjs','release readiness guard in npm validate']
-]) requireText(JSON.stringify(pkg),text,label);
+]) requireText(pkgText,text,label);
 
 for(const [text,label] of [
   ['ANDROID_RELEASE_KEYSTORE_BASE64','Android release keystore secret gate'],
