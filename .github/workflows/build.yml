@@ -783,6 +783,17 @@ jobs:
           npx cap copy android
           npm run android:configure-release-signing
 
+          KEYSTORE_SHA1="$(keytool -list -v \
+            -keystore android/app/free-ai-release.keystore \
+            -storepass "$ANDROID_RELEASE_STORE_PASSWORD" \
+            -alias "$ANDROID_RELEASE_KEY_ALIAS" | awk -F': ' '/SHA1:/{print $2; exit}')"
+          KEYSTORE_SHA1="$(printf '%s' "$KEYSTORE_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
+          EXPECTED_SHA1="$(printf '%s' "$ANDROID_RELEASE_EXPECTED_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
+          if [[ -z "$KEYSTORE_SHA1" || "$KEYSTORE_SHA1" != "$EXPECTED_SHA1" ]]; then
+            echo "Android release keystore certificate does not match the trusted expected SHA-1 metadata." >&2
+            exit 1
+          fi
+
           cd android
           ./gradlew assembleRelease
           cd ..
@@ -808,9 +819,8 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK"
           ACTUAL_SHA1="$("$APKSIGNER" verify --print-certs "$OUTPUT_APK" | awk -F': ' '/certificate SHA-1 digest/{print $2; exit}')"
           ACTUAL_SHA1="$(printf '%s' "$ACTUAL_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
-          EXPECTED_SHA1="$(printf '%s' "$ANDROID_RELEASE_EXPECTED_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
-          if [[ -z "$ACTUAL_SHA1" || "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]]; then
-            echo "Android release certificate SHA-1 does not match ANDROID_RELEASE_EXPECTED_SHA1." >&2
+          if [[ -z "$ACTUAL_SHA1" || "$ACTUAL_SHA1" != "$KEYSTORE_SHA1" ]]; then
+            echo "Android release APK certificate does not match the loaded production keystore." >&2
             exit 1
           fi
 
