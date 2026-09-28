@@ -19,41 +19,73 @@ gh auth status
 
 You can validate local files without writing any GitHub secrets by adding `-DryRun` to the commands below.
 
-## Windows Authenticode
+## Windows production signing
 
-Free AI public Windows builds require:
+Free AI supports either a trusted PFX/P12 Authenticode certificate or Microsoft Artifact Signing. Configure exactly one method.
+
+### PFX / P12
+
+Required secrets:
 
 - `WIN_CSC_LINK`
 - `WIN_CSC_KEY_PASSWORD`
 
 Use a trusted RSA code-signing certificate exported with its private key as `.pfx` or `.p12`.
 
-Microsoft currently documents that Smart App Control accepts trusted RSA-signed applications and does not support ECC signatures for this check:
-
-https://learn.microsoft.com/windows/apps/develop/smart-app-control/code-signing-for-smart-app-control
-
-electron-builder accepts a base64-encoded `.pfx`/`.p12` through `WIN_CSC_LINK`:
-
-https://www.electron.build/docs/features/code-signing/
-
-First validate the certificate locally:
+Validate without changing GitHub:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-release-credentials.ps1 `
   -Target Windows `
+  -WindowsSigningMode Pfx `
   -CertificatePath "C:\secure\free-ai-code-signing.pfx" `
   -DryRun
 ```
 
-Then write the repository secrets:
+Remove `-DryRun` to set the two Actions secrets.
+
+### Microsoft Artifact Signing
+
+Artifact Signing is Microsoft's managed cloud-signing service (formerly Trusted Signing). It avoids managing a PFX private key in CI.
+
+External setup requires an Azure subscription, identity validation, an Artifact Signing account/certificate profile, and a Microsoft Entra application with signing permission.
+
+Official setup:
+
+https://learn.microsoft.com/azure/artifact-signing/quickstart
+
+Once those resources exist, configure Free AI with:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-release-credentials.ps1 `
   -Target Windows `
-  -CertificatePath "C:\secure\free-ai-code-signing.pfx"
+  -WindowsSigningMode ArtifactSigning `
+  -AzureTenantId "<tenant-id>" `
+  -AzureClientId "<application-client-id>" `
+  -AzureSigningEndpoint "https://<region>.codesigning.azure.net/" `
+  -AzureSigningAccount "<artifact-signing-account>" `
+  -AzureSigningProfile "<certificate-profile>" `
+  -AzureSigningPublisher "<exact-certificate-publisher>"
 ```
 
-The helper prompts for the certificate password, verifies that the bundle contains a non-expired private key, requires RSA for Windows, then uploads the base64 certificate and password without printing either value.
+The helper prompts locally for the Entra application client secret and sets:
+
+- `AZURE_TENANT_ID`
+- `AZURE_CLIENT_ID`
+- `AZURE_CLIENT_SECRET`
+- `WIN_AZURE_SIGN_ENDPOINT`
+- `WIN_AZURE_SIGN_ACCOUNT`
+- `WIN_AZURE_SIGN_PROFILE`
+- `WIN_AZURE_SIGN_PUBLISHER`
+
+The client secret is never accepted as a command-line argument.
+
+The release preflight fails if either signing method is partial, if both methods are configured at once, or if neither method exists during `validate_release=true` / `publish_release=true`.
+
+Microsoft Smart App Control guidance and electron-builder signing documentation:
+
+- https://learn.microsoft.com/windows/apps/develop/smart-app-control/code-signing-for-smart-app-control
+- https://www.electron.build/v26/docs/features/code-signing/code-signing-win/
 
 ## macOS Developer ID and notarization
 
