@@ -101,11 +101,14 @@ for(const [text,label] of [
   ["Refusing to generate a production signing key inside the Git repository.",'Android private-key repository guard'],
   ["generatedKeystoreValidated",'validated generated-key preservation guard'],
   ["WIN_CSC_LINK",'Windows certificate secret setup'],
+  ["ValidateSet('Pfx', 'ArtifactSigning')",'Windows PFX/Artifact Signing mode allow-list'],
+  ["Set-RepositorySecret -Name 'AZURE_CLIENT_SECRET'",'Artifact Signing client secret setup'],
+  ["Read-SecretPlainText 'Microsoft Entra application client secret'",'secure Artifact Signing client secret prompt'],
   ["MAC_CSC_LINK",'macOS certificate secret setup']
 ]) requireText(credentialHelper,text,label);
 
 const helperParamBlock=credentialHelper.slice(0,credentialHelper.indexOf('Set-StrictMode'));
-for(const unsafeParam of ['$Password', '$StorePassword', '$KeyPassword', '$AppPassword']){
+for(const unsafeParam of ['$Password', '$StorePassword', '$KeyPassword', '$AppPassword', '$AzureClientSecret', '$ClientSecret']){
   if(helperParamBlock.includes(unsafeParam)){
     fail('credential helper accepts a secret password as a command-line parameter: '+unsafeParam);
   }
@@ -113,7 +116,7 @@ for(const unsafeParam of ['$Password', '$StorePassword', '$KeyPassword', '$AppPa
 if(credentialHelper.includes('gh secret set')&&credentialHelper.includes('--body')){
   fail('credential helper passes secret values through GitHub CLI command-line arguments');
 }
-for(const unsafeLog of ['Write-Host $password','Write-Host $storePassword','Write-Host $keyPassword','Write-Host $appPassword','Write-Host $base64']){
+for(const unsafeLog of ['Write-Host $password','Write-Host $storePassword','Write-Host $keyPassword','Write-Host $appPassword','Write-Host $clientSecret','Write-Host $base64']){
   if(credentialHelper.includes(unsafeLog)){
     fail('credential helper can print a secret value: '+unsafeLog);
   }
@@ -122,6 +125,8 @@ for(const unsafeLog of ['Write-Host $password','Write-Host $storePassword','Writ
 requireText(releaseDocs,'release-credentials.md','release process link to credential onboarding guide');
 for(const [text,label] of [
   ['-Target Windows','Windows credential helper example'],
+  ['-WindowsSigningMode ArtifactSigning','Windows Artifact Signing helper example'],
+  ['AZURE_CLIENT_SECRET','Windows Artifact Signing secret documentation'],
   ['-Target MacOS','macOS credential helper example'],
   ['-Target Android','Android credential helper example'],
   ['-GenerateAndroidKeystore','Android one-command production key generation example'],
