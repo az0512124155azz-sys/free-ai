@@ -1,6 +1,6 @@
 {
   "name": "free-ai",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "private": true,
   "author": "Free AI",
   "description": "Cross-platform AI control center for browser AI models",
@@ -10,7 +10,7 @@
     "dev:web": "vite --host 0.0.0.0",
     "dev": "concurrently -k \"npm:dev:web\" \"npm:dev:electron\"",
     "dev:electron": "node scripts/prepare-branding.mjs && wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
-    "validate": "node --check electron/main.cjs && node --check electron-builder.config.cjs && node --check electron/linux-remote-desktop.cjs && node --check electron/local-dictation.cjs && node --check electron/preload.cjs && node --check scripts/prepare-local-whisper.mjs && node --check electron/research.cjs && node --check relay/server.mjs && node --check extension/background.js && node --check extension/content.js && node scripts/check-renderer-regressions.mjs && node scripts/check-android1-shell.mjs && node scripts/check-android1-runtime-qa.mjs && node scripts/check-android-a1-work-add.mjs && node scripts/check-android2-auth.mjs && node scripts/check-android2-runtime-auth.mjs && node scripts/check-android3-chat-composer.mjs && node scripts/check-android3-dictation.mjs && node scripts/check-android4-mobile-settings.mjs && node scripts/check-android4-mobile-apps.mjs && node scripts/check-android5-remote-desktop.mjs && node scripts/check-android5-relay-integration.mjs && node scripts/check-android6-branding-source.mjs && node scripts/check-android6-theme-rtl-qa.mjs && node scripts/check-android6-large-phone-qa.mjs && node scripts/check-windows6-integration.mjs && node scripts/check-windows7-qa.mjs && node scripts/check-linux1-ui.mjs && node scripts/check-linux12-local-folders.mjs && node scripts/check-linux13-work-loop.mjs && node scripts/check-linux-browser-use.mjs && node scripts/check-linux-computer-use.mjs && node scripts/check-linux-dictation.mjs && node scripts/check-macos-m1-work-local-workspaces.mjs && node scripts/check-macos-m2-browser-use.mjs && node scripts/check-macos-m3-computer-use.mjs && node scripts/check-macos-computer-jxa-smoke.mjs && node scripts/check-macos-m4-dictation.mjs && node scripts/check-macos-m5-desktop-chat-parity.mjs && node scripts/check-macos-m6-production-distribution.mjs && node scripts/check-api-transport.cjs",
+    "validate": "node --check electron/main.cjs && node --check electron-builder.config.cjs && node --check electron/linux-remote-desktop.cjs && node --check electron/local-dictation.cjs && node --check electron/preload.cjs && node --check scripts/prepare-local-whisper.mjs && node --check scripts/configure-android-release-signing.mjs && node --check electron/research.cjs && node --check relay/server.mjs && node --check extension/background.js && node --check extension/content.js && node scripts/check-renderer-regressions.mjs && node scripts/check-android1-shell.mjs && node scripts/check-android1-runtime-qa.mjs && node scripts/check-android-a1-work-add.mjs && node scripts/check-android2-auth.mjs && node scripts/check-android2-runtime-auth.mjs && node scripts/check-android3-chat-composer.mjs && node scripts/check-android3-dictation.mjs && node scripts/check-android4-mobile-settings.mjs && node scripts/check-android4-mobile-apps.mjs && node scripts/check-android5-remote-desktop.mjs && node scripts/check-android5-relay-integration.mjs && node scripts/check-android6-branding-source.mjs && node scripts/check-android6-theme-rtl-qa.mjs && node scripts/check-android6-large-phone-qa.mjs && node scripts/check-windows6-integration.mjs && node scripts/check-windows7-qa.mjs && node scripts/check-linux1-ui.mjs && node scripts/check-linux12-local-folders.mjs && node scripts/check-linux13-work-loop.mjs && node scripts/check-linux-browser-use.mjs && node scripts/check-linux-computer-use.mjs && node scripts/check-linux-dictation.mjs && node scripts/check-macos-m1-work-local-workspaces.mjs && node scripts/check-macos-m2-browser-use.mjs && node scripts/check-macos-m3-computer-use.mjs && node scripts/check-macos-computer-jxa-smoke.mjs && node scripts/check-macos-m4-dictation.mjs && node scripts/check-macos-m5-desktop-chat-parity.mjs && node scripts/check-macos-m6-production-distribution.mjs && node scripts/check-release-readiness.mjs && node scripts/check-api-transport.cjs",
     "build:web": "vite build",
     "desktop:dist": "node scripts/prepare-local-whisper.mjs && npm run validate && node scripts/prepare-branding.mjs && npm run build:web && electron-builder --config electron-builder.config.cjs --publish never",
     "relay": "node relay/server.mjs",
@@ -20,7 +20,8 @@
     "android:configure-branding": "node scripts/configure-android-branding.mjs",
     "android:configure-signing": "node scripts/configure-android-signing.mjs",
     "android:configure-social-login": "node scripts/configure-android-social-login.mjs",
-    "android:configure-runtime-qa": "node scripts/configure-android-runtime-qa.mjs"
+    "android:configure-runtime-qa": "node scripts/configure-android-runtime-qa.mjs",
+    "android:configure-release-signing": "node scripts/configure-android-release-signing.mjs"
   },
   "dependencies": {
     "dbus-next": "^0.10.2",

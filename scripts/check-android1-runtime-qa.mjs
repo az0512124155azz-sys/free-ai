@@ -39,6 +39,10 @@ has(smoke,'viewport_shrink','Runtime QA must accept modern WebView visual-viewpo
 has(smoke,'IME did not become visible according to Android WindowInsets.','Runtime QA must fail when the native IME is not actually visible.');
 has(smoke,'user_rotation','Runtime QA must exercise runtime rotation.');
 has(smoke,'adb exec-out screencap -p','Runtime QA must capture emulator evidence.');
+has(smoke,'system_ui_anr_state() {','Runtime QA must detect Android System UI ANR overlays.');
+has(smoke,'Android emulator System UI ANR detected; choosing Wait before product assertions.','Runtime QA must recover from emulator System UI ANR dialogs instead of misclassifying them as product failures.');
+has(smoke,'resource.endswith("/aerr_wait")','Runtime QA must target the ANR Wait action without closing System UI.');
+has(smoke,'press_back() {','Runtime QA must stabilize System UI before Android Back assertions.');
 
 has(workflow,'android_runtime:','CI must include Android runtime jobs.');
 has(workflow,'api-level: 36','Runtime QA must execute on Android 16.');
@@ -49,7 +53,7 @@ has(workflow,'free-ai-runtime-qa.apk','CI must preserve a dedicated auth-indepen
 has(workflow,'name: free-ai-android-runtime-qa','Runtime QA APK must use a CI-only artifact.');
 has(workflow,'Download Android runtime QA build','Runtime emulator jobs must consume the CI-only QA artifact.');
 ok(!/name: free-ai-android\n[\s\S]{0,300}free-ai-runtime-qa\.apk/.test(workflow),'Runtime QA APK must never be bundled into the release Android artifact.');
-has(workflow,'needs: [desktop, windows_visual, android, android_runtime, extension]','Release publishing must depend on runtime Android QA.');
+has(workflow,'needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]','Release publishing must depend on runtime Android QA and auth gates.');
 
 ok(pkg?.scripts?.['android:configure-runtime-qa']==='node scripts/configure-android-runtime-qa.mjs','Android runtime QA bridge script is not wired.');
 ok(String(pkg?.scripts?.validate||'').includes('check-android1-runtime-qa.mjs'),'Android 1C regression check is not part of validation.');

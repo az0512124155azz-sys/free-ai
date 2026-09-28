@@ -18,8 +18,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
-  issues: write
+  contents: read
 
 jobs:
   desktop:
@@ -38,6 +37,9 @@ jobs:
             artifact_path: release/*.AppImage
 
     runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      issues: write
 
     steps:
       - uses: actions/checkout@v4
@@ -464,6 +466,119 @@ jobs:
       - name: Build APK
         run: cd android && ./gradlew assembleDebug
 
+      - name: Validate Android release-signing pipeline
+        if: github.event_name != 'workflow_dispatch' || inputs.publish_release != true
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          test_keystore="$RUNNER_TEMP/free-ai-release-ci.jks"
+          store_password="FreeAiCiRelease123!"
+          key_alias="free-ai-ci-release"
+          keytool -genkeypair \
+            -keystore "$test_keystore" \
+            -storepass "$store_password" \
+            -keypass "$store_password" \
+            -alias "$key_alias" \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 2 \
+            -dname "CN=Free AI CI, OU=QA, O=Free AI, L=CI, ST=CI, C=US" \
+            -noprompt >/dev/null 2>&1
+
+          expected_sha1="$(keytool -list -v -keystore "$test_keystore" -storepass "$store_password" -alias "$key_alias" | awk -F': ' '/SHA1:/{print $2; exit}')"
+          keystore_base64="$(base64 -w 0 "$test_keystore")"
+
+          original_gradle="$RUNNER_TEMP/free-ai-release-ci-build.gradle"
+          cp android/app/build.gradle "$original_gradle"
+          cleanup() {
+            cp "$original_gradle" android/app/build.gradle || true
+            rm -f android/app/free-ai-release.keystore "$test_keystore"
+          }
+          trap cleanup EXIT
+
+          ANDROID_RELEASE_KEYSTORE_BASE64="$keystore_base64" \
+          ANDROID_RELEASE_STORE_PASSWORD="$store_password" \
+          ANDROID_RELEASE_KEY_ALIAS="$key_alias" \
+          ANDROID_RELEASE_KEY_PASSWORD="$store_password" \
+          ANDROID_RELEASE_EXPECTED_SHA1="$expected_sha1" \
+            npm run android:configure-release-signing
+
+          cd android
+          ANDROID_RELEASE_STORE_PASSWORD="$store_password" \
+          ANDROID_RELEASE_KEY_ALIAS="$key_alias" \
+          ANDROID_RELEASE_KEY_PASSWORD="$store_password" \
+            ./gradlew assembleRelease
+          cd ..
+
+          test -f android/app/build/outputs/apk/release/app-release.apk
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner -print | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs android/app/build/outputs/apk/release/app-release.apk
+
+      - name: Build signed Android release APK
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+        shell: bash
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
+          ANDROID_RELEASE_KEY_ALIAS: ${{ secrets.ANDROID_RELEASE_KEY_ALIAS }}
+          ANDROID_RELEASE_KEY_PASSWORD: ${{ secrets.ANDROID_RELEASE_KEY_PASSWORD }}
+          ANDROID_RELEASE_EXPECTED_SHA1: ${{ secrets.ANDROID_RELEASE_EXPECTED_SHA1 }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GOOGLE_WEB_CLIENT_ID: ${{ secrets.VITE_GOOGLE_WEB_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+
+          original_gradle="$RUNNER_TEMP/free-ai-app-build.gradle"
+          cp android/app/build.gradle "$original_gradle"
+          cleanup() {
+            cp "$original_gradle" android/app/build.gradle || true
+            rm -f android/app/free-ai-release.keystore
+          }
+          trap cleanup EXIT
+
+          npm run build:web
+          npx cap copy android
+          npm run android:configure-release-signing
+
+          cd android
+          ./gradlew assembleRelease
+          cd ..
+
+          VERSION="$(node -p "require('./package.json').version")"
+          VERSION_CODE="$(node - <<'NODE'
+          const [major,minor,patch]=require('./package.json').version.split('.').map(Number);
+          process.stdout.write(String(major*1000000+minor*1000+patch));
+          NODE
+          )"
+          SOURCE_APK="android/app/build/outputs/apk/release/app-release.apk"
+          OUTPUT_DIR="release-android"
+          OUTPUT_APK="$OUTPUT_DIR/Free-AI-Android-$VERSION.apk"
+          test -f "$SOURCE_APK"
+          mkdir -p "$OUTPUT_DIR"
+          cp "$SOURCE_APK" "$OUTPUT_APK"
+
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name apksigner -print | sort -V | tail -n1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -maxdepth 2 -type f -name aapt -print | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+
+          "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK"
+          ACTUAL_SHA1="$("$APKSIGNER" verify --print-certs "$OUTPUT_APK" | awk -F': ' '/certificate SHA-1 digest/{print $2; exit}')"
+          ACTUAL_SHA1="$(printf '%s' "$ACTUAL_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
+          EXPECTED_SHA1="$(printf '%s' "$ANDROID_RELEASE_EXPECTED_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
+          if [[ -z "$ACTUAL_SHA1" || "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]]; then
+            echo "Android release certificate SHA-1 does not match ANDROID_RELEASE_EXPECTED_SHA1." >&2
+            exit 1
+          fi
+
+          BADGING="$("$AAPT" dump badging "$OUTPUT_APK" | head -n1)"
+          grep -F "name='com.freeai.mobile'" <<<"$BADGING"
+          grep -F "versionName='$VERSION'" <<<"$BADGING"
+          grep -F "versionCode='$VERSION_CODE'" <<<"$BADGING"
+
       - name: Build runtime QA APKs
         run: |
           cp android/app/build/outputs/apk/debug/app-debug.apk "$RUNNER_TEMP/free-ai-app-debug.apk"
@@ -495,6 +610,14 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/app-debug.apk
             android-oauth-info.txt
+          if-no-files-found: error
+
+      - name: Upload signed Android release APK
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_release == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: free-ai-android-release
+          path: release-android/Free-AI-Android-*.apk
           if-no-files-found: error
 
       - name: Upload Android runtime QA APK
@@ -567,7 +690,7 @@ jobs:
 
   android_auth_runtime:
     name: Android auth runtime (email/session)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish_release == true))
     needs: android
     runs-on: ubuntu-latest
     timeout-minutes: 35
@@ -857,8 +980,10 @@ jobs:
 
   release:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
-    needs: [desktop, windows_visual, android, android_runtime, extension]
+    needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -884,7 +1009,7 @@ jobs:
       - name: Download Android APK
         uses: actions/download-artifact@v4
         with:
-          name: free-ai-android
+          name: free-ai-android-release
           path: release-assets
 
       - name: Download Chrome extension
@@ -893,26 +1018,73 @@ jobs:
           name: free-ai-chrome-extension
           path: release-assets
 
-      - name: Publish GitHub Release
+      - name: Verify release assets and tag availability
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
           TAG="v$VERSION"
-          TITLE="Free AI v$VERSION"
 
-          mapfile -d '' ASSETS < <(find release-assets -type f -print0)
+          expected=(
+            "Free-AI-Windows-$VERSION.exe"
+            "Free-AI-macOS-$VERSION.dmg"
+            "Free-AI-Linux-$VERSION.AppImage"
+            "Free-AI-Android-$VERSION.apk"
+            "free-ai-extension.zip"
+          )
 
-          if [ "${#ASSETS[@]}" -eq 0 ]; then
-            echo "No release assets found."
+          for name in "${expected[@]}"; do
+            test -f "release-assets/$name" || {
+              echo "Missing expected release asset: $name" >&2
+              exit 1
+            }
+          done
+
+          mapfile -d '' files < <(find release-assets -type f -print0)
+          if [[ "${#files[@]}" -ne "${#expected[@]}" ]]; then
+            echo "Unexpected release asset count: ${#files[@]} (expected ${#expected[@]})." >&2
+            find release-assets -type f -print
             exit 1
           fi
 
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" \
-              --target "$GITHUB_SHA" \
-              --title "$TITLE" \
-              --notes "Free AI desktop, Android and Chrome extension builds."
+          if find release-assets -type f \( -iname '*debug*' -o -name 'android-oauth-info.txt' \) | grep -q .; then
+            echo "Debug/QA Android files must never be published in a production release." >&2
+            exit 1
           fi
 
-          gh release upload "$TAG" "${ASSETS[@]}" --clobber
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG already exists. Increment package.json instead of overwriting a published version." >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Existing releases are immutable for this workflow." >&2
+            exit 1
+          fi
+
+          (
+            cd release-assets
+            sha256sum "${expected[@]}" > SHA256SUMS.txt
+          )
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          TAG="v$VERSION"
+          TITLE="Free AI v$VERSION"
+
+          mapfile -d '' ASSETS < <(find release-assets -maxdepth 1 -type f -print0 | sort -z)
+          if [[ "${#ASSETS[@]}" -ne 6 ]]; then
+            echo "Expected 6 final release files including SHA256SUMS.txt; found ${#ASSETS[@]}." >&2
+            exit 1
+          fi
+
+          gh release create "$TAG" "${ASSETS[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "$TITLE" \
+            --generate-notes

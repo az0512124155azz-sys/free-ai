@@ -23,7 +23,98 @@ qa_line() {
   adb logcat -d -s FreeAIAndroidQA:I '*:S' | grep "$command:" | tail -n 1 || true
 }
 
+system_ui_anr_state() {
+  local attempt="$1"
+  local remote="/sdcard/freeai-system-ui-$attempt.xml"
+  local dump
+  dump="$(mktemp)"
+  adb shell rm -f "$remote" >/dev/null 2>&1 || true
+  adb shell uiautomator dump "$remote" >/dev/null 2>&1 || true
+  adb exec-out cat "$remote" > "$dump" 2>/dev/null || true
+  adb shell rm -f "$remote" >/dev/null 2>&1 || true
+
+  python3 - "$dump" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path=sys.argv[1]
+try:
+    root=ET.parse(path).getroot()
+except Exception:
+    print("unknown")
+    raise SystemExit(0)
+
+nodes=list(root.iter("node"))
+def label(node):
+    return " ".join([
+        node.attrib.get("text",""),
+        node.attrib.get("content-desc",""),
+    ]).strip()
+
+labels=[label(node).casefold() for node in nodes]
+anr=any(
+    "system ui" in value and
+    ("isn't responding" in value or "is not responding" in value)
+    for value in labels
+)
+if not anr:
+    print("none")
+    raise SystemExit(0)
+
+for node in nodes:
+    text=node.attrib.get("text","").strip().casefold()
+    resource=node.attrib.get("resource-id","")
+    if text!="wait" and not resource.endswith("/aerr_wait"):
+        continue
+    match=re.fullmatch(r"\[(\d+),(\d+)\]\[(\d+),(\d+)\]",node.attrib.get("bounds",""))
+    if not match:
+        continue
+    left,top,right,bottom=map(int,match.groups())
+    print(f"tap {(left+right)//2} {(top+bottom)//2}")
+    raise SystemExit(0)
+
+print("blocked")
+PY
+  rm -f "$dump"
+}
+
+stabilize_system_ui() {
+  local state=""
+  for attempt in 1 2 3 4; do
+    state="$(system_ui_anr_state "$attempt")"
+    case "$state" in
+      none)
+        return 0
+        ;;
+      tap\ *)
+        local coords="${state#tap }"
+        echo "Android emulator System UI ANR detected; choosing Wait before product assertions." >&2
+        adb shell input tap $coords
+        sleep 2
+        ;;
+      blocked)
+        echo "Android emulator System UI ANR dialog is visible but its Wait action could not be located." >&2
+        adb exec-out screencap -p > "$OUT/system-ui-anr-blocked.png" || true
+        return 1
+        ;;
+      *)
+        sleep 1
+        ;;
+    esac
+  done
+
+  state="$(system_ui_anr_state final)"
+  if [[ "$state" == "none" || "$state" == "unknown" ]]; then
+    return 0
+  fi
+  echo "Android emulator System UI did not recover from its ANR dialog." >&2
+  adb exec-out screencap -p > "$OUT/system-ui-anr-unrecovered.png" || true
+  return 1
+}
+
 audit_until_ready() {
+  stabilize_system_ui
   local line=""
   for _ in $(seq 1 20); do
     line="$(qa_line audit)"
@@ -56,8 +147,14 @@ metric() {
 
 capture() {
   local name="$1"
+  stabilize_system_ui
   adb exec-out screencap -p > "$OUT/$name.png"
   test -s "$OUT/$name.png"
+}
+
+press_back() {
+  stabilize_system_ui
+  adb shell input keyevent 4
 }
 
 adb install -r "$APK" >/dev/null
@@ -86,7 +183,7 @@ sleep 1
 drawer="$(qa_line audit)"
 require_token "$drawer" "drawer=true"
 capture "02-drawer"
-adb shell input keyevent 4
+press_back
 sleep 1
 after_drawer_back="$(qa_line audit)"
 require_token "$after_drawer_back" "drawer=false"
@@ -98,7 +195,7 @@ sleep 1
 model="$(qa_line audit)"
 require_token "$model" "modelOpen=true"
 capture "03-model-picker"
-adb shell input keyevent 4
+press_back
 sleep 1
 after_model_back="$(qa_line audit)"
 require_token "$after_model_back" "modelOpen=false"
@@ -122,7 +219,7 @@ require_token "$settings_detail" "settingsDetail=true"
 require_token "$settings_detail" "settingsSection=Voice"
 capture "05-settings-voice"
 
-adb shell input keyevent 4
+press_back
 sleep 1
 settings_back_to_list="$(qa_line audit)"
 require_token "$settings_back_to_list" "settingsOpen=true"
@@ -130,7 +227,7 @@ require_token "$settings_back_to_list" "settingsList=true"
 require_token "$settings_back_to_list" "settingsDetail=false"
 require_token "$settings_back_to_list" "settingsSection=Voice"
 
-adb shell input keyevent 4
+press_back
 sleep 1
 settings_closed="$(qa_line audit)"
 require_token "$settings_closed" "settingsOpen=false"
@@ -148,12 +245,12 @@ require_token "$remote_desktop" "remoteComputerLabel=true"
 require_token "$remote_desktop" "remoteDesktopApiForm=false"
 require_token "$remote_desktop" "remotePairingKey=true"
 capture "06-remote-desktop"
-adb shell input keyevent 4
+press_back
 sleep 1
 remote_back_to_list="$(qa_line audit)"
 require_token "$remote_back_to_list" "settingsOpen=true"
 require_token "$remote_back_to_list" "settingsList=true"
-adb shell input keyevent 4
+press_back
 sleep 1
 remote_closed="$(qa_line audit)"
 require_token "$remote_closed" "settingsOpen=false"
@@ -166,7 +263,7 @@ require_token "$apps_page" "appsDiscover=true"
 require_token "$apps_page" "appsSearch=true"
 require_token "$apps_page" "desktopAppControls=false"
 capture "07-apps"
-adb shell input keyevent 4
+press_back
 sleep 1
 apps_closed="$(qa_line audit)"
 require_token "$apps_closed" "appsPage=false"
@@ -180,7 +277,7 @@ require_token "$explore_page" "exploreApps=true"
 require_token "$explore_page" "exploreSearch=true"
 require_token "$explore_page" "desktopAppControls=false"
 capture "08-explore"
-adb shell input keyevent 4
+press_back
 sleep 1
 explore_closed="$(qa_line audit)"
 require_token "$explore_closed" "explorePage=false"
@@ -234,7 +331,7 @@ if [[ "$keyboard_offset_value" -le 0 && "$viewport_shrink" -le 80 ]]; then
 fi
 
 capture "09-keyboard"
-adb shell input keyevent 4
+press_back
 sleep 1
 base="$(qa_line audit)"
 w1="$(metric "$base" width)"
@@ -394,7 +491,7 @@ if [[ -z "$rtl_drawer_inline_start" || "$rtl_drawer_inline_start" -gt 4 ]]; then
 fi
 capture "15-rtl-drawer"
 
-adb shell input keyevent 4
+press_back
 sleep 1
 rtl_after_back="$(qa_line audit)"
 require_token "$rtl_after_back" "drawer=false"
