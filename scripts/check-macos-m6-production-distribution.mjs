@@ -69,7 +69,7 @@ for(const [marker,label] of [
   ["APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}",'App Store Connect key id'],
   ["APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}",'App Store Connect issuer'],
   ["APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}",'Apple ID app-specific password option'],
-  ["REQUIRE_MAC_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_release == true }}",'release-time macOS distribution requirement'],
+  ["REQUIRE_MAC_DISTRIBUTION: ${{ github.event_name == 'workflow_dispatch' && (inputs.validate_release == true || inputs.publish_release == true) }}",'release-validation/publication macOS distribution requirement'],
   ["Release publishing requires both Developer ID signing and Apple notarization.",'release hard gate'],
   ["FREEAI_MAC_NOTARIZE=$notarized",'notarization environment toggle'],
   ["name: macOS packaged distribution and dictation smoke",'packaged macOS production verification'],
