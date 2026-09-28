@@ -160,7 +160,7 @@ test('Browser provider bridge sends prompts and returns text plus generated medi
     expect(chatgpt?.text).toContain('ChatGPT runtime reply');
     expect(chatgpt?.media).toHaveLength(1);
     expect(chatgpt.media[0].dataUrl).toMatch(/^data:image\/png;base64,/);
-    expect(await page.locator('#prompt-textarea').textContent()).toContain('create another runtime image');
+    expect(await page.locator('#prompt-textarea').textContent()).toContain('summarize my mail');
   }finally{
     await app.close().catch(()=>{});
     await fs.rm(userData,{recursive:true,force:true}).catch(()=>{});
