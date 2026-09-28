@@ -806,7 +806,7 @@ jobs:
           test -x "$AAPT"
 
           "$APKSIGNER" verify --verbose --print-certs "$OUTPUT_APK"
-          ACTUAL_SHA1="$("$APKSIGNER" verify --print-certs "$OUTPUT_APK" | awk -F': ' '/certificate SHA-1 digest/{print $2; exit}')"
+          ACTUAL_SHA1="$("$APKSIGNER" verify --print-certs "$OUTPUT_APK" | awk -F': ' '/certificate SHA-1 digest/{print $NF; exit}')"
           ACTUAL_SHA1="$(printf '%s' "$ACTUAL_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           EXPECTED_SHA1="$(printf '%s' "$ANDROID_RELEASE_EXPECTED_SHA1" | tr -cd '0-9A-Fa-f' | tr '[:lower:]' '[:upper:]')"
           if [[ -z "$ACTUAL_SHA1" || "$ACTUAL_SHA1" != "$EXPECTED_SHA1" ]]; then
