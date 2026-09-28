@@ -222,14 +222,23 @@
   }
 
   function controlLabel(el){
-    return cleanLabel([
+    const values=[
       el?.innerText,
       el?.textContent,
       el?.getAttribute?.('aria-label'),
       el?.getAttribute?.('title'),
       el?.getAttribute?.('data-tooltip'),
       el?.getAttribute?.('mattooltip')
-    ].filter(Boolean).join(' '));
+    ].map(value=>cleanLabel(value)).filter(Boolean);
+    const unique=[];
+    const seen=new Set();
+    for(const value of values){
+      const key=value.toLowerCase();
+      if(seen.has(key))continue;
+      seen.add(key);
+      unique.push(value);
+    }
+    return cleanLabel(unique.join(' '));
   }
 
   function providerModelPatterns(provider){

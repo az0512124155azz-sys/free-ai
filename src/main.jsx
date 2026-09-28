@@ -361,8 +361,18 @@ function AssistantMedia({items=[]}){
         {src?<img src={src} alt={item.name||'Generated image'} loading="lazy"/>:<div className="assistantMediaLoading"><Image size={18}/><span>Loading image…</span></div>}
         {item.name&&item.name!=='Generated image'&&<figcaption>{item.name}</figcaption>}
       </figure>;
+      const openFile=()=>{
+        if(!src)return;
+        if(/^https:\/\//i.test(src)){window.desktopApi?.openExternal?.(src);return}
+        const a=document.createElement('a');
+        a.href=src;
+        a.download=item.name||'free-ai-attachment';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
       return <button type="button" className="assistantFileItem" key={(id||item.url||item.name||'file')+'::'+index}
-        disabled={!item.url} onClick={()=>item.url&&window.desktopApi?.openExternal?.(item.url)}>
+        disabled={!src} onClick={openFile}>
         <File size={16}/><span><b>{item.name||'Attachment'}</b><small>{item.mime||'File'}{item.persisted?' · saved with chat':''}</small></span>
       </button>;
     })}

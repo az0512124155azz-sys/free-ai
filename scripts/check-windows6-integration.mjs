@@ -100,6 +100,10 @@ has(background,'async function hydrateResponseMedia(items)','Browser Bridge resp
 has(main,'function persistResponseMedia(items)','Desktop durable assistant-media persistence is missing.');
 has(preload,'readChatMedia','Persisted assistant media is not exposed through the safe preload bridge.');
 has(source,'function AssistantMedia({items=[]})','Assistant media renderer is missing.');
+has(source,"a.download=item.name||'free-ai-attachment'",'Persisted assistant files must remain downloadable after restart.');
+has(source,"const [view,setView]=useState(()=>isNative?'discover':'hints')",'Windows Plugins must open on provider apps, not an empty Direct MCP list.');
+has(source,'Use in Chat','Provider-managed apps must expose a real Chat routing action.');
+has(contentScript,'const unique=[];','Provider tool labels must be deduplicated before they are shown or activated.');
 has(source,'media:Array.isArray(result.value?.media)','Parallel browser responses must retain generated media.');
 has(source,'const resultMedia=Array.isArray(result?.media)','Normal browser responses must retain generated media.');
 has(source,'deepResearchEnabled','Deep Research state is missing.');
