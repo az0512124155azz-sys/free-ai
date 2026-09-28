@@ -122,11 +122,41 @@
     return items.slice(0,8);
   }
 
+  function chatgptGeneratedMedia(){
+    const main=document.querySelector('main')||document.body;
+    const images=[...main.querySelectorAll('img[src*="/backend-api/estuary/content"],img[src*="oaiusercontent"],img[alt^="Generated image" i]')].filter(visible);
+    return images.slice(-8).map(img=>{
+      const src=String(img.currentSrc||img.src||img.getAttribute('src')||'').trim();
+      const rect=img.getBoundingClientRect();
+      const alt=cleanLabel(img.getAttribute('alt')||img.getAttribute('aria-label')||'Generated image');
+      return {
+        kind:'image',
+        url:src,
+        name:(alt||'Generated image').slice(0,140),
+        mime:responseMimeFromUrl(src,'image/png'),
+        width:Math.max(0,Math.round(img.naturalWidth||rect.width||0)),
+        height:Math.max(0,Math.round(img.naturalHeight||rect.height||0))
+      };
+    }).filter(item=>/^(?:https?:|blob:|data:image\/)/i.test(item.url));
+  }
+
+  function providerResponseMedia(provider,root){
+    const combined=[...responseMedia(root)];
+    if(provider==='chatgpt')combined.push(...chatgptGeneratedMedia());
+    const seen=new Set();
+    return combined.filter(item=>{
+      const key=String(item?.url||item?.dataUrl||'');
+      if(!key||seen.has(key))return false;
+      seen.add(key);
+      return true;
+    }).slice(-8);
+  }
+
   function responseSnapshot(config,provider=''){
     const elements=answerElements(config,provider);
     const root=elements.at(-1)||null;
     const text=String(root?.innerText||root?.textContent||'').trim();
-    const media=responseMedia(root);
+    const media=providerResponseMedia(provider,root);
     const signature=[text,...media.map(item=>[item.kind,item.url,item.name,item.width||0,item.height||0].join('|'))].join('\n');
     return {root,count:elements.length,text,media,signature};
   }
@@ -165,7 +195,7 @@
     for(const raw of Array.isArray(items)?items.slice(0,8):[]){
       const item={...raw};
       if(String(item.url||'').startsWith('data:'))item.dataUrl=item.url;
-      else if(String(item.url||'').startsWith('blob:'))item.dataUrl=await pageMediaDataUrl(item.url);
+      else if(/^(?:blob:|https?:)/i.test(String(item.url||'')))item.dataUrl=await pageMediaDataUrl(item.url);
       out.push(item);
     }
     return out;
