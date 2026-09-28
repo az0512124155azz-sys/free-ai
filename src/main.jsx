@@ -2344,9 +2344,9 @@ function App(){
           : <div className={'conversationView '+(isWindowsDesktop?'windowsConversation':'')}>
               <div className="messageList">
                 {messages.map((m,i)=><div key={i} className={'chatMessage '+m.role} role={m.role==='error'?'alert':m.streaming?'status':undefined} aria-live={m.streaming?'polite':undefined}>
-                  {m.role!=='user'&&!isWindowsDesktop&&<div className="assistantMark"><Sparkles size={16}/></div>}
+                  {m.role!=='user'&&!isChatDesktop&&<div className="assistantMark"><Sparkles size={16}/></div>}
                   <div className="messageBubble">
-                    {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
+                    {m.role!=='user'&&!isChatDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isChatDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody" dir="auto">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
                     {isChatDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
