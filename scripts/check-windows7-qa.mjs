@@ -88,7 +88,7 @@ ok(!source.includes("startsWith('freeai://auth')"),'Renderer auth callback must 
 // Windows 7.12 update/offline coverage.
 has(main,'async function checkForDesktopUpdates()','Shared Windows/macOS update-check runtime is missing.');
 has(main,'if(!net.isOnline())','Update check must fail fast when Electron reports the device offline.');
-has(main,'const WINDOWS_UPDATE_TIMEOUT_MS=15000;','Update check timeout guard is missing.');
+has(main,'const DESKTOP_UPDATE_TIMEOUT_MS=15000;','Shared desktop update check timeout guard is missing.');
 has(main,'const controller=new AbortController();','Update check cancellation controller is missing.');
 has(main,'signal:controller.signal','GitHub Releases fetch is not cancellable.');
 has(main,'Update check timed out. Check your internet connection and try again.','Update timeout must surface an actionable error.');
