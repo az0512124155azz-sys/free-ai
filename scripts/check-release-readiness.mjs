@@ -40,7 +40,11 @@ for(const [text,label] of [
   ['name: Build signed Android release APK','signed Android release build'],
   ['name: free-ai-android-release','signed Android release artifact'],
   ['validate_release:','manual non-publishing release-validation input'],
+  ['allow_unsigned_macos:','explicit unsigned macOS release input'],
   ["inputs.validate_release == true || inputs.publish_release == true",'shared production-signing gate for validation and publishing'],
+  ['allow_unsigned_macos is only valid with validate_release or publish_release.','unsigned macOS mode cannot run outside release validation/publication'],
+  ['Explicit unsigned macOS exception enabled.','unsigned macOS distribution warning'],
+  ["--notes \"$EXTRA_NOTES\"",'release notes include explicit signing notice'],
   ['release_mode_guard:','manual release-mode conflict guard'],
   ['name: Reject conflicting release modes','explicit release-mode conflict rejection'],
   ['Choose either validate_release or publish_release, not both.','conflicting release-mode failure'],
@@ -115,6 +119,7 @@ for(const [text,label] of [
   ['-Target Android','Android credential helper example'],
   ['validate_release=true','production dry-run instruction'],
   ['publish_release=false','non-publishing dry-run instruction'],
+  ['allow_unsigned_macos','explicit unsigned macOS release documentation'],
   ['com.freeai.mobile','Android OAuth package instruction']
 ]) requireText(credentialDocs,text,label);
 
