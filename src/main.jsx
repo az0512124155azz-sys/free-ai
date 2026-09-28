@@ -4071,7 +4071,7 @@ function SettingsView(props){
   const visibleSettings=settingsSections.filter(([,label])=>
     (!isNative||!hiddenOnMobile.has(label))&&
     (label!=='Files'||isWorkDesktop)&&
-    (label!=='App'||isWindowsDesktop)&&
+    (label!=='App'||isChatDesktop)&&
     (!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase()))
   );
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} data-section={section} role="dialog" aria-modal="true" aria-label="Settings">
@@ -4090,7 +4090,7 @@ function SettingsView(props){
         <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
       </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='App'&&isWindowsDesktop&&<WindowsAppSettings/>}
+      {section==='App'&&isChatDesktop&&<DesktopAppSettings/>}
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
@@ -4139,7 +4139,7 @@ function GeneralSettings({prefs,setPrefs}){
   </div>
 }
 function SettingRow({title,desc,control}){return <div className="settingRow"><div><b>{title}</b><small>{desc}</small></div>{control}</div>}
-function WindowsAppSettings(){
+function DesktopAppSettings(){
   const [info,setInfo]=useState(null);
   const [update,setUpdate]=useState(null);
   const [checking,setChecking]=useState(false);
@@ -4159,11 +4159,11 @@ function WindowsAppSettings(){
     if(update?.url)await window.desktopApi?.openExternal?.(update.url);
   }
   return <div className="settingsPane">
-    <h3>Windows app</h3>
+    <h3>{desktopPlatform==='darwin'?'macOS app':'Windows app'}</h3>
     <div className="settingBlock">
       <SettingRow title="Version" desc="The installed Free AI desktop version." control={<span className="valuePill">{info?.version||'Loading…'}</span>}/>
       <SettingRow title="Authentication link handler" desc="Free AI uses the freeai:// protocol to return securely from desktop sign-in." control={<span className={'connectionStatus '+(info?.authProtocolRegistered?'good':'')}>{info?.authProtocolRegistered?'Registered':'Not registered'}</span>}/>
-      <SettingRow title="Updates" desc="Check the official Free AI GitHub Releases feed. Free AI does not silently install an update." control={<button className="settingsInlineButton" disabled={checking} onClick={check}>{checking?'Checking…':'Check for updates'}</button>}/>
+      <SettingRow title="Updates" desc={desktopPlatform==='darwin'?'Check the official Free AI GitHub Releases feed. Production macOS releases are Developer ID signed and notarized before publication.':'Check the official Free AI GitHub Releases feed. Free AI does not silently install an update.'} control={<button className="settingsInlineButton" disabled={checking} onClick={check}>{checking?'Checking…':'Check for updates'}</button>}/>
     </div>
     {update&&<div className="settingsStatus">
       {update.updateAvailable
@@ -4173,7 +4173,7 @@ function WindowsAppSettings(){
     {error&&<div className="settingsStatus">{error}</div>}
     <h3>Install</h3>
     <div className="settingBlock">
-      <SettingRow title="Installer" desc="Windows builds use the NSIS installer produced by the Free AI release workflow." control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
+      <SettingRow title={desktopPlatform==='darwin'?'Distribution package':'Installer'} desc={desktopPlatform==='darwin'?'macOS releases use a DMG. Release publishing is blocked unless Developer ID signing and Apple notarization credentials are configured.':'Windows builds use the NSIS installer produced by the Free AI release workflow.'} control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
     </div>
   </div>
 }
