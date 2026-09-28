@@ -40,7 +40,7 @@ for(const [text,label] of [
   ["Computer Use must take a fresh desktop screenshot before mouse or keyboard actions.",'fresh screenshot safety gate'],
   ["Computer Use typing requires target x/y coordinates from the latest screenshot.",'typing target safety gate'],
   ["Computer Use needs a connected browser model with real image/file upload so it can see the desktop screenshot.",'image-capable controller gate'],
-  ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'Dictation remains outside M3']
+  ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'Windows Voice Typing path retained after macOS local Dictation promotion']
 ]) requireText(main,text,label);
 
 for(const [text,label] of [

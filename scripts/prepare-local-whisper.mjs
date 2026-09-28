@@ -3,22 +3,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const TAG='v1.9.4';
+const supported=process.platform==='linux'||process.platform==='darwin';
 
-if(process.platform!=='linux'){
-  console.log('Linux Whisper preparation skipped on '+process.platform+'.');
+if(!supported){
+  console.log('Local Whisper preparation skipped on '+process.platform+'.');
   process.exit(0);
 }
 
+const platformLabel=process.platform==='darwin'?'macOS':'Linux';
 const root=process.cwd();
-const outDir=path.join(root,'build','linux-whisper');
+const buildFolder=process.platform==='darwin'?'macos-whisper':'linux-whisper';
+const outDir=path.join(root,'build',buildFolder);
 const out=path.join(outDir,'whisper-cli');
 if(fs.existsSync(out)){
   fs.chmodSync(out,0o755);
-  console.log('Linux whisper-cli already prepared.');
+  console.log(platformLabel+' whisper-cli already prepared.');
   process.exit(0);
 }
 
-const work=path.join(root,'build','.whisper-cpp-'+TAG);
+const work=path.join(root,'build','.whisper-cpp-'+TAG+'-'+process.platform);
 const src=path.join(work,'src');
 const build=path.join(work,'build');
 fs.rmSync(work,{recursive:true,force:true});
@@ -30,7 +33,7 @@ function run(command,args,cwd=root){
 }
 
 run('git',['clone','--depth','1','--branch',TAG,'https://github.com/ggml-org/whisper.cpp.git',src]);
-run('cmake',[
+const configure=[
   '-S',src,
   '-B',build,
   '-DCMAKE_BUILD_TYPE=Release',
@@ -41,7 +44,9 @@ run('cmake',[
   '-DWHISPER_SDL2=OFF',
   '-DGGML_NATIVE=OFF',
   '-DGGML_OPENMP=OFF'
-]);
+];
+if(process.platform==='darwin')configure.push('-DGGML_METAL=ON');
+run('cmake',configure);
 run('cmake',['--build',build,'--config','Release','--target','whisper-cli','--parallel','2']);
 
 const built=path.join(build,'bin','whisper-cli');
@@ -54,8 +59,19 @@ const version=execFileSync(out,['--version'],{encoding:'utf8'}).trim();
 if(!/whisper\.cpp version:\s*1\.9\.4\b/.test(version)||/-dev\b/.test(version)){
   throw new Error('Unexpected whisper-cli version: '+version);
 }
-const ldd=execFileSync('ldd',[out],{encoding:'utf8'});
-if(/libgomp\.so/i.test(ldd)){
-  throw new Error('Linux whisper-cli unexpectedly depends on libgomp; build must remain portable without host OpenMP runtime.');
+
+if(process.platform==='linux'){
+  const ldd=execFileSync('ldd',[out],{encoding:'utf8'});
+  if(/libgomp\.so/i.test(ldd)){
+    throw new Error('Linux whisper-cli unexpectedly depends on libgomp; build must remain portable without host OpenMP runtime.');
+  }
+}else{
+  const fileInfo=execFileSync('file',[out],{encoding:'utf8'});
+  if(!/Mach-O/.test(fileInfo))throw new Error('macOS whisper-cli is not a Mach-O executable: '+fileInfo);
+  const links=execFileSync('otool',['-L',out],{encoding:'utf8'});
+  if(/\/opt\/homebrew|\/usr\/local|\.whisper-cpp-/i.test(links)){
+    throw new Error('macOS whisper-cli has a non-system build-time dependency:\n'+links);
+  }
 }
-console.log('Prepared Linux whisper-cli at '+out+' ('+version+')');
+
+console.log('Prepared '+platformLabel+' whisper-cli at '+out+' ('+version+')');

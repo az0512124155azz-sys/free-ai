@@ -33,7 +33,7 @@ for(const [text,label] of [
   ["const normalize=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');",'POSIX case-sensitive repository containment'],
   ["const localFolderStateKey=value=>process.platform==='win32'?String(value||'').toLowerCase():String(value||'');",'POSIX case-sensitive local-file read tracking'],
   ["const isBrowserDesktopPlatform=()=>process.platform==='win32'||process.platform==='darwin'||process.platform==='linux';",'Browser Use promoted to shared desktop support after M1'],
-  ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'dictation intentionally not enabled on macOS in M1'],
+  ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'Windows Voice Typing path retained after macOS local Dictation promotion'],
   ["if(process.platform==='linux')return performLinuxComputerAction(payload);",'Linux Computer Use routing retained'],
   ["if(process.platform==='darwin')return performMacComputerAction(payload);",'Computer Use promoted to macOS after M1']
 ]) requireText(main,text,label);

@@ -205,6 +205,27 @@ jobs:
           FREEAI_EXPECT_SIGNED: ${{ steps.windows_signing.outputs.enabled }}
         run: ./scripts/windows7-installer-smoke.ps1
 
+      - name: macOS packaged dictation smoke
+        if: steps.desktop_build.outcome == 'success' && matrix.artifact == 'macos'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find release -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$dmg"
+          mount_dir="$(mktemp -d)"
+          cleanup() {
+            hdiutil detach "$mount_dir" -quiet || true
+            rmdir "$mount_dir" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          hdiutil attach "$dmg" -mountpoint "$mount_dir" -nobrowse -readonly -quiet
+          app_bundle="$(find "$mount_dir" -maxdepth 1 -name '*.app' -print -quit)"
+          test -n "$app_bundle"
+          whisper="$app_bundle/Contents/Resources/whisper/whisper-cli"
+          test -x "$whisper"
+          "$whisper" --version | grep -E 'whisper\.cpp version: 1\.9\.4'
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' "$app_bundle/Contents/Info.plist" | grep -F 'Free AI uses the microphone'
+
       - uses: actions/upload-artifact@v4
         if: steps.desktop_build.outcome == 'success'
         with:

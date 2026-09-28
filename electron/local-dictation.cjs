@@ -27,9 +27,10 @@ function modelPath(app){
 }
 
 function whisperBinary(app){
+  const buildFolder=process.platform==='darwin'?'macos-whisper':'linux-whisper';
   return app.isPackaged
     ? path.join(process.resourcesPath,'whisper','whisper-cli')
-    : path.join(app.getAppPath(),'build','linux-whisper','whisper-cli');
+    : path.join(app.getAppPath(),'build',buildFolder,'whisper-cli');
 }
 
 async function fileSha256(file){
@@ -106,10 +107,10 @@ function languageCode(value){
 }
 
 function validateWav(data){
-  if(!Buffer.isBuffer(data))throw new Error('Linux dictation audio payload is invalid.');
-  if(data.length<44||data.length>MAX_WAV_BYTES)throw new Error('Linux dictation audio is empty or too long.');
+  if(!Buffer.isBuffer(data))throw new Error('Local dictation audio payload is invalid.');
+  if(data.length<44||data.length>MAX_WAV_BYTES)throw new Error('Local dictation audio is empty or too long.');
   if(data.toString('ascii',0,4)!=='RIFF'||data.toString('ascii',8,12)!=='WAVE'){
-    throw new Error('Linux dictation requires a PCM WAV recording.');
+    throw new Error('Local dictation requires a PCM WAV recording.');
   }
 }
 
@@ -131,17 +132,18 @@ async function status(app){
   const binary=whisperBinary(app);
   const modelReady=await verifiedModel(app);
   return {
-    available:process.platform==='linux'&&fs.existsSync(binary),
+    available:(process.platform==='linux'||process.platform==='darwin')&&fs.existsSync(binary),
     binaryReady:fs.existsSync(binary),
     modelReady,
     model:MODEL_LABEL,
     modelBytes:MODEL_SIZE,
-    localOnly:true
+    localOnly:true,
+    platform:process.platform
   };
 }
 
 async function transcribe(app,{wav,language='auto'}={}){
-  if(process.platform!=='linux')throw new Error('Local Whisper dictation is currently enabled on Linux.');
+  if(process.platform!=='linux'&&process.platform!=='darwin')throw new Error('Local Whisper dictation is currently enabled on Linux and macOS.');
   const binary=whisperBinary(app);
   if(!fs.existsSync(binary))throw new Error('The local Whisper engine is missing from this Free AI build.');
   try{await fsp.access(binary,fs.constants.X_OK)}catch{await fsp.chmod(binary,0o755)}
