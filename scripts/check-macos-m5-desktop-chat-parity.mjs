@@ -67,8 +67,10 @@ for(const [marker,label] of [
 ]) requireText(main,marker,label);
 
 for(const [marker,label] of [
-  ["onPromptStream:(cb)=>on('prompt-stream',cb)",'preload streaming bridge'],
-  ["onPromptActivity:(cb)=>on('prompt-activity',cb)",'preload activity bridge'],
+  ["onPromptStream:(cb)=>{",'preload streaming bridge'],
+  ["ipcRenderer.on('prompt-stream',h);",'preload streaming event listener'],
+  ["onPromptActivity:(cb)=>{",'preload activity bridge'],
+  ["ipcRenderer.on('prompt-activity',h);",'preload activity event listener'],
   ["scanProviders:(options)=>ipcRenderer.invoke('bridge:scanProviders'",'preload provider scan bridge'],
   ["setProviderModel:(id,modelName)=>ipcRenderer.invoke('bridge:setProviderModel'",'preload provider model bridge'],
   ["sendPrompt:(m)=>ipcRenderer.invoke('bridge:sendPrompt',m)",'preload prompt bridge'],
