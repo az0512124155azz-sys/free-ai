@@ -33,7 +33,7 @@ for(const [text,label] of [
   ["Free AI will not control a Chromium tab that hosts a model participating in this Super AI task.",'provider-tab protection'],
   ["if(process.platform==='linux')return performLinuxComputerAction(payload);",'Linux Computer Use routing retained'],
   ["if(process.platform==='darwin')return performMacComputerAction(payload);",'Computer Use promoted to macOS after M2'],
-  ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'macOS Dictation remains outside M2']
+  ["if(process.platform!=='win32')throw new Error('System voice typing is currently available on Windows.');",'Windows Voice Typing path retained after macOS local Dictation promotion']
 ]) requireText(main,text,label);
 
 for(const [text,label] of [
