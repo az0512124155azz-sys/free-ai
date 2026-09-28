@@ -26,6 +26,25 @@ permissions:
   contents: read
 
 jobs:
+  release_mode_guard:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Reject conflicting release modes
+        shell: bash
+        env:
+          VALIDATE_RELEASE: ${{ inputs.validate_release }}
+          PUBLISH_RELEASE: ${{ inputs.publish_release }}
+        run: |
+          set -euo pipefail
+          if [[ "$VALIDATE_RELEASE" == "true" && "$PUBLISH_RELEASE" == "true" ]]; then
+            echo "Choose either validate_release or publish_release, not both." >&2
+            exit 1
+          fi
+          echo "Release mode selection is valid."
+
   desktop:
     strategy:
       fail-fast: false
@@ -985,7 +1004,7 @@ jobs:
 
   release_validation:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.validate_release == true && inputs.publish_release != true
-    needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
+    needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -1084,7 +1103,7 @@ jobs:
 
   release:
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_release == true
-    needs: [desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
+    needs: [release_mode_guard, desktop, windows_visual, android, android_runtime, android_auth_runtime, android_google_runtime, extension]
     runs-on: ubuntu-latest
     permissions:
       contents: write
