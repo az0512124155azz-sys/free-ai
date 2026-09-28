@@ -53,6 +53,7 @@ function readAndroidSystemBarsQaState(){
 const isWindowsDesktop=isDesktop&&desktopPlatform==='win32';
 const isMacDesktop=isDesktop&&desktopPlatform==='darwin';
 const isLinuxDesktop=isDesktop&&desktopPlatform==='linux';
+const isChatDesktop=isWindowsDesktop||isMacDesktop;
 const isWorkDesktop=isWindowsDesktop||isMacDesktop||isLinuxDesktop;
 const androidMajor=Number((navigator.userAgent.match(/Android\s+(\d+)/i)||[])[1]||0);
 const AUTH_CALLBACK_URL='freeai://auth/callback';
@@ -946,7 +947,7 @@ function App(){
   },[connected,selected?.id,selected?.source,product]);
 
   useEffect(()=>{
-    if(!isWindowsDesktop)return;
+    if(!isChatDesktop)return;
     const levels=Array.isArray(selected?.effortLevels)?selected.effortLevels.filter(Boolean):[];
     if(!levels.length||selected?.effortControl!=='native'){
       setEffort(current=>current==='default'?current:'default');
@@ -1050,7 +1051,7 @@ function App(){
   },[messages.length,busy,currentChatId]);
 
   useEffect(()=>{
-    if(!isWindowsDesktop||!window.desktopApi?.onPromptStream)return;
+    if(!isChatDesktop||!window.desktopApi?.onPromptStream)return;
     return window.desktopApi.onPromptStream(event=>{
       if(!event?.id||event.id!==activeRequestRef.current)return;
       const text=String(event.text||'');
@@ -1060,7 +1061,7 @@ function App(){
   },[]);
 
   useEffect(()=>{
-    if(!isWindowsDesktop||!window.desktopApi?.onPromptActivity)return;
+    if(!isChatDesktop||!window.desktopApi?.onPromptActivity)return;
     return window.desktopApi.onPromptActivity(event=>{
       if(!event?.id||event.id!==activeRequestRef.current)return;
       const activity=String(event.text||'').trim();
@@ -1129,10 +1130,10 @@ function App(){
   const visibleChats=useMemo(()=>{
     const q=sidebarSearch.trim().toLowerCase();
     let list=q?chats.filter(chat=>String(chat.title||'').toLowerCase().includes(q)):[...chats];
-    if(isWindowsDesktop&&product==='free'&&recentsFilter!=='all'){
+    if(isChatDesktop&&product==='free'&&recentsFilter!=='all'){
       list=list.filter(chat=>(chat.mode||'chat')===recentsFilter);
     }
-    if(isWindowsDesktop){
+    if(isChatDesktop){
       list=[...list].sort((a,b)=>{
         const pinDelta=Number(!!b.pinned)-Number(!!a.pinned);
         return pinDelta||((Number(b.updatedAt)||0)-(Number(a.updatedAt)||0));
@@ -1298,13 +1299,13 @@ function App(){
     setLocalFolderWorkspace(null);setActiveProjectId(project.id);setPage('project');setChatMenuId(null);setMobileNavOpen(false);
   }
   async function refreshProviderModels(){
-    if(!isWindowsDesktop||!isDesktop)return;
+    if(!isChatDesktop||!isDesktop)return;
     setAttachmentError('');
     try{await window.desktopApi.scanProviders({probeModels:true})}
     catch(error){setAttachmentError(error?.message||String(error))}
   }
   async function selectProviderModelOption(modelName){
-    if(!isWindowsDesktop||!isDesktop||selected?.source!=='browser')return;
+    if(!isChatDesktop||!isDesktop||selected?.source!=='browser')return;
     setAttachmentError('');
     try{
       await window.desktopApi.setProviderModel(selected.id,modelName);
@@ -1312,7 +1313,7 @@ function App(){
     }catch(error){setAttachmentError(error?.message||String(error))}
   }
   async function selectProviderEffortOption(nextEffort){
-    if(!isWindowsDesktop||!isDesktop||selected?.source!=='browser'){setEffort(nextEffort);return}
+    if(!isChatDesktop||!isDesktop||selected?.source!=='browser'){setEffort(nextEffort);return}
     setAttachmentError('');
     try{
       await window.desktopApi.setProviderEffort(selected.id,nextEffort);
@@ -1322,7 +1323,7 @@ function App(){
   }
   function openPluginsPage(){
     stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false);
-    if(isWindowsDesktop&&isDesktop)window.desktopApi?.scanProviders?.({probeTools:true}).catch(()=>{});
+    if(isChatDesktop&&isDesktop)window.desktopApi?.scanProviders?.({probeTools:true}).catch(()=>{});
   }
   function startProjectConversation(projectId,nextMode){
     stopActiveWorkTask();
@@ -1604,7 +1605,7 @@ function App(){
 
   async function runParallelGeneration(text,researchConfigOverride=null){
     const userText=String(text||'').trim();
-    if(!isWindowsDesktop||!isDesktop||busy||!selected||!userText)return runGeneration(text,messages,selected);
+    if(!isChatDesktop||!isDesktop||busy||!selected||!userText)return runGeneration(text,messages,selected);
     const groupKey=modelGroupKey(selected);
     const siblings=connected.filter(model=>model.connected!==false&&model.source==='browser'&&modelGroupKey(model)===groupKey);
     const ordered=[selected,...siblings.filter(model=>model.id!==selected.id)];
@@ -1693,15 +1694,15 @@ function App(){
 
   async function runGeneration(text,baseMessages=messages,model=selected,retryContext=null,researchConfigOverride=null){
     const userText=String(text||'').trim();
-    const chatAttachmentPlatform=isWindowsDesktop||isAndroidNative;
+    const chatAttachmentPlatform=isChatDesktop||isAndroidNative;
     const hasAttachmentIntent=chatAttachmentPlatform&&(
       (!retryContext&&attachments.length>0)||
       (retryContext&&(Array.isArray(retryContext.attachments)&&retryContext.attachments.length>0||String(retryContext.attachmentContext||'').trim()))
     );
     if((!userText&&!hasAttachmentIntent)||busy)return;
     if(!model){setModelMenu(true);return}
-    const nativeSearch=isWindowsDesktop&&mode==='chat'&&webSearchEnabled;
-    const nativeDeepResearch=isWindowsDesktop&&mode==='chat'&&deepResearchEnabled;
+    const nativeSearch=isChatDesktop&&mode==='chat'&&webSearchEnabled;
+    const nativeDeepResearch=isChatDesktop&&mode==='chat'&&deepResearchEnabled;
     const ownedResearch=nativeDeepResearch&&model.source==='api'&&researchConfigOverride?.owned===true;
     if(nativeSearch&&model.source!=='browser'){
       setAttachmentError('Web Search currently requires a connected browser AI with its live Search tool available.');
@@ -1736,7 +1737,7 @@ function App(){
     const userAttachmentMeta=retryContext?retryAttachmentMeta:activeAttachments.map(attachmentMeta);
     const attachmentContext=inlineTextParts.join('\n\n');
     const withUser=[...baseMessages,{role:'user',text:userText,attachments:userAttachmentMeta,attachmentContext}];
-    const requestId=((isWindowsDesktop&&isDesktop)||isAndroidNative)?crypto.randomUUID():null;
+    const requestId=((isChatDesktop&&isDesktop)||isAndroidNative)?crypto.randomUUID():null;
     streamedTextRef.current='';
     cancelledRequestRef.current=null;
     activeRequestRef.current=requestId;
@@ -1765,7 +1766,7 @@ function App(){
         return {role:message.role,content:index===lastUserIndex?routedText:priorText};
       });
       const effortLevels=Array.isArray(model.effortLevels)?model.effortLevels.filter(Boolean):[];
-      const routedEffort=isWindowsDesktop
+      const routedEffort=isChatDesktop
         ? (model.effortControl==='native'&&effortLevels.includes(effort)?effort:'default')
         : effort;
       const outboundAttachments=chatAttachmentPlatform&&canUploadFiles&&!retryContext
@@ -1836,8 +1837,8 @@ function App(){
   }
   async function send(){
     if(isWorkDesktop&&mode==='work')return runWorkGeneration(prompt);
-    if(isWindowsDesktop&&mode==='chat'&&deepResearchEnabled)return openResearchSetup();
-    if(isWindowsDesktop&&selected?.source==='browser'&&parallelCount>1)return runParallelGeneration(prompt);
+    if(isChatDesktop&&mode==='chat'&&deepResearchEnabled)return openResearchSetup();
+    if(isChatDesktop&&selected?.source==='browser'&&parallelCount>1)return runParallelGeneration(prompt);
     return runGeneration(prompt,messages,selected);
   }
   async function stopGeneration(){
@@ -1846,7 +1847,7 @@ function App(){
       return;
     }
     const parallelIds=[...activeParallelRequestIdsRef.current];
-    if(parallelIds.length&&isWindowsDesktop&&isDesktop){
+    if(parallelIds.length&&isChatDesktop&&isDesktop){
       parallelCancelledRef.current=true;
       activeParallelRequestIdsRef.current=[];
       await Promise.allSettled(parallelIds.map(id=>window.desktopApi.cancelPrompt(id)));
@@ -1859,7 +1860,7 @@ function App(){
     if(isAndroidNative){
       try{activeRemoteRequestRef.current?.cancel?.()}catch{}
     }else{
-      if(!isWindowsDesktop||!isDesktop)return;
+      if(!isChatDesktop||!isDesktop)return;
       try{await window.desktopApi.cancelPrompt(requestId)}catch{}
     }
     setMessages(prev=>{
@@ -1896,7 +1897,7 @@ function App(){
     try{await window.desktopApi?.openExternal?.(value)}catch{}
   }
   async function exportResearchMessage(message,format){
-    if(!isWindowsDesktop||!message?.deepResearch||message?.streaming)return;
+    if(!isChatDesktop||!message?.deepResearch||message?.streaming)return;
     const chat=chats.find(item=>item.id===currentChatId);
     const research=message.research||{};
     try{
@@ -1932,7 +1933,7 @@ function App(){
   }
   async function removeApiConnection(id){if(isDesktop)try{await window.desktopApi.removeApiConnection(id)}catch{}}
   async function addMcpConnection(){
-    if(!isWindowsDesktop)return;
+    if(!isChatDesktop)return;
     setMcpError('');
     try{
       const added=await window.desktopApi.addMcpConnection(mcpDraft);
@@ -1941,7 +1942,7 @@ function App(){
     }catch(error){setMcpError(error?.message||String(error))}
   }
   async function removeMcpConnection(id){
-    if(!isWindowsDesktop)return;
+    if(!isChatDesktop)return;
     setMcpError('');
     try{
       const items=await window.desktopApi.removeMcpConnection(id);
@@ -1950,7 +1951,7 @@ function App(){
     }catch(error){setMcpError(error?.message||String(error))}
   }
   async function refreshMcpConnections(){
-    if(!isWindowsDesktop)return;
+    if(!isChatDesktop)return;
     setMcpError('');
     try{
       const items=await window.desktopApi.refreshAllMcpConnections();
@@ -1984,7 +1985,7 @@ function App(){
       preferences:appPrefs
     };
     const json=JSON.stringify(payload,null,2);
-    if(isWindowsDesktop&&window.desktopApi?.saveDataFile){
+    if(isChatDesktop&&window.desktopApi?.saveDataFile){
       return await window.desktopApi.saveDataFile({defaultName:'free-ai-export.json',content:json});
     }
     const blob=new Blob([json],{type:'application/json'});
@@ -1999,7 +2000,7 @@ function App(){
   }
 
   function toggleWebSearch(){
-    if(!isWindowsDesktop||mode!=='chat')return;
+    if(!isChatDesktop||mode!=='chat')return;
     if(selected?.source==='api'){
       setAttachmentError('Web Search currently uses the selected browser AI\'s live Search tool. Choose a connected browser model first.');
       return;
@@ -2012,7 +2013,7 @@ function App(){
   }
 
   function toggleDeepResearch(){
-    if(!isWindowsDesktop||mode!=='chat')return;
+    if(!isChatDesktop||mode!=='chat')return;
     setAttachmentError('');
     setSelectedTool(null);
     setWebSearchEnabled(false);
@@ -2022,7 +2023,7 @@ function App(){
 
   async function openBrowser(){
     setPlusMenu(false);
-    if(isWindowsDesktop)setSettingsOpen(false);
+    if(isChatDesktop)setSettingsOpen(false);
     if(isNative){
       try{
         await InAppBrowser.openWebView({
@@ -2099,7 +2100,7 @@ function App(){
   }
   async function attachFiles(event){
     const files=[...(event.target.files||[])];if(!files.length)return;
-    if(isWindowsDesktop||isAndroidNative){await addChatAttachments(files);event.target.value='';return}
+    if(isChatDesktop||isAndroidNative){await addChatAttachments(files);event.target.value='';return}
     const file=files[0];
     const preview={name:file.name,type:file.type,size:file.size,kind:'binary',content:'',url:''};
     const textLike=file.type.startsWith('text/')||/\.(txt|md|json|js|jsx|ts|tsx|css|html|xml|yml|yaml|py|java|kt|swift|c|cpp|h|hpp|sh|ps1|sql)$/i.test(file.name);
@@ -2136,10 +2137,10 @@ function App(){
 
   return <div
     className={'desktopShell '+(isAndroidNative?'nativeMobileShell ':'')+(!sidebarOpen?'sidebarHidden':'')+' '+(sidePanel?'hasSidePanel':'')+' '+(mobileNavOpen?'mobileNavOpen':'')+' '+(dragActive?'dragActive':'')}
-    onDragEnter={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();setDragActive(true)}}:undefined}
-    onDragOver={isWindowsDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';setDragActive(true)}}:undefined}
-    onDragLeave={isWindowsDesktop?e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragActive(false)}:undefined}
-    onDrop={isWindowsDesktop?async e=>{e.preventDefault();setDragActive(false);await addChatAttachments(e.dataTransfer.files)}:undefined}
+    onDragEnter={isChatDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();setDragActive(true)}}:undefined}
+    onDragOver={isChatDesktop?e=>{if(e.dataTransfer?.types?.includes('Files')){e.preventDefault();e.dataTransfer.dropEffect='copy';setDragActive(true)}}:undefined}
+    onDragLeave={isChatDesktop?e=>{if(!e.currentTarget.contains(e.relatedTarget))setDragActive(false)}:undefined}
+    onDrop={isChatDesktop?async e=>{e.preventDefault();setDragActive(false);await addChatAttachments(e.dataTransfer.files)}:undefined}
   >
     <input ref={fileRef} type="file" multiple hidden onChange={attachFiles}/>
     <input ref={photoRef} type="file" accept="image/*" multiple hidden onChange={attachFiles}/>
@@ -2184,7 +2185,7 @@ function App(){
         <NavItem icon={Blocks} label="Explore" active={page==='explore'} onClick={()=>{stopActiveWorkTask();setPage('explore');setMobileNavOpen(false)}}/>
       </nav>
       <div className="sidebarScroll">
-        {isWindowsDesktop&&product==='free'?<>
+        {isChatDesktop&&product==='free'?<>
           <div className="sidebarGroupTitle">Projects</div>
           <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setMobileNavOpen(false);setProjectDraft({name:'',icon:'folder',color:'blue'});setProjectDialogOpen(true)}}>
             <Plus size={15}/><span>New project</span>
@@ -2235,7 +2236,7 @@ function App(){
             </div>
           )}
         </>:<>
-          {isWindowsDesktop&&product==='super'&&<>
+          {isChatDesktop&&product==='super'&&<>
             <div className="sidebarGroupTitle">Projects</div>
             <button className="newProjectItem" onClick={()=>{stopActiveWorkTask();setMobileNavOpen(false);setProjectDraft({name:'',icon:'sparkles',color:'purple'});setProjectDialogOpen(true)}}>
               <Plus size={15}/><span>New project</span>
@@ -2348,7 +2349,7 @@ function App(){
                     {m.role!=='user'&&!isWindowsDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isWindowsDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody" dir="auto">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
-                    {isWindowsDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
+                    {isChatDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
                       <Sparkles size={13}/><span>{m.streaming?(m.activity||'Deep research in progress…'):'Deep research report'}</span>{!m.streaming&&<Check size={13}/>}
                       {!m.streaming&&<div className="researchReportActions" aria-label="Export research report">
                         <button onClick={()=>exportResearchMessage(m,'md')}>Markdown</button>
@@ -2356,11 +2357,11 @@ function App(){
                         <button onClick={()=>exportResearchMessage(m,'docx')}>Word</button>
                       </div>}
                     </div>}
-                    {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<MessageSources sources={m.sources} onOpen={openWebSource}/>} 
+                    {isChatDesktop&&m.role==='assistant'&&!m.streaming&&<MessageSources sources={m.sources} onOpen={openWebSource}/>} 
                     {m.role==='user'&&Array.isArray(m.attachments)&&m.attachments.length>0&&<div className="messageAttachmentList">
                       {m.attachments.map((item,index)=><span key={(item.id||item.name)+index}><Paperclip size={12}/>{item.name}</span>)}
                     </div>}
-                    {isWindowsDesktop&&m.role==='assistant'&&!m.streaming&&<div className="messageActions headerLeft">
+                    {isChatDesktop&&m.role==='assistant'&&!m.streaming&&<div className="messageActions headerLeft">
                       <button className="headerIcon" aria-label={copiedMessageIndex===i?'Copied':'Copy response'} title={copiedMessageIndex===i?'Copied':'Copy'} onClick={()=>copyMessage(m.text,i)}>{copiedMessageIndex===i?<Check size={15}/>:<Copy size={15}/>}</button>
                       <div className="menuAnchor">
                         <button className="headerIcon" aria-label="Response options" aria-haspopup="menu" aria-expanded={responseMenuIndex===i} onClick={()=>setResponseMenuIndex(current=>current===i?null:i)}><MoreHorizontal size={15}/></button>
@@ -2369,7 +2370,7 @@ function App(){
                         </div>}
                       </div>
                     </div>}
-                    {isWindowsDesktop&&m.role==='error'&&<div className="messageActions headerLeft"><button className="headerIcon" aria-label="Retry response" title="Retry" onClick={()=>retryFrom(i)}><RotateCcw size={15}/></button></div>}
+                    {isChatDesktop&&m.role==='error'&&<div className="messageActions headerLeft"><button className="headerIcon" aria-label="Retry response" title="Retry" onClick={()=>retryFrom(i)}><RotateCcw size={15}/></button></div>}
                   </div>
                 </div>)}
                 <div ref={messageEndRef}/>
@@ -2406,7 +2407,7 @@ function App(){
         <div className="stageFooter">{product==='super'?'Super AI can make mistakes. Review edits and important actions.':'Free AI can make mistakes. Check important information.'}</div>
       </section>}
 
-      {page==='project'&&isWindowsDesktop&&activeProject&&<ProjectPage
+      {page==='project'&&isChatDesktop&&activeProject&&<ProjectPage
         project={activeProject} chats={projectChats}
         task={workTask?.projectId===activeProject.id?workTask:null}
         onApproval={(taskId,allow)=>window.desktopApi.resolveWorkApproval({taskId,allow}).catch(()=>{})}
@@ -2455,7 +2456,7 @@ function App(){
       onClose={()=>{setResearchSetupOpen(false);setPendingResearch(null)}}
       onStart={startReviewedResearch}
     />}
-    {projectDialogOpen&&isWindowsDesktop&&<NewProjectDialog draft={projectDraft} setDraft={setProjectDraft} onCreate={createProject} onClose={()=>setProjectDialogOpen(false)}/>}
+    {projectDialogOpen&&isChatDesktop&&<NewProjectDialog draft={projectDraft} setDraft={setProjectDraft} onCreate={createProject} onClose={()=>setProjectDialogOpen(false)}/>}
     {settingsOpen&&<SettingsView
       section={settingsSection} setSection={setSettingsSection} mobileList={mobileSettingsList} setMobileList={setMobileSettingsList}
       onClose={()=>{setMobileSettingsList(true);setSettingsOpen(false)}}
@@ -3024,7 +3025,7 @@ function Composer(props){
       <Folder size={13}/><span><b>{localFolderWorkspace.name}</b><small>Local folder · access confirmed per task</small></span>
       <button type="button" aria-label="Remove local folder" disabled={busy} onClick={()=>!busy&&onClearLocalFolder?.()}><X size={12}/></button>
     </div>}
-    {windowsDesktop&&mode==='work'&&selectedMcpConnections.length>0&&<div className="mcpSelectionTray" aria-label="Selected MCP apps">
+    {isChatDesktop&&mode==='work'&&selectedMcpConnections.length>0&&<div className="mcpSelectionTray" aria-label="Selected MCP apps">
       {selectedMcpConnections.map(connection=><div className="mcpSelectionChip" key={connection.id}>
         <Plug size={12}/><span><b>{connection.name}</b><small>{connection.connected?'Connected':connection.hasToken?'Saved · connects on send':'Saved · connects on send'}</small></span>
         <button type="button" aria-label={'Remove '+connection.name} disabled={busy} onClick={()=>!busy&&onToggleMcp?.(connection.id)}><X size={11}/></button>
@@ -3033,7 +3034,7 @@ function Composer(props){
     {webSearchEnabled&&<div className="attachedTool searchModeChip"><Globe2 size={13}/><span>Search</span><small>Live web sources via the selected browser AI</small><button onClick={()=>onToggleWebSearch?.()} aria-label="Turn off web search"><X size={12}/></button></div>}
     {deepResearchEnabled&&<div className="attachedTool deepResearchModeChip"><Sparkles size={13}/><span>Deep research</span><small>{selected?.source==='api'?'Free AI-owned research with reviewed plan and retrieved sources':'Provider-native research with a reviewed Free AI plan'}</small><button onClick={()=>onToggleDeepResearch?.()} aria-label="Turn off deep research"><X size={12}/></button></div>}
     {selectedTool&&<div className="attachedTool"><Plug size={13}/><span>{selectedTool.mcp}</span><small>via {selectedTool.ownerName}</small><button onClick={()=>setSelectedTool(null)}><X size={12}/></button></div>}
-    {(windowsDesktop||isAndroidNative)&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
+    {(isChatDesktop||isAndroidNative)&&attachments.length>0&&<div className="attachmentTray" aria-label="Attachments">
       {attachments.map(item=><div className="attachmentChip" key={item.id}>
         <button className="attachmentOpen" type="button" onClick={()=>onOpenAttachment?.(item)}><File size={13}/><span>{item.name}</span><small>{humanSize(item.size)}</small></button>
         <button type="button" aria-label={'Remove '+item.name} onClick={()=>onRemoveAttachment?.(item.id)}><X size={12}/></button>
@@ -3070,7 +3071,7 @@ function Composer(props){
       </div>
 
       <div className="composerRight">
-        {product==='super'&&windowsDesktop&&mode==='work'&&<div className="menuAnchor">
+        {product==='super'&&isChatDesktop&&mode==='work'&&<div className="menuAnchor">
           <button className="teamButton" aria-haspopup="dialog" aria-expanded={teamMenu} disabled={busy} onClick={()=>!busy&&setTeamMenu(v=>!v)}>
             <Bot size={14}/>All AI · {connected.filter(model=>model.connected!==false&&model.adapterReady!==false).length}<ChevronDown size={12}/>
           </button>
@@ -3088,11 +3089,11 @@ function Composer(props){
         </div>}
         {(isNative||!isDesktop||desktopPlatform==='win32'||desktopPlatform==='linux'||desktopPlatform==='darwin')&&<button className={'micButton '+(listening?'listening':'')} onMouseDown={e=>e.preventDefault()} onClick={startVoice} title={windowsDesktop?'Dictate with Windows':(desktopPlatform==='linux'||desktopPlatform==='darwin')?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')} aria-label={windowsDesktop?'Dictate with Windows':(desktopPlatform==='linux'||desktopPlatform==='darwin')?(listening?'Stop local dictation':'Dictate locally with Whisper'):(listening?'Stop dictation':'Dictate')}><Mic2 size={18}/></button>}
         {(busy||prompt.trim()||attachments.length>0)&&<button className={'voiceOrb '+(!busy&&(prompt.trim()||attachments.length>0)&&selected?'sendReady':'')}
-          onClick={busy?(windowsDesktop||isAndroidNative?stopGeneration:undefined):send}
-          disabled={busy?!(windowsDesktop||isAndroidNative):!selected}
-          aria-label={busy?(windowsDesktop||isAndroidNative?'Stop generating':'Generating response'):'Send message'}
-          title={busy?(windowsDesktop||isAndroidNative?'Stop generating':'Generating response'):'Send'}>
-          {busy?(windowsDesktop||isAndroidNative?<Square size={15}/>:<RefreshCw className="spin" size={17}/>):<ArrowUp size={18}/>} 
+          onClick={busy?(isChatDesktop||isAndroidNative?stopGeneration:undefined):send}
+          disabled={busy?!(isChatDesktop||isAndroidNative):!selected}
+          aria-label={busy?(isChatDesktop||isAndroidNative?'Stop generating':'Generating response'):'Send message'}
+          title={busy?(isChatDesktop||isAndroidNative?'Stop generating':'Generating response'):'Send'}>
+          {busy?(isChatDesktop||isAndroidNative?<Square size={15}/>:<RefreshCw className="spin" size={17}/>):<ArrowUp size={18}/>} 
         </button>}
       </div>
     </div>
@@ -3283,13 +3284,13 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onPlugins,tools,setSelec
       <MenuRow icon={Camera} label="Camera" onClick={()=>cameraRef.current?.click()}/>
       <MenuRow icon={Image} label="Photos" onClick={()=>photoRef.current?.click()}/>
       <MenuRow icon={Paperclip} label="Files" onClick={()=>fileRef.current?.click()}/>
-    </>:!(mode==='work'&&isWindowsDesktop)&&<MenuRow icon={Paperclip} label={isWindowsDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
-    {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Globe2} label="Search the web" sub={webSearchEnabled?'Live Search is enabled for the next message':'Use the selected browser AI’s live Search tool and return sources'} active={webSearchEnabled} onClick={onToggleWebSearch}/>}
-    {!isNative&&mode==='chat'&&isWindowsDesktop&&<MenuRow icon={Sparkles} label="Deep research" sub={deepResearchEnabled?'Deep Research is enabled for the next message':'Review a plan first; browser models use native research and API models can use configured Free AI retrieval'} active={deepResearchEnabled} onClick={onToggleDeepResearch}/>}
+    </>:!(mode==='work'&&isChatDesktop)&&<MenuRow icon={Paperclip} label={isChatDesktop?'Files':'Files and folders'} onClick={()=>fileRef.current?.click()}/>} 
+    {!isNative&&mode==='chat'&&isChatDesktop&&<MenuRow icon={Globe2} label="Search the web" sub={webSearchEnabled?'Live Search is enabled for the next message':'Use the selected browser AI’s live Search tool and return sources'} active={webSearchEnabled} onClick={onToggleWebSearch}/>}
+    {!isNative&&mode==='chat'&&isChatDesktop&&<MenuRow icon={Sparkles} label="Deep research" sub={deepResearchEnabled?'Deep Research is enabled for the next message':'Review a plan first; browser models use native research and API models can use configured Free AI retrieval'} active={deepResearchEnabled} onClick={onToggleDeepResearch}/>}
     {!isNative&&!(mode==='work'&&isWorkDesktop&&showBottomPanel)&&<MenuRow icon={Chrome} label="Browser" sub="Browse beside your chat in Free AI's own browser" onClick={onBrowser}/>}
     {mode==='work'&&!isAndroidNative&&!isLinuxDesktop&&<MenuRow icon={Paperclip} label="Attach files" sub="Attach specific files to this message" onClick={()=>fileRef.current?.click()}/>}
     {mode==='work'&&isWorkDesktop&&!showBottomPanel&&<MenuRow icon={Folder} label={localFolderWorkspace?'Change local folder':'Open local folder'} sub={localFolderWorkspace?localFolderWorkspace.name:'Give Work scoped access to a local folder'} onClick={onChooseLocalFolder}/>}
-    {mode==='work'&&isWindowsDesktop&&<>
+    {mode==='work'&&isChatDesktop&&<>
       <div className="floatingTitle section">Direct MCP apps</div>
       {directMcpConnections.length===0
         ? <div className="menuEmpty compact">No direct MCP apps configured.</div>
@@ -3306,11 +3307,11 @@ function PlusMenu({fileRef,photoRef,cameraRef,onBrowser,onPlugins,tools,setSelec
       }
       <div className="menuHint">Select up to 4 apps for this Work task. Tool calls still follow approval rules.</div>
     </>}
-    <div className="floatingTitle section">{mode==='work'&&isWindowsDesktop?'Provider hints':'Plugins'}</div>
+    <div className="floatingTitle section">{mode==='work'&&isChatDesktop?'Provider hints':'Plugins'}</div>
     {tools.length===0?<div className="menuEmpty compact">No provider-managed connector hints detected.</div>:tools.slice(0,10).map(t=>
-      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · provider-managed, unverified'} onClick={mode==='work'&&isWindowsDesktop?undefined:()=>setSelectedTool(t)}/>
+      <MenuRow key={t.key} icon={Plug} label={t.mcp} sub={t.ownerName+' · provider-managed, unverified'} onClick={mode==='work'&&isChatDesktop?undefined:()=>setSelectedTool(t)}/>
     )}
-    {!(mode==='work'&&isWindowsDesktop&&showBottomPanel)&&<MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>} 
+    {!(mode==='work'&&isChatDesktop&&showBottomPanel)&&<MenuRow icon={Blocks} label="Manage plugins" onClick={onPlugins}/>} 
   </div>
 }
 
@@ -3428,7 +3429,7 @@ function PluginsPage({
   const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
-  if(!isWindowsDesktop){
+  if(!isChatDesktop){
     const visibleTools=needle?tools.filter(t=>pluginSearchMatch([t.mcp,t.ownerName],needle)):tools;
     const visibleProviders=needle?connected.filter(p=>pluginSearchMatch([modelLabel(p),...(p.mcps||[])],needle)):connected;
     if(isNative){
@@ -3522,7 +3523,7 @@ function PluginsPage({
   );
 
   return <div className="contentPage">
-    <PageTop onBack={onBack} title={pageName} action={isWindowsDesktop?'Explore':null} onAction={onExplore}/>
+    <PageTop onBack={onBack} title={pageName} action={isChatDesktop?'Explore':null} onAction={onExplore}/>
     <div className="contentInner pluginsDirectoryInner">
       <div className="pluginPageHero">
         <div><h1>{pageName}</h1><p className="pageLead">{isWindowsDesktop
@@ -3531,15 +3532,15 @@ function PluginsPage({
         {isWindowsDesktop&&<button className="secondaryAction" onClick={onRefresh}><RefreshCw size={14}/>Refresh connections</button>}
       </div>
 
-      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isWindowsDesktop?'Search configured apps, public listings, or hints':'Search provider hints'}/></div>
-      {isWindowsDesktop&&<div className="directoryTabs" role="tablist" aria-label="Plugin directory sections">
+      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isChatDesktop?'Search configured apps, public listings, or hints':'Search provider hints'}/></div>
+      {isChatDesktop&&<div className="directoryTabs" role="tablist" aria-label="Plugin directory sections">
         {[['configured','Configured'],['discover','Discover'],['hints','Provider hints'],['providers','AI providers']].map(([id,label])=>
           <button key={id} role="tab" aria-selected={view===id} className={view===id?'active':''} onClick={()=>setView(id)}>{label}</button>
         )}
       </div>}
 
-      {isWindowsDesktop&&view==='configured'&&<section className="pluginSection">
-        <div className="sectionHeading"><div><h2>Configured in Free AI</h2><small>Only these direct MCP apps are callable by the Windows Work runtime.</small></div><span className="pluginMeta">{visibleDirect.length} apps</span></div>
+      {isChatDesktop&&view==='configured'&&<section className="pluginSection">
+        <div className="sectionHeading"><div><h2>Configured in Free AI</h2><small>Only these direct MCP apps are callable by the desktop Work runtime.</small></div><span className="pluginMeta">{visibleDirect.length} apps</span></div>
         <div className="directMcpGrid">
           {visibleDirect.map(connection=>{
             const cap=directMcpCapabilitySummary(connection);
@@ -3576,7 +3577,7 @@ function PluginsPage({
         </div>
       </section>}
 
-      {isWindowsDesktop&&view==='discover'&&<section className="pluginSection">
+      {isChatDesktop&&view==='discover'&&<section className="pluginSection">
         <div className="sectionHeading"><div><h2>Discover</h2><small>Examples from ChatGPT's public plugin directory. Availability can change; use the live directory for current setup.</small></div><button className="textLinkButton" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open public directory</button></div>
         <div className="pluginHint directoryNotice"><Blocks size={20}/><div><b>Discovery is separate from connection</b><span>Free AI can browse public listings, but it only calls apps that you explicitly configure as direct MCP connections. Public app authorization remains in the provider or ChatGPT.</span></div></div>
         <div className="directoryChips">{categories.map(name=><button key={name} className={category===name?'active':''} onClick={()=>setCategory(name)}>{name}</button>)}</div>
@@ -3586,7 +3587,7 @@ function PluginsPage({
         </div>
       </section>}
 
-      {(!isWindowsDesktop||view==='hints')&&<section className="pluginSection">
+      {(!isChatDesktop||view==='hints')&&<section className="pluginSection">
         <div className="sectionHeading"><div><h2>Provider-managed connector hints</h2><small>Labels observed in provider UI; not direct MCP verification.</small></div><span className="pluginMeta">{visibleTools.length} hints</span></div>
         <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Unverified</b><span>These labels do not prove a tool exists, that it is connected, or that the provider used it. Free AI never promotes them to callable MCP tools.</span></div></div>
         <div className="hintGrid">
@@ -3595,7 +3596,7 @@ function PluginsPage({
         </div>
       </section>}
 
-      {isWindowsDesktop&&view==='providers'&&<section className="pluginSection">
+      {isChatDesktop&&view==='providers'&&<section className="pluginSection">
         <div className="sectionHeading"><div><h2>Connected AI providers</h2><small>Controller models are not plugin installations.</small></div><span className="pluginMeta">{visibleProviders.length} providers</span></div>
         <div className="pluginGrid">
           {visibleProviders.map(provider=><div className="pluginCard" key={(provider.source||'browser')+provider.id}>
@@ -3618,7 +3619,7 @@ function ExplorePage({tools,chats=[],directMcpConnections=[],selectedMcpIds=[],o
   const [filter,setFilter]=useState('all');
   const [category,setCategory]=useState('All');
   const [details,setDetails]=useState(null);
-  if(!isWindowsDesktop){
+  if(!isChatDesktop){
     if(isNative){
       const mobileNeedle=query.trim().toLowerCase();
       const visibleApps=publicPluginDirectory.filter(entry=>pluginSearchMatch([entry.name,entry.category,entry.description],mobileNeedle));
@@ -3687,7 +3688,7 @@ function ExplorePage({tools,chats=[],directMcpConnections=[],selectedMcpIds=[],o
   const showHints=filter==='all'||filter==='hints';
 
   return <div className="contentPage">
-    <PageTop onBack={onBack} title="Explore" action={isWindowsDesktop?'Plugins':null} onAction={onManagePlugins}/>
+    <PageTop onBack={onBack} title="Explore" action={isChatDesktop?'Plugins':null} onAction={onManagePlugins}/>
     <div className="contentInner exploreDirectoryInner">
       <div className="exploreHero">
         <span className="exploreMark"><Blocks size={22}/></span>
@@ -4057,8 +4058,8 @@ function FilePane({file,onClose}){
     <div className="filePreview">
       {file?.kind==='image'&&<img src={file.url} alt={file.name}/>}
       {file?.kind==='text'&&<pre>{file.content}</pre>}
-      {file?.kind==='archive'&&<div className="paneEmpty"><Archive size={38}/><b>Archive previews aren't supported yet</b><span>{isWindowsDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
-      {file?.kind==='binary'&&<div className="paneEmpty"><File size={38}/><b>Preview unavailable</b><span>{isWindowsDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
+      {file?.kind==='archive'&&<div className="paneEmpty"><Archive size={38}/><b>Archive previews aren't supported yet</b><span>{isChatDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
+      {file?.kind==='binary'&&<div className="paneEmpty"><File size={38}/><b>Preview unavailable</b><span>{isChatDesktop?'Selected for this message. It will be sent only if the selected provider exposes real file upload.':'The file is attached to this chat.'}</span></div>}
     </div>
   </aside>
 }
@@ -4104,7 +4105,7 @@ function SettingsView(props){
         ['Approvals',normalizeApprovalMode(prefs.approvalMode)==='low'?'Allow low-risk':normalizeApprovalMode(prefs.approvalMode)==='read'?'Allow reads':'Always ask']
       ]}/>}
       {section==='Files'&&isWorkDesktop&&<SimpleSettings title="Files" rows={[['Local folder access','User-selected folder per conversation on Windows, macOS, and Linux'],['Read actions','List, stat, bounded text read, and explicit file attach'],['Writes','Text file create/replace · confirmation-gated'],['Credential files','.git, .env, private keys, and common credential files blocked from automated access']]}/>}
-      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isWindowsDesktop?"Manage direct MCP apps plus provider-managed connector hints.":isNative?"Discover app listings and review provider-managed capabilities. Account authorization and permissions remain with the provider or app connection.":"Use provider-managed connectors exposed by connected AI services."} status={isWindowsDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
+      {section==='Plugins'&&<IntegrationSettings icon={Plug} title={isNative?'Apps':'Plugins'} text={isChatDesktop?"Manage direct MCP apps plus provider-managed connector hints.":isNative?"Discover app listings and review provider-managed capabilities. Account authorization and permissions remain with the provider or app connection.":"Use provider-managed connectors exposed by connected AI services."} status={isChatDesktop?(mcpConnections.length+' direct apps'):(connected.filter(p=>p.mcps?.length).length+' providers')} action={onPlugins}/>}
       {section==='Browser'&&!isNative&&<BrowserSettings prefs={prefs} setPrefs={setPrefs} onBrowser={onBrowser} status={status}/>}
       {section==='Connections'&&(isNative
         ? <RemoteDesktopSettings {...{status,settings,setSettings,saveSettings,connected}}/>
@@ -4128,8 +4129,8 @@ function GeneralSettings({prefs,setPrefs}){
   return <div className="settingsPane">
     <h3>Permissions</h3>
     <div className="settingBlock">
-      <SettingRow title="Work approvals" desc={isWindowsDesktop?"Choose how much low-risk browser, computer, local-file and app activity Work can continue without repeated prompts. New website/app/folder scopes and sensitive actions still require explicit approval.":"Choose how much low-risk browser and computer activity Work can continue without repeated prompts. Website access and sensitive actions still require explicit approval."} control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
-      <SettingRow title="Sensitive actions" desc={isWindowsDesktop?"Typing, state-changing clicks, keyboard shortcuts, drag operations, tab closes, local file writes and non-read-only MCP calls remain confirmation-gated.":"Typing, clicks that may change data, keyboard shortcuts, drag operations and closing tabs always pause for approval in the current Work loop."} control={<span className="valuePill">Always confirm</span>}/>
+      <SettingRow title="Work approvals" desc={isChatDesktop?"Choose how much low-risk browser, computer, local-file and app activity Work can continue without repeated prompts. New website/app/folder scopes and sensitive actions still require explicit approval.":"Choose how much low-risk browser and computer activity Work can continue without repeated prompts. Website access and sensitive actions still require explicit approval."} control={<select value={normalizeApprovalMode(prefs.approvalMode)} onChange={e=>setPrefs({...prefs,approvalMode:e.target.value})}><option value="ask">Always ask</option><option value="read">Allow reads</option><option value="low">Allow low-risk</option></select>}/>
+      <SettingRow title="Sensitive actions" desc={isChatDesktop?"Typing, state-changing clicks, keyboard shortcuts, drag operations, tab closes, local file writes and non-read-only MCP calls remain confirmation-gated.":"Typing, clicks that may change data, keyboard shortcuts, drag operations and closing tabs always pause for approval in the current Work loop."} control={<span className="valuePill">Always confirm</span>}/>
     </div>
     <h3>General</h3>
     <div className="settingBlock">
