@@ -89,7 +89,7 @@ has(workflow,'android_google_runtime:','CI must define a separate Android Google
 has(workflow,'Run Android 16 Google Credential Manager QA','CI must execute native Google runtime QA on Android 16.');
 has(workflow,'bash scripts/android-google-runtime-qa.sh','CI must execute the Google Credential Manager runtime driver.');
 has(workflow,'free-ai-android-google-runtime','CI must upload Google Credential Manager runtime evidence separately.');
-has(workflow,'Validate real-account Google QA PowerShell','Windows CI must parse the manual real-account QA harness before merge.');
+has(workflow,'Validate PowerShell release and Google QA helpers','Windows CI must parse both the release credential helper and the manual real-account QA harness before merge.');
 has(workflow,'[System.Management.Automation.Language.Parser]::ParseFile','Windows CI must use the real PowerShell parser for the manual QA harness.');
 has(workflow,"@('Apk', 'Serial', 'OutputDir')",'Windows CI must verify the documented real-account harness parameters.');
 
