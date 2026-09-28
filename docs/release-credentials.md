@@ -140,7 +140,24 @@ https://developer.android.com/studio/publish/preparing
 
 Keep the Android keystore backed up in at least two secure locations. Losing the signing key can prevent future updates outside Play App Signing.
 
-Validate the keystore locally:
+If no production keystore exists yet, generate it locally and configure all five GitHub Actions secrets in one command:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\setup-release-credentials.ps1 `
+  -Target Android `
+  -GenerateAndroidKeystore
+```
+
+The default generated key is:
+
+- path: `$HOME\.free-ai\signing\free-ai-release.jks`
+- alias: `free-ai`
+- algorithm: RSA 4096 / SHA256withRSA
+- validity: 10,000 days
+
+The helper prompts locally for the new keystore and key passwords. Those passwords are never passed as command-line arguments. Back up the generated `.jks` in at least two secure locations before publishing the first production build.
+
+To validate an existing keystore without changing GitHub Secrets:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\setup-release-credentials.ps1 `
@@ -150,17 +167,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\setup-release-credentials.ps1
   -DryRun
 ```
 
-Then remove `-DryRun` to set the GitHub secrets.
+Remove `-DryRun` when you want an existing keystore written to GitHub Actions secrets.
 
 The helper:
 
 1. locates `keytool`;
-2. validates the keystore password, key alias, and private-key password;
-3. exports the signing certificate to a temporary directory;
-4. computes the release certificate SHA-1 itself;
-5. sets all five Android release secrets;
-6. deletes the temporary certificate/CSR files;
-7. prints only the non-secret SHA-1 needed for Google OAuth.
+2. optionally creates a new RSA-4096 JKS outside the Git repository;
+3. validates the keystore password, key alias, and private-key password;
+4. rejects certificates that do not remain valid beyond October 22, 2033;
+5. exports the signing certificate to a temporary directory;
+6. computes the release certificate SHA-1 itself;
+7. sets all five Android release secrets;
+8. deletes the temporary certificate/CSR files;
+9. preserves a newly generated keystore if GitHub secret upload fails after key validation, so the same key can be retried;
+10. prints only the non-secret SHA-1 needed for Google OAuth.
 
 Google Cloud must contain an Android OAuth client for:
 
