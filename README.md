@@ -4,6 +4,17 @@ Free AI is a cross-platform AI workspace that can use AI services already open i
 
 ## Download
 
+### Stable installers
+
+The latest published GitHub Release is the stable channel for Windows, macOS, Linux and Android:
+
+- **Windows:** NSIS installer from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
+- **macOS:** DMG from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
+- **Linux:** AppImage from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
+- **Android:** production-signed APK from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest)
+
+Public releases also include `SHA256SUMS.txt` so downloaded installers can be verified.
+
 ### Browser extension
 
 **Stable release:** [Download the published Free AI Browser Bridge ZIP](https://github.com/az0512124155azz-sys/free-ai/releases/latest/download/free-ai-extension.zip)
@@ -119,10 +130,13 @@ The GitHub workflow builds:
 - Windows NSIS installer
 - macOS DMG
 - Linux AppImage
-- Android debug APK
+- Android debug/QA APKs for normal CI
+- a production-signed Android release APK only during an explicit release dispatch
 - Chrome extension ZIP
 
 Pull requests run the full build matrix before changes are merged to `main`.
+
+Production publication is fail-closed for platform signing and release integrity. See `docs/release.md` for the signing credentials, Android production OAuth fingerprint requirement, runtime gates and manual publication procedure.
 
 ## Android Google sign-in
 
@@ -135,7 +149,7 @@ Google Cloud must contain two OAuth clients in the same project:
   - package: `com.freeai.mobile`
   - SHA-1: `1F:F0:59:1B:C8:69:C4:89:01:01:2F:79:E1:2D:0B:2E:7D:FC:C9:4B`
 
-The repository contains a public debug-only keystore so GitHub Actions APKs keep the same SHA-1 across builds. Do not use that debug key for a production Play Store release. Production and Play App Signing certificates need their own Android OAuth client IDs.
+The repository contains a public debug-only keystore so normal GitHub Actions QA APKs keep the same SHA-1 across builds. That key is never used for a production GitHub Release. Production releases require a separate private keystore supplied through GitHub Actions secrets, and the workflow verifies its certificate SHA-1 before publication. Production and Play App Signing certificates need their own Android OAuth client IDs.
 
 The web client ID can be overridden at build time with `VITE_GOOGLE_WEB_CLIENT_ID`.
 
