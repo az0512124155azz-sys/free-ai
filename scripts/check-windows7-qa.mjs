@@ -170,6 +170,7 @@ has(installerSmoke,"[string]$signature.Status -ne 'Valid'",'Windows signing veri
 has(installerSmoke,"Assert-ValidAuthenticodeSignature $installer.FullName 'Windows installer'",'Signed CI must verify the NSIS installer signature.');
 has(installerSmoke,"Assert-ValidAuthenticodeSignature $appExe 'Installed Free AI.exe'",'Signed CI must verify the installed executable signature.');
 has(windowsSigningGuide,'WIN_CSC_LINK','Windows signing guide must document the certificate secret.');
+has(windowsSigningGuide,'validate_release=true','Windows signing guide must document the production release-validation gate.');
 has(windowsSigningGuide,'publish_release=true','Windows signing guide must document the signed-release gate.');
 has(windowsSigningGuide,'Microsoft Artifact Signing','Windows signing guide must document the cloud-signing alternative without fake credentials.');
 has(installerSmoke,"@('/S', \"/D=$installDir\")",'Installer smoke must perform a silent NSIS clean install to an isolated directory.');
