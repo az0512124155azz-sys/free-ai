@@ -194,6 +194,14 @@ test('Browser provider bridge sends prompts and returns text plus generated medi
     expect(capabilities?.mcps).toContain('Gmail');
     expect(capabilities?.mcps).toContain('Canva');
 
+    await page.evaluate(()=>{
+      document.querySelector('#chatgpt-add-menu').style.display='none';
+      document.querySelector('#chatgpt-more-menu').style.display='none';
+      document.querySelector('#chatgpt-apps-menu').style.display='none';
+      document.querySelector('#chatgpt-add').setAttribute('aria-expanded','false');
+      delete document.querySelector('#gmail-tool').dataset.activated;
+    });
+
     const chatgpt=await invokePrompt(page,{provider:'chatgpt',text:'summarize my mail',toolRequest:{mcp:'Gmail'}});
     expect(chatgpt?.error).toBeUndefined();
     expect(await page.locator('#gmail-tool').getAttribute('data-activated')).toBe('true');
