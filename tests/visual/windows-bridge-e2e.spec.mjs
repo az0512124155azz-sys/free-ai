@@ -118,8 +118,8 @@ test('Windows app routes a provider app through the Browser Bridge and restores 
     await expect(page.locator('.modelButton')).toContainText('GPT Runtime');
 
     await page.locator('.desktopPrimaryNav button').filter({hasText:'Plugins'}).click();
-    await expect(page.getByRole('tablist',{name:'Plugin directory sections'}).getByRole('tab',{name:'Provider apps'})).toHaveAttribute('aria-selected','true');
-    const gmailCard=page.locator('.hintCard').filter({hasText:'Gmail'}).first();
+    await expect(page.getByRole('tablist',{name:'Plugin directory sections'}).getByRole('tab',{name:'Directory'})).toHaveAttribute('aria-selected','true');
+    const gmailCard=page.locator('.installedPluginButton[title="Gmail"]').first();
     await expect(gmailCard).toBeVisible();
     await gmailCard.click();
     const dialog=page.getByRole('dialog',{name:'Plugin details'});
