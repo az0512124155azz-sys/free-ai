@@ -66,7 +66,7 @@ Free AI public macOS builds require Developer ID signing and notarization by def
 
 and one complete notarization credential set.
 
-For v0.7.2, Apple signing may be intentionally deferred. In that case, leave all macOS signing/notarization secrets unset and use the explicit `allow_unsigned_macos=true` workflow input during both validation and publication. The release workflow will warn that the DMG is unsigned/not notarized. Do not use the exception with a partially configured Apple credential set.
+For v0.7.3, Apple signing may be intentionally deferred. In that case, leave all macOS signing/notarization secrets unset and use the explicit `allow_unsigned_macos=true` workflow input during both validation and publication. The release workflow will warn that the DMG is unsigned/not notarized. Do not use the exception with a partially configured Apple credential set.
 
 Apple documents Developer ID Application certificates for apps distributed outside the Mac App Store:
 

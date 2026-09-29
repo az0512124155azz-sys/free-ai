@@ -4,8 +4,8 @@ The normal `main` workflow produces development and QA artifacts. Production sig
 
 ## Current release line
 
-- Current published stable tag: `v0.7.1`.
-- The next development/release line is `v0.7.2`.
+- Current published stable tag: `v0.7.2`.
+- The next development/release line is `v0.7.3`.
 - Do not reuse or overwrite an existing tag. The release workflow fails if the package tag already exists.
 
 ## Production credential setup helper
