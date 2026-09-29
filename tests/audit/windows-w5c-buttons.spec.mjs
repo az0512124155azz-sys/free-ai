@@ -71,8 +71,15 @@ test('Windows W5C core button interaction sweep',async()=>{
       const tabs=page.getByRole('tablist',{name:'Plugin directory sections'});
       await expect(tabs.getByRole('tab',{name:'Directory',exact:true})).toHaveAttribute('aria-selected','true');
       await expect(page.getByRole('heading',{name:'Installed',exact:true})).toBeVisible();
+      const scopeTabs=page.getByRole('tablist',{name:'Plugin directory scope'});
+      await expect(scopeTabs.getByRole('tab',{name:'Public',exact:true})).toHaveAttribute('aria-selected','true');
       await expect(page.getByRole('heading',{name:'Popular',exact:true})).toBeVisible();
       await expect(page.getByRole('heading',{name:'New & Noteworthy',exact:true})).toBeVisible();
+      await scopeTabs.getByRole('tab',{name:'Workspace',exact:true}).click();
+      await expect(page.getByText('Workspace directory stays provider-managed',{exact:true})).toBeVisible();
+      await scopeTabs.getByRole('tab',{name:'Personal',exact:true}).click();
+      await expect(page.getByText('Personal plugins require provider account access',{exact:true})).toBeVisible();
+      await scopeTabs.getByRole('tab',{name:'Public',exact:true}).click();
       await shot(page,'01a-plugins-directory.png');
       const pluginSearch=page.getByPlaceholder('Search plugins');
       await pluginSearch.fill('Gmail');

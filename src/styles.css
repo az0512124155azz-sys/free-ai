@@ -1071,3 +1071,13 @@ html[data-native-platform="android"][data-keyboard-open] .nativeMobileShell .wor
   .chatgptDirectoryGrid{grid-template-columns:1fr}
   .pluginDirectoryRow small{white-space:normal}
 }
+
+/* v0.7.2 plugin directory scopes */
+.pluginScopeTabs{display:flex;align-items:center;gap:8px;margin:18px 0 4px;padding:0 2px}
+.pluginScopeTabs button{height:28px;padding:0 12px;border-radius:999px;border:1px solid transparent;background:transparent;color:var(--text-secondary);font-size:10.5px}
+.pluginScopeTabs button:hover{background:var(--hover);color:var(--text)}
+.pluginScopeTabs button.active{background:var(--surface-secondary);border-color:var(--border-soft);color:var(--text);font-weight:600}
+.pluginScopeSection{margin-top:18px}
+.pluginScopeEmpty{min-height:150px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;text-align:center;padding:22px}
+.pluginScopeEmpty span{max-width:560px;color:var(--text-tertiary);font-size:10.5px;line-height:1.5}
+.pluginScopeEmpty .secondaryAction{margin-top:4px}
