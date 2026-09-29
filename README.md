@@ -13,7 +13,7 @@ The published **v0.7.1** release uses the current release-validation pipeline, i
 Platform installers for the current stable release are available from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest):
 
 - **Windows:** NSIS installer (Authenticode-signed when signing credentials are configured)
-- **macOS:** DMG (Developer ID signed/notarized when configured; v0.7.1 may be explicitly published unsigned)
+- **macOS:** DMG (Developer ID signed/notarized when configured; desktop releases may be explicitly published unsigned)
 - **Linux:** AppImage
 - **Android:** production-signed APK
 
