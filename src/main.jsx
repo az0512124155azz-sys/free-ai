@@ -3500,6 +3500,7 @@ function PluginsPage({
   const [query,setQuery]=useState('');
   const [view,setView]=useState(()=>isNative?'discover':'directory');
   const [category,setCategory]=useState('All');
+  const [directoryScope,setDirectoryScope]=useState('public');
   const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
   const needle=query.trim().toLowerCase();
@@ -3666,21 +3667,47 @@ function PluginsPage({
           </div>
         </section>
 
-        {categories.map(section=>{
-          const entries=visiblePublic.filter(entry=>entry.category===section);
-          if(!entries.length)return null;
-          return <section className="pluginSection directoryCategorySection" key={section}>
-            <div className="sectionHeading directorySectionHeading">
-              <div><h2>{section}</h2><small>{section==='Popular'?'Commonly used plugin listings':section==='New & Noteworthy'?'Recently highlighted plugin listings':'Browse plugin listings by use case'}</small></div>
-              <button className="directoryChevronButton" onClick={onOpenPublicDirectory} aria-label={'Open '+section+' in public directory'}><ChevronRight size={16}/></button>
-            </div>
-            <div className="directoryGrid chatgptDirectoryGrid">
-              {entries.map(entry=><PublicDirectoryCard key={entry.id} entry={entry}
-                onOpen={()=>setDetails({kind:'public',entry})}/>)}
-            </div>
-          </section>;
-        })}
-        {!visiblePublic.length&&<div className="pluginEmptyCard directorySearchEmpty"><Search size={22}/><b>No plugin matches “{query}”</b><span>Try a different search term.</span></div>}
+        <div className="pluginScopeTabs" role="tablist" aria-label="Plugin directory scope">
+          {[['public','Public'],['workspace','Workspace'],['personal','Personal']].map(([id,label])=>
+            <button key={id} role="tab" aria-selected={directoryScope===id} className={directoryScope===id?'active':''} onClick={()=>setDirectoryScope(id)}>{label}</button>
+          )}
+        </div>
+
+        {directoryScope==='public'&&<>
+          {categories.map(section=>{
+            const entries=visiblePublic.filter(entry=>entry.category===section);
+            if(!entries.length)return null;
+            return <section className="pluginSection directoryCategorySection" key={section}>
+              <div className="sectionHeading directorySectionHeading">
+                <div><h2>{section}</h2><small>{section==='Popular'?'Commonly used plugin listings':section==='New & Noteworthy'?'Recently highlighted plugin listings':'Browse plugin listings by use case'}</small></div>
+                <button className="directoryChevronButton" onClick={onOpenPublicDirectory} aria-label={'Open '+section+' in public directory'}><ChevronRight size={16}/></button>
+              </div>
+              <div className="directoryGrid chatgptDirectoryGrid">
+                {entries.map(entry=><PublicDirectoryCard key={entry.id} entry={entry}
+                  onOpen={()=>setDetails({kind:'public',entry})}/>)}
+              </div>
+            </section>;
+          })}
+          {!visiblePublic.length&&<div className="pluginEmptyCard directorySearchEmpty"><Search size={22}/><b>No plugin matches “{query}”</b><span>Try a different search term.</span></div>}
+        </>}
+
+        {directoryScope==='workspace'&&<section className="pluginSection pluginScopeSection">
+          <div className="pluginEmptyCard pluginScopeEmpty">
+            <Briefcase size={22}/>
+            <b>Workspace directory stays provider-managed</b>
+            <span>Free AI does not invent workspace-only plugins or bypass workspace policy. Open the ChatGPT plugin directory, then choose your workspace scope to see plugins the current workspace actually exposes.</span>
+            <button className="secondaryAction" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open plugin directory</button>
+          </div>
+        </section>}
+
+        {directoryScope==='personal'&&<section className="pluginSection pluginScopeSection">
+          <div className="pluginEmptyCard pluginScopeEmpty">
+            <UserRound size={22}/>
+            <b>Personal plugins require provider account access</b>
+            <span>Personal plugins can be private or shared with your account. Free AI keeps them separate from public listings and local Direct MCP connections; open the ChatGPT plugin directory and choose Personal to review the account-scoped list.</span>
+            <button className="secondaryAction" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open plugin directory</button>
+          </div>
+        </section>}
       </>}
 
       {isChatDesktop&&view==='providers'&&<section className="pluginSection">
