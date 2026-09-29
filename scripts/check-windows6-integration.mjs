@@ -148,7 +148,7 @@ has(main,'sandbox:true','Electron renderer sandbox must stay enabled.');
 has(preload,"contextBridge.exposeInMainWorld('desktopApi'",'Preload contextBridge is missing.');
 ok(!preload.includes('send:ipcRenderer.send')&&!preload.includes('invoke:ipcRenderer.invoke'),'Preload must not expose raw ipcRenderer methods.');
 
-has(workflow,"github.actor == 'az0512124155azz-sys' && contains(github.event.head_commit.message, '[publish-v0.7.2]')",'One-shot v0.7.2 release path must remain owner-gated and marker-gated.');
+has(workflow,"github.actor == 'az0512124155azz-sys' && contains(github.event.head_commit.message, '[publish-v0.7.3]')",'One-shot v0.7.3 release path must remain owner-gated and marker-gated.');
 has(workflow,"github.event_name == 'workflow_dispatch' && inputs.publish_release == true",'Manual release publication path must remain explicitly gated.');
 has(workflow,'name: free-ai-chrome-extension','Extension artifact name changed unexpectedly.');
 has(readme,'releases/latest/download/free-ai-extension.zip','Stable extension release download link is missing.');
