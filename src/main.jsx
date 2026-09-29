@@ -3597,8 +3597,7 @@ function PluginsPage({
   const installedItems=[
     ...visibleTools.map(tool=>({kind:'hint',key:'hint:'+tool.key,name:tool.mcp,tool})),
     ...visibleDirect.map(connection=>({kind:'direct',key:'direct:'+connection.id,name:connection.name,connection}))
-  ].filter((item,index,array)=>array.findIndex(other=>pluginNameKey(other.name)===pluginNameKey(item.name))===index);
-  const installedByName=new Map(installedItems.map(item=>[pluginNameKey(item.name),item]));
+  ];
 
   return <div className="contentPage">
     <PageTop onBack={onBack} title={pageName} action={isChatDesktop?'Explore':null} onAction={onExplore}/>
@@ -3677,14 +3676,8 @@ function PluginsPage({
               <button className="directoryChevronButton" onClick={onOpenPublicDirectory} aria-label={'Open '+section+' in public directory'}><ChevronRight size={16}/></button>
             </div>
             <div className="directoryGrid chatgptDirectoryGrid">
-              {entries.map(entry=>{
-                const installed=installedByName.get(pluginNameKey(entry.name));
-                const status=installed?(installed.kind==='direct'?'Connected':'Available'):'';
-                return <PublicDirectoryCard key={entry.id} entry={entry} status={status}
-                  onOpen={()=>installed
-                    ? setDetails(installed.kind==='hint'?{kind:'hint',hint:installed.tool}:{kind:'direct',connection:installed.connection})
-                    : setDetails({kind:'public',entry})}/>;
-              })}
+              {entries.map(entry=><PublicDirectoryCard key={entry.id} entry={entry}
+                onOpen={()=>setDetails({kind:'public',entry})}/>)}
             </div>
           </section>;
         })}
