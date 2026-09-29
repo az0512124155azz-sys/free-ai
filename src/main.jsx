@@ -3695,17 +3695,17 @@ function PluginsPage({
           <div className="pluginEmptyCard pluginScopeEmpty">
             <Briefcase size={22}/>
             <b>Workspace directory stays provider-managed</b>
-            <span>Free AI does not invent workspace-only plugins or bypass workspace policy. Open the live ChatGPT directory to see plugins your current workspace actually exposes.</span>
-            <button className="secondaryAction" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open live directory</button>
+            <span>Free AI does not invent workspace-only plugins or bypass workspace policy. Open the ChatGPT plugin directory, then choose your workspace scope to see plugins the current workspace actually exposes.</span>
+            <button className="secondaryAction" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open plugin directory</button>
           </div>
         </section>}
 
         {directoryScope==='personal'&&<section className="pluginSection pluginScopeSection">
           <div className="pluginEmptyCard pluginScopeEmpty">
-            <User size={22}/>
+            <UserRound size={22}/>
             <b>Personal plugins require provider account access</b>
-            <span>Personal plugins can be private or shared with your account. Free AI keeps them separate from public listings and from local Direct MCP connections unless the provider exposes them.</span>
-            <button className="secondaryAction" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open personal directory</button>
+            <span>Personal plugins can be private or shared with your account. Free AI keeps them separate from public listings and local Direct MCP connections; open the ChatGPT plugin directory and choose Personal to review the account-scoped list.</span>
+            <button className="secondaryAction" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open plugin directory</button>
           </div>
         </section>}
       </>}
