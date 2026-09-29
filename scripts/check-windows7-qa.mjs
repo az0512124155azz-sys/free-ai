@@ -243,7 +243,7 @@ has(background,"adapterReady:capabilities?.adapterReady===true",'Browser Bridge 
 has(background,"adapterIssue:String(capabilities?.adapterIssue||'')",'Browser Bridge must preserve adapter failure details.');
 has(main,"connected:extensionConnected&&p.adapterReady!==false",'Desktop provider status must disable unhealthy adapters.');
 has(main,"if(provider.adapterReady===false)",'Browser routing must reject an unhealthy provider adapter.');
-has(source,"const fresh=selected?connected.find",'Selected provider reconciliation must remain present.');
+has(source,"let fresh=selected?connected.find",'Selected provider reconciliation must remain present.');
 has(source,"function modelConnectionDetail(model)",'Model picker must distinguish adapter failure from reconnecting state.');
 has(source,"return ' · adapter unavailable';",'Model picker must label provider adapter failures truthfully.');
 has(source,"title={model.adapterIssue||undefined}",'Provider adapter failure reason must be available in the picker.');
