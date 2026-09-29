@@ -92,6 +92,9 @@ async function mountChatGpt(page,{imageOnlyOutsideRole=false}={}){
           <button id="chatgpt-more" role="menuitem">More</button>
         </div>
         <div id="chatgpt-more-menu" role="menu" aria-label="More" style="display:none">
+          <button id="chatgpt-apps" role="menuitem">Apps</button>
+        </div>
+        <div id="chatgpt-apps-menu" role="menu" aria-label="Apps" style="display:none">
           <button id="gmail-tool" role="menuitem" data-testid="connector-gmail">Gmail</button>
           <button id="canva-tool" role="menuitem" data-testid="connector-canva">Canva</button>
         </div>
@@ -106,6 +109,9 @@ async function mountChatGpt(page,{imageOnlyOutsideRole=false}={}){
     });
     document.querySelector('#chatgpt-more').addEventListener('click',()=>{
       document.querySelector('#chatgpt-more-menu').style.display='block';
+    });
+    document.querySelector('#chatgpt-apps').addEventListener('click',()=>{
+      document.querySelector('#chatgpt-apps-menu').style.display='block';
     });
     document.querySelector('#gmail-tool').addEventListener('click',event=>{
       event.currentTarget.dataset.activated='true';

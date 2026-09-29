@@ -570,34 +570,55 @@
     return [...found];
   }
 
+  function providerAppNavigationItems(){
+    const priority=label=>{
+      const value=cleanLabel(label).toLowerCase();
+      if(value==='more')return 0;
+      if(value==='apps'||value==='plugins')return 1;
+      if(value==='connected apps'||value==='connectors')return 2;
+      if(value==='tools')return 3;
+      if(value.startsWith('view all'))return 4;
+      return 5;
+    };
+    return [...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>{
+      if(!visible(el)||el.disabled||el.getAttribute?.('aria-disabled')==='true')return false;
+      return /^(apps?|plugins?|connectors?|connected apps?|tools?|more|view all(?: tools| apps| plugins)?)$/i.test(cleanLabel(controlLabel(el)));
+    }).sort((a,b)=>priority(controlLabel(a))-priority(controlLabel(b)));
+  }
+
+  function providerComposerTriggers(){
+    const local=composerToolTriggers();
+    if(local.length)return local.slice(0,8);
+    return [...document.querySelectorAll('button,[role="button"]')].filter(el=>{
+      if(!visible(el)||el.disabled||el.getAttribute?.('aria-disabled')==='true')return false;
+      return /(tools?|apps?|plugins?|connectors?|connected apps?|add files|add|more|plus|\+)/i.test(controlLabel(el));
+    }).slice(0,8);
+  }
+
+  function collectProviderApps(found){
+    for(const name of scanMcps())found.add(name);
+    for(const name of visibleIntegrationNames())found.add(name);
+  }
+
   async function probeMcps(){
     const found=new Set(scanMcps());
-    const triggers=[];
-    for(const el of document.querySelectorAll('button,[role="button"]')){
-      if(!visible(el))continue;
-      const label=controlLabel(el);
-      if(!/(tools?|apps?|plugins?|connectors?|connected apps?|add files|add|more)/i.test(label))continue;
-      if(triggers.length<6)triggers.push(el);
-    }
-
+    const triggers=providerComposerTriggers();
     for(const trigger of triggers){
       const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
       if(!wasExpanded){
-        try{trigger.click();await sleep(180)}catch{continue}
+        try{trigger.click();await sleep(200)}catch{continue}
       }
-      for(const name of scanMcps())found.add(name);
-      for(const name of visibleIntegrationNames())found.add(name);
+      collectProviderApps(found);
 
-      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?|more|view all(?: tools| apps| plugins)?)$/i.test(cleanLabel(controlLabel(el))));
-      for(const item of nested.slice(0,4)){
-        try{
-          item.click();await sleep(180);
-          for(const name of scanMcps())found.add(name);
-          for(const name of visibleIntegrationNames())found.add(name);
-          document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
-          await sleep(60);
-        }catch{}
+      const visited=new Set();
+      for(let depth=0;depth<4;depth++){
+        const item=providerAppNavigationItems().find(el=>el!==trigger&&!visited.has(el));
+        if(!item)break;
+        visited.add(item);
+        try{item.click();await sleep(220)}catch{continue}
+        collectProviderApps(found);
       }
+
       if(!wasExpanded)await closeTransientControl(trigger);
     }
     return [...found].filter(Boolean).slice(0,80);
@@ -622,15 +643,11 @@
     let target=findTarget();
     if(target){target.click();await sleep(180);return {ok:true,name:desired}};
 
-    const triggers=[...document.querySelectorAll('button,[role="button"]')].filter(el=>{
-      if(!visible(el))return false;
-      return /(tools?|apps?|plugins?|connectors?|connected apps?|add files|add|more)/i.test(controlLabel(el));
-    }).slice(0,8);
-
+    const triggers=providerComposerTriggers();
     for(const trigger of triggers){
       const wasExpanded=trigger.getAttribute?.('aria-expanded')==='true';
       if(!wasExpanded){
-        try{trigger.click();await sleep(180)}catch{continue}
+        try{trigger.click();await sleep(200)}catch{continue}
       }
 
       target=findTarget();
@@ -639,22 +656,23 @@
         return {ok:true,name:desired};
       }
 
-      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?|more|view all(?: tools| apps| plugins)?)$/i.test(cleanLabel(controlLabel(el))));
-      for(const item of nested.slice(0,5)){
-        try{item.click();await sleep(180)}catch{continue}
+      const visited=new Set();
+      for(let depth=0;depth<4;depth++){
+        const item=providerAppNavigationItems().find(el=>el!==trigger&&!visited.has(el));
+        if(!item)break;
+        visited.add(item);
+        try{item.click();await sleep(220)}catch{continue}
         target=findTarget();
         if(target){
-          target.click();await sleep(220);
+          target.click();await sleep(240);
           return {ok:true,name:desired};
         }
-        document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',code:'Escape',bubbles:true}));
-        await sleep(60);
       }
 
       if(!wasExpanded)await closeTransientControl(trigger);
     }
 
-    throw new Error('Could not activate the connected tool "'+desired+'" in this provider tab. Open the provider tool menu once and confirm that the tool is connected.');
+    throw new Error('Could not activate the connected tool "'+desired+'" in this provider tab. Open + → More in the provider once and confirm that the app is available.');
   }
 
   function nativeToolLabelMatches(kind,label){
@@ -701,7 +719,7 @@
         seen.add(el);
         const label=controlLabel(el);
         const hint=label+' '+String(el.getAttribute?.('data-testid')||el.getAttribute?.('data-test-id')||'');
-        if(/tools?|view all tools|more|add|plus|\+/i.test(hint))candidates.push(el);
+        if(/tools?|apps?|plugins?|connectors?|connected apps?|view all(?: tools| apps| plugins)?|more|add|plus|\+/i.test(hint))candidates.push(el);
       }
     }
     for(const el of document.querySelectorAll('button,[role="button"]')){
