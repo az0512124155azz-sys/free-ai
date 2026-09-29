@@ -1108,7 +1108,12 @@
         }
         const stop=first(c.stop||[]);
         if(stableCount>=requiredStable&&!stop){
-          return {...now,media:await materializePageMedia(now.media)};
+          const beforeMediaKeys=new Set((before?.media||[]).map(item=>String(item?.url||item?.dataUrl||'')));
+          const responseMediaOnly=now.media.filter(item=>{
+            const key=String(item?.url||item?.dataUrl||'');
+            return key&&!beforeMediaKeys.has(key);
+          });
+          return {...now,media:await materializePageMedia(responseMediaOnly)};
         }
       }
     }

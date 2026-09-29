@@ -107,6 +107,14 @@ async function mountChatGpt(page,{imageOnlyOutsideRole=false}={}){
       menu.style.display='block';
       event.currentTarget.setAttribute('aria-expanded','true');
     });
+    if(imageOnlyOutsideRole){
+      const oldImage=document.createElement('img');
+      oldImage.src='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==';
+      oldImage.alt='Generated image: old history image';
+      oldImage.style.width='200px';
+      oldImage.style.height='160px';
+      document.querySelector('#chatgpt-image-turn').append(oldImage);
+    }
     document.querySelector('#chatgpt-more').addEventListener('click',()=>{
       document.querySelector('#chatgpt-more-menu').style.display='block';
     });
@@ -200,6 +208,7 @@ test('Browser provider bridge sends prompts and returns text plus generated medi
     expect(imageOnlyChatGpt?.text||'').toBe('');
     expect(imageOnlyChatGpt?.media).toHaveLength(1);
     expect(imageOnlyChatGpt.media[0].name).toContain('outside assistant role');
+    expect(imageOnlyChatGpt.media[0].name).not.toContain('old history');
     expect(imageOnlyChatGpt.media[0].dataUrl).toMatch(/^data:image\/png;base64,/);
   }finally{
     await app.close().catch(()=>{});
