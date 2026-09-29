@@ -152,7 +152,6 @@ const publicPluginDirectory=[
   {id:'outlook-email',name:'Outlook Email',category:'Popular',description:'Work with Outlook inboxes'},
   {id:'remote-desktop-commander',name:'Remote Desktop Commander',category:'Popular',description:'Remote build and automation workflows'},
   {id:'supabase',name:'Supabase',category:'Popular',description:'Manage and query Supabase projects and databases'},
-  {id:'health',name:'Health',category:'Popular',description:'Explore supported health data'},
   {id:'chatgpt-ads-manager',name:'ChatGPT Ads Manager',category:'New & Noteworthy',description:'Manage ads and performance'},
   {id:'stack-overflow-for-agents',name:'Stack Overflow For Agents',category:'New & Noteworthy',description:'Agent-focused knowledge exchange'},
   {id:'data',name:'Data',category:'New & Noteworthy',description:'Answer questions using connected data'},
