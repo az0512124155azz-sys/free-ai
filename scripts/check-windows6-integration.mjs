@@ -110,7 +110,8 @@ has(source,"const [view,setView]=useState(()=>isNative?'discover':'directory')",
 has(source,'<h2>Installed</h2>','Windows Plugins directory must expose installed provider/direct connections.');
 has(source,"['directory','Directory']",'Windows Plugins directory tab is missing.');
 has(source,"['configured','Direct MCP']",'Windows Plugins must keep advanced direct MCP management available.');
-has(source,"const installedByName=new Map",'Windows Plugins must reconcile directory listings against real connected/provider apps instead of faking install state.');
+has(source,'const installedItems=[','Windows Plugins must keep real installed provider/direct connections separate from public listings.');
+ok(!source.includes('installedByName'),'Public directory listings must never infer install/authorization state from display-name matching.');
 has(source,'Use in Chat','Provider-managed apps must expose a real Chat routing action.');
 has(contentScript,'const unique=[];','Provider tool labels must be deduplicated before they are shown or activated.');
 has(source,'media:Array.isArray(result.value?.media)','Parallel browser responses must retain generated media.');
