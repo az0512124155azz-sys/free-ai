@@ -153,10 +153,19 @@ test('Windows app routes a provider app through the Browser Bridge and restores 
     page=await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     await page.locator('.windowsDesktopRoot').waitFor({state:'visible'});
+    bridge=await connectFakeExtension();
+    await expect.poll(async()=>{
+      await page.locator('.modelButton').click();
+      const count=await page.getByRole('listbox',{name:'Select model'}).getByRole('option',{name:/GPT Runtime/}).count();
+      await page.keyboard.press('Escape').catch(()=>{});
+      return count;
+    },{timeout:12000}).toBeGreaterThan(0);
+
     const recent=page.locator('.recentRow').filter({hasText:'summarize my mail'}).first();
     await expect(recent).toBeVisible();
     await recent.locator('.recentItem').click();
 
+    await expect(page.locator('.modelButton')).toContainText('GPT Runtime');
     await expect(page.locator('.chatMessage.assistant .messageBody').last()).toContainText('Bridge end-to-end response');
     const restored=page.locator('.assistantMediaItem img[alt="Generated bridge image"]');
     await expect(restored).toBeVisible({timeout:10000});
