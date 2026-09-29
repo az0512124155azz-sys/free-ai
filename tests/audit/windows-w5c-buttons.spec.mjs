@@ -73,6 +73,15 @@ test('Windows W5C core button interaction sweep',async()=>{
       await expect(page.getByRole('heading',{name:'Installed',exact:true})).toBeVisible();
       await expect(page.getByRole('heading',{name:'Popular',exact:true})).toBeVisible();
       await expect(page.getByRole('heading',{name:'New & Noteworthy',exact:true})).toBeVisible();
+      await shot(page,'01a-plugins-directory.png');
+      const pluginSearch=page.getByPlaceholder('Search plugins');
+      await pluginSearch.fill('Gmail');
+      const gmail=page.getByRole('button',{name:/Gmail/i}).first();
+      await expect(gmail).toBeVisible();
+      await gmail.click();
+      await expect(page.getByRole('dialog',{name:'Plugin details'})).toBeVisible();
+      await page.getByRole('button',{name:'Close',exact:true}).click();
+      await pluginSearch.fill('');
       for(const label of ['Direct MCP','AI providers','Directory']){
         await tabs.getByRole('tab',{name:label,exact:true}).click();
         await expect(tabs.getByRole('tab',{name:label,exact:true})).toHaveAttribute('aria-selected','true');
