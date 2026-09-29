@@ -202,7 +202,9 @@ ok(!/extensionSocket=null;\s*browserProviders=\[\];/.test(main),'Transient Brows
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
 has(main,"for(const [id,request] of pending)",'Extension disconnect must drain pending browser prompts.');
 has(source,"if(product==='super'){",'Super AI must recover a controller automatically from the connected provider set.');
-has(source,"const fresh=selected?connected.find",'Renderer must reconcile a selected provider against refreshed bridge state.');
+has(source,"let fresh=selected?connected.find",'Renderer must reconcile a selected provider against refreshed bridge state.');
+has(source,"const currentProviderId=selected?modelProviderId(selected):String(currentChat?.providerId||'').split(':')[0];",'Renderer must recover a persisted chat provider after Browser Bridge reconnect.');
+has(source,"modelProviderId(p)===currentProviderId",'Provider recovery must tolerate browser tab-ID changes.');
 
 // Browser Bridge / Super AI hotfix coverage.
 ok(Array.isArray(extensionManifest.permissions)&&extensionManifest.permissions.includes('alarms'),'Browser Bridge manifest must allow wake alarms.');
