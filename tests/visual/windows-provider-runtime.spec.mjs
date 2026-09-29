@@ -99,7 +99,7 @@ async function mountChatGpt(page,{imageOnlyOutsideRole=false}={}){
           <button id="canva-tool" role="menuitem" data-testid="connector-canva">Canva</button>
         </div>
         <button id="chatgpt-send" data-testid="send-button" aria-label="Send prompt">Send</button>
-        <div data-message-author-role="assistant" id="chatgpt-response" style="display:block;min-height:20px"></div>
+        <section data-turn="assistant" data-testid="conversation-turn-1" id="chatgpt-response" style="display:block;min-height:20px"></section>
         <section data-testid="conversation-turn-image" id="chatgpt-image-turn" style="display:block"></section>
       </main>`;
     document.querySelector('#chatgpt-add').addEventListener('click',event=>{

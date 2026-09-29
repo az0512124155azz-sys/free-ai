@@ -44,7 +44,7 @@
   }
 
   function responseScope(root){
-    return root?.closest?.('article[data-testid^="conversation-turn-"],article[data-testid*="conversation-turn"],article,[role="article"],[data-testid*="message"]')||root||null;
+    return root?.closest?.('section[data-turn],section[data-testid^="conversation-turn-"],article[data-turn],article[data-testid^="conversation-turn-"],article[data-testid*="conversation-turn"],article,[role="article"],[data-testid*="message"]')||root||null;
   }
 
   function responseMimeFromUrl(url,fallback='application/octet-stream'){
@@ -212,7 +212,12 @@
       inputs:['#prompt-textarea','textarea[placeholder*="Message"]','div[contenteditable="true"][data-virtualkeyboard]','div[contenteditable="true"][role="textbox"]'],
       send:['button[data-testid="send-button"]','button[aria-label*="Send"]','button[aria-label*="send"]','button[type="submit"]'],
       stop:['button[data-testid="stop-button"]','button[aria-label*="Stop"]'],
-      answers:['[data-message-author-role="assistant"]']
+      answers:[
+        '[data-message-author-role="assistant"]',
+        'section[data-turn="assistant"]',
+        '[data-testid^="conversation-turn-"][data-turn="assistant"]',
+        '[data-turn-key]:has([data-conversation-role="assistant"])'
+      ]
     },
     claude:{
       inputs:['div[contenteditable="true"][role="textbox"]','div.ProseMirror[contenteditable="true"]','textarea'],
