@@ -7,15 +7,15 @@ import { WebSocket } from 'ws';
 const out=path.resolve('artifacts/windows-visual/bridge-e2e');
 const generatedPng='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=';
 
-async function connectFakeExtension(){
+async function connectFakeExtension(tabId=4242){
   const provider={
-    id:'chatgpt:4242',
+    id:'chatgpt:'+tabId,
     providerId:'chatgpt',
     name:'ChatGPT',
     model:'GPT Runtime',
     modelName:'GPT Runtime',
     source:'browser',
-    tabId:4242,
+    tabId,
     windowId:7,
     title:'ChatGPT Runtime QA',
     url:'https://chatgpt.com/',
@@ -153,7 +153,7 @@ test('Windows app routes a provider app through the Browser Bridge and restores 
     page=await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     await page.locator('.windowsDesktopRoot').waitFor({state:'visible'});
-    bridge=await connectFakeExtension();
+    bridge=await connectFakeExtension(4343);
     await expect.poll(async()=>{
       await page.locator('.modelButton').click();
       const count=await page.getByRole('listbox',{name:'Select model'}).getByRole('option',{name:/GPT Runtime/}).count();
