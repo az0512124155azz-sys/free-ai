@@ -6,11 +6,11 @@ Free AI is a cross-platform AI workspace that can use AI services already open i
 
 ### Stable installers
 
-The next production release line is **v0.7.1**. The release workflow requires a production-signed Android build, validates every desktop installer before publication, treats Windows Authenticode as optional, allows an explicitly unsigned macOS DMG when Apple signing is intentionally deferred, and publishes `SHA256SUMS.txt`.
+The current production release is **v0.7.1**. The next development line is **v0.7.2**. The release workflow requires a production-signed Android build, validates every desktop installer before publication, treats Windows Authenticode as optional, allows an explicitly unsigned macOS DMG when Apple signing is intentionally deferred, and publishes `SHA256SUMS.txt`.
 
-The currently published **v0.6.0** release was created by the older pipeline. In particular, its Android asset is `app-debug.apk`; do **not** treat that APK as a production-signed Android release. v0.6.0 desktop assets also predate the current release-validation and installer-smoke pipeline.
+The published **v0.7.1** release uses the current release-validation pipeline, including Windows installer smoke, Windows visual/interaction QA, Android production signing/runtime gates, and SHA-256 checksums. Older v0.6.0-and-earlier releases were created by the legacy pipeline.
 
-When v0.7.1 is published, platform installers will be available from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest):
+Platform installers for the current stable release are available from the [latest release](https://github.com/az0512124155azz-sys/free-ai/releases/latest):
 
 - **Windows:** NSIS installer (Authenticode-signed when signing credentials are configured)
 - **macOS:** DMG (Developer ID signed/notarized when configured; v0.7.1 may be explicitly published unsigned)
