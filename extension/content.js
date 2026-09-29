@@ -27,20 +27,39 @@
   }
 
   function answerElements(config,provider=''){
-    for(const selector of config?.answers||[]){
-      const els=[...document.querySelectorAll(selector)].filter(visible);
-      if(els.length)return els;
-    }
-    if(provider==='chatgpt'){
-      const turns=[...document.querySelectorAll('article[data-testid^="conversation-turn-"],article[data-testid*="conversation-turn"]')].filter(visible);
-      const assistants=[];
-      for(const turn of turns){
-        const roleNode=turn.querySelector('[data-message-author-role="assistant"],[data-testid*="assistant" i]');
-        if(roleNode&&visible(roleNode))assistants.push(roleNode);
+    if(provider!=='chatgpt'){
+      for(const selector of config?.answers||[]){
+        const els=[...document.querySelectorAll(selector)].filter(visible);
+        if(els.length)return els;
       }
-      if(assistants.length)return assistants;
+      return [];
     }
-    return [];
+
+    const found=[];
+    const seen=new Set();
+    const add=el=>{
+      if(!visible(el)||seen.has(el))return;
+      seen.add(el);
+      found.push(el);
+    };
+    for(const selector of config?.answers||[]){
+      for(const el of document.querySelectorAll(selector))add(el);
+    }
+    for(const turn of document.querySelectorAll('section[data-turn="assistant"],article[data-turn="assistant"],[data-testid^="conversation-turn-"][data-turn="assistant"]')){
+      add(turn);
+      const roleNode=turn.querySelector?.('[data-message-author-role="assistant"],[data-testid*="assistant" i]');
+      if(roleNode)add(roleNode);
+    }
+    found.sort((a,b)=>{
+      if(a===b)return 0;
+      if(a.contains?.(b))return -1;
+      if(b.contains?.(a))return 1;
+      const position=a.compareDocumentPosition?.(b)||0;
+      if(position&Node.DOCUMENT_POSITION_FOLLOWING)return -1;
+      if(position&Node.DOCUMENT_POSITION_PRECEDING)return 1;
+      return 0;
+    });
+    return found;
   }
 
   function responseScope(root){
