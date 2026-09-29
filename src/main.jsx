@@ -960,7 +960,15 @@ function App(){
   },[connected]);
 
   useEffect(()=>{
-    const fresh=selected?connected.find(p=>p.id===selected.id&&p.source===selected.source):null;
+    const currentChat=currentChatId?chats.find(chat=>chat.id===currentChatId):null;
+    const currentProviderId=selected?modelProviderId(selected):String(currentChat?.providerId||'').split(':')[0];
+    const currentSource=selected?.source||currentChat?.source||'browser';
+    let fresh=selected?connected.find(p=>p.id===selected.id&&p.source===selected.source):null;
+    if(!fresh&&currentProviderId){
+      const compatible=connected.filter(p=>p.source===currentSource&&modelProviderId(p)===currentProviderId&&p.connected!==false);
+      const preferredLabel=selected?modelLabel(selected):String(currentChat?.modelName||'');
+      fresh=compatible.find(p=>preferredLabel&&modelLabel(p)===preferredLabel)||compatible[0]||null;
+    }
     if(fresh){
       if(fresh!==selected)setSelected(fresh);
       return;
@@ -972,7 +980,7 @@ function App(){
       if(automatic){setSelected(automatic);setSelectedTool(null);setParallelCount(1);return}
     }
     if(selected){setSelected(null);setSelectedTool(null);setParallelCount(1)}
-  },[connected,product]);
+  },[connected,product,currentChatId,chats]);
 
   useEffect(()=>{
     if(!selected||selected.source!=='browser'){setParallelCount(1);return}
@@ -1476,7 +1484,11 @@ function App(){
     if(!sameLiveTask)stopActiveWorkTask();
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
-    setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
+    const exactProvider=connected.find(p=>p.id===chat.providerId&&p.source===chat.source);
+    const providerId=String(chat.providerId||'').split(':')[0];
+    const compatibleProviders=connected.filter(p=>p.source===chat.source&&modelProviderId(p)===providerId&&p.connected!==false);
+    const compatibleProvider=compatibleProviders.find(p=>String(chat.modelName||'')&&modelLabel(p)===String(chat.modelName||''))||compatibleProviders[0]||null;
+    setSelected(exactProvider||compatibleProvider);
     if(product==='free')setMode(chat.mode||'chat');
     if(product==='super'){
       setRepositoryWorkspace(chat.workspace||null);
