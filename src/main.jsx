@@ -150,21 +150,24 @@ const publicPluginDirectory=[
   {id:'google-drive',name:'Google Drive',category:'Popular',description:'Work across Drive, Docs, Sheets, and Slides'},
   {id:'github',name:'GitHub',category:'Popular',description:'Work with PRs, issues, CI, and publishing'},
   {id:'outlook-email',name:'Outlook Email',category:'Popular',description:'Work with Outlook inboxes'},
-  {id:'health',name:'Health',category:'Popular',description:'Explore supported health data'},
   {id:'remote-desktop-commander',name:'Remote Desktop Commander',category:'Popular',description:'Remote build and automation workflows'},
+  {id:'supabase',name:'Supabase',category:'Popular',description:'Manage and query Supabase projects and databases'},
   {id:'chatgpt-ads-manager',name:'ChatGPT Ads Manager',category:'New & Noteworthy',description:'Manage ads and performance'},
   {id:'stack-overflow-for-agents',name:'Stack Overflow For Agents',category:'New & Noteworthy',description:'Agent-focused knowledge exchange'},
   {id:'data',name:'Data',category:'New & Noteworthy',description:'Answer questions using connected data'},
   {id:'tableau',name:'Tableau',category:'New & Noteworthy',description:'Explore and understand analytics'},
   {id:'microsoft-power-bi',name:'Microsoft Power BI',category:'New & Noteworthy',description:'Explore and author browser analytics'},
   {id:'aws-data-analytics',name:'AWS Data Analytics',category:'New & Noteworthy',description:'Work with AWS analytics capabilities'},
+  {id:'dropbox',name:'Dropbox',category:'Small Business',description:'Find, create, and work with Dropbox files'},
+  {id:'hubspot',name:'HubSpot',category:'Small Business',description:'Work with CRM records and HubSpot workflows'},
+  {id:'stripe',name:'Stripe',category:'Small Business',description:'Work with Stripe business and payment data'},
   {id:'notion',name:'Notion',category:'Productivity',description:'Work with Notion docs and workflows'},
   {id:'google-calendar',name:'Google Calendar',category:'Productivity',description:'Manage Google Calendar events'},
   {id:'outlook-calendar',name:'Outlook Calendar',category:'Productivity',description:'Manage Outlook schedules'},
   {id:'monday',name:'monday.com',category:'Productivity',description:'Manage projects, tasks, and CRM'},
   {id:'metricool',name:'Metricool',category:'Productivity',description:'Analyze and schedule social posts'},
   {id:'fathom',name:'Fathom',category:'Productivity',description:'Work with meeting insights'},
-  {id:'canva',name:'Canva',category:'Creativity',description:'Create, review, and edit designs'},
+  {id:'canva',name:'Canva',category:'Small Business',description:'Create, review, and edit designs'},
   {id:'higgsfield',name:'Higgsfield',category:'Creativity',description:'Create images and videos with AI models'},
   {id:'runway',name:'Runway',category:'Creativity',description:'Generate creative media with AI models'},
   {id:'figma',name:'Figma',category:'Creativity',description:'Create designs and ship them to code'},
@@ -3472,11 +3475,21 @@ function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,on
   </div>;
 }
 
-function PublicDirectoryCard({entry,onOpen}){
-  return <button className="directoryCard" onClick={onOpen}>
-    <span className="directoryIcon">{entry.name.slice(0,1).toUpperCase()}</span>
+function pluginNameKey(value){
+  return String(value||'').toLowerCase().replace(/[^a-z0-9]+/g,'');
+}
+
+function PluginDirectoryIcon({entry,name}){
+  const label=String(name||entry?.name||'Plugin');
+  const id=String(entry?.id||pluginNameKey(label));
+  return <span className="directoryIcon pluginBrandIcon" data-plugin={id} aria-hidden="true">{label.slice(0,1).toUpperCase()}</span>;
+}
+
+function PublicDirectoryCard({entry,onOpen,status='',action=''}){
+  return <button className="directoryCard pluginDirectoryRow" onClick={onOpen}>
+    <PluginDirectoryIcon entry={entry}/>
     <span><b>{entry.name}</b><small>{entry.description}</small></span>
-    <span className="directoryCategory">{entry.category}</span>
+    <span className={'pluginDirectoryAction '+(status?'connected':'')}>{status||action||<Plus size={16}/>}</span>
   </button>;
 }
 
@@ -3485,7 +3498,7 @@ function PluginsPage({
   mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh,onExplore,onOpenPublicDirectory,onUseProviderTool
 }){
   const [query,setQuery]=useState('');
-  const [view,setView]=useState(()=>isNative?'discover':'hints');
+  const [view,setView]=useState(()=>isNative?'discover':'directory');
   const [category,setCategory]=useState('All');
   const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
@@ -3573,35 +3586,35 @@ function PluginsPage({
       </div>
     </div>;
   }
-  const categories=['All',...new Set(publicPluginDirectory.map(item=>item.category))];
+  const categories=['Popular','New & Noteworthy','Small Business','Productivity','Creativity'];
   const visibleTools=tools.filter(t=>pluginSearchMatch([t.mcp,t.ownerName],needle));
   const visibleProviders=connected.filter(p=>pluginSearchMatch([modelLabel(p),...(p.mcps||[])],needle));
   const visibleDirect=directMcpConnections.filter(connection=>pluginSearchMatch([
     connection.name,connection.url,...(connection.tools||[]).flatMap(tool=>[tool.name,tool.title,tool.description])
   ],needle));
-  const visiblePublic=publicPluginDirectory.filter(entry=>
-    (category==='All'||entry.category===category)&&pluginSearchMatch([entry.name,entry.category,entry.description],needle)
-  );
+  const visiblePublic=publicPluginDirectory.filter(entry=>pluginSearchMatch([entry.name,entry.category,entry.description],needle));
+  const installedItems=[
+    ...visibleTools.map(tool=>({kind:'hint',key:'hint:'+tool.key,name:tool.mcp,tool})),
+    ...visibleDirect.map(connection=>({kind:'direct',key:'direct:'+connection.id,name:connection.name,connection}))
+  ];
 
   return <div className="contentPage">
     <PageTop onBack={onBack} title={pageName} action={isChatDesktop?'Explore':null} onAction={onExplore}/>
     <div className="contentInner pluginsDirectoryInner">
-      <div className="pluginPageHero">
-        <div><h1>{pageName}</h1><p className="pageLead">{isChatDesktop
-          ? 'Manage apps Free AI can actually call, and separately browse public directory listings and unverified provider hints.'
-          : 'Provider-managed connectors are surfaced only when a connected AI provider exposes them in its own interface.'}</p></div>
-        {isChatDesktop&&<button className="secondaryAction" onClick={onRefresh}><RefreshCw size={14}/>Refresh connections</button>}
+      <div className="pluginPageHero chatgptPluginHero">
+        <div><h1>{pageName}</h1><p className="pageLead">Connect plugins to let Free AI work across your tools.</p></div>
+        <button className="secondaryAction compactRefresh" onClick={onRefresh}><RefreshCw size={14}/>Refresh</button>
       </div>
 
-      <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isChatDesktop?'Search configured apps, public listings, or hints':'Search provider hints'}/></div>
-      {isChatDesktop&&<div className="directoryTabs" role="tablist" aria-label="Plugin directory sections">
-        {[['hints','Provider apps'],['configured','Direct MCP'],['discover','Discover'],['providers','AI providers']].map(([id,label])=>
+      <div className="searchBar pluginDirectorySearch"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search plugins"/></div>
+      <div className="directoryTabs pluginDirectoryTabs" role="tablist" aria-label="Plugin directory sections">
+        {[['directory','Directory'],['configured','Direct MCP'],['providers','AI providers']].map(([id,label])=>
           <button key={id} role="tab" aria-selected={view===id} className={view===id?'active':''} onClick={()=>setView(id)}>{label}</button>
         )}
-      </div>}
+      </div>
 
       {isChatDesktop&&view==='configured'&&<section className="pluginSection">
-        <div className="sectionHeading"><div><h2>Configured in Free AI</h2><small>Only these direct MCP apps are callable by the desktop Work runtime.</small></div><span className="pluginMeta">{visibleDirect.length} apps</span></div>
+        <div className="sectionHeading"><div><h2>Direct MCP connections</h2><small>Advanced connections configured directly in Free AI for Work and Super AI.</small></div><span className="pluginMeta">{visibleDirect.length} apps</span></div>
         <div className="directMcpGrid">
           {visibleDirect.map(connection=>{
             const cap=directMcpCapabilitySummary(connection);
@@ -3638,24 +3651,37 @@ function PluginsPage({
         </div>
       </section>}
 
-      {isChatDesktop&&view==='discover'&&<section className="pluginSection">
-        <div className="sectionHeading"><div><h2>Discover</h2><small>Examples from ChatGPT's public plugin directory. Availability can change; use the live directory for current setup.</small></div><button className="textLinkButton" onClick={onOpenPublicDirectory}><ExternalLink size={13}/>Open public directory</button></div>
-        <div className="pluginHint directoryNotice"><Blocks size={20}/><div><b>Discovery is separate from connection</b><span>Free AI can browse public listings, but it only calls apps that you explicitly configure as direct MCP connections. Public app authorization remains in the provider or ChatGPT.</span></div></div>
-        <div className="directoryChips">{categories.map(name=><button key={name} className={category===name?'active':''} onClick={()=>setCategory(name)}>{name}</button>)}</div>
-        <div className="directoryGrid">
-          {visiblePublic.map(entry=><PublicDirectoryCard key={entry.id} entry={entry} onOpen={()=>setDetails({kind:'public',entry})}/>)}
-          {!visiblePublic.length&&<div className="pluginEmptyCard"><Search size={22}/><b>No public listing matches</b><span>Try another category or search term.</span></div>}
-        </div>
-      </section>}
+      {isChatDesktop&&view==='directory'&&<>
+        <section className="pluginSection installedPluginSection">
+          <div className="sectionHeading directorySectionHeading">
+            <div><h2>Installed</h2><small>Provider-connected apps and direct MCP connections available to Free AI.</small></div>
+            <span className="pluginMeta">{installedItems.length}</span>
+          </div>
+          <div className="installedStrip chatgptInstalledStrip">
+            {installedItems.map(item=><button key={item.key} className="installedPluginButton" title={item.name}
+              onClick={()=>setDetails(item.kind==='hint'?{kind:'hint',hint:item.tool}:{kind:'direct',connection:item.connection})}>
+              <PluginDirectoryIcon name={item.name}/>
+            </button>)}
+            {!installedItems.length&&<button className="installedEmptyButton" onClick={onRefresh}><RefreshCw size={14}/><span>No installed plugins detected yet. Refresh after opening the provider plugin menu.</span></button>}
+          </div>
+        </section>
 
-      {(!isChatDesktop||view==='hints')&&<section className="pluginSection">
-        <div className="sectionHeading"><div><h2>Apps from connected providers</h2><small>Detected directly from the UI of connected ChatGPT, Claude, Gemini, and other provider tabs.</small></div><span className="pluginMeta">{visibleTools.length} apps</span></div>
-        <div className="pluginHint directoryNotice"><Chrome size={20}/><div><b>Uses your existing provider connection</b><span>Select an app to route the next Chat request through the provider tab that exposed it. Provider authorization and permissions stay with that provider.</span></div></div>
-        <div className="hintGrid">
-          {visibleTools.map(t=><button key={t.key} className="hintCard" onClick={()=>setDetails({kind:'hint',hint:t})}><span className="pluginIcon"><Plug size={16}/></span><span><b>{t.mcp}</b><small>{t.ownerName||'Provider UI'} · available in provider</small></span><ChevronRight size={14}/></button>)}
-          {!visibleTools.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{query?'No provider app matches':'No provider apps detected yet'}</b><span>Open the provider app/tool menu once, then press Refresh connections. Free AI only shows labels it can actually observe in that provider tab.</span></div>}
-        </div>
-      </section>}
+        {categories.map(section=>{
+          const entries=visiblePublic.filter(entry=>entry.category===section);
+          if(!entries.length)return null;
+          return <section className="pluginSection directoryCategorySection" key={section}>
+            <div className="sectionHeading directorySectionHeading">
+              <div><h2>{section}</h2><small>{section==='Popular'?'Commonly used plugin listings':section==='New & Noteworthy'?'Recently highlighted plugin listings':'Browse plugin listings by use case'}</small></div>
+              <button className="directoryChevronButton" onClick={onOpenPublicDirectory} aria-label={'Open '+section+' in public directory'}><ChevronRight size={16}/></button>
+            </div>
+            <div className="directoryGrid chatgptDirectoryGrid">
+              {entries.map(entry=><PublicDirectoryCard key={entry.id} entry={entry}
+                onOpen={()=>setDetails({kind:'public',entry})}/>)}
+            </div>
+          </section>;
+        })}
+        {!visiblePublic.length&&<div className="pluginEmptyCard directorySearchEmpty"><Search size={22}/><b>No plugin matches “{query}”</b><span>Try a different search term.</span></div>}
+      </>}
 
       {isChatDesktop&&view==='providers'&&<section className="pluginSection">
         <div className="sectionHeading"><div><h2>Connected AI providers</h2><small>Controller models are not plugin installations.</small></div><span className="pluginMeta">{visibleProviders.length} providers</span></div>

@@ -48,7 +48,7 @@ for(const [marker,label] of [
   ["!isNative&&mode==='chat'&&isChatDesktop&&<MenuRow icon={Sparkles}",'macOS Deep Research Add-menu action'],
   ["{mode==='work'&&isChatDesktop&&<>",'macOS Direct MCP Work menu'],
   ["if(!isChatDesktop){",'macOS full Plugins/Explore desktop surfaces'],
-  ["Only these direct MCP apps are callable by the desktop Work runtime.",'cross-platform direct MCP copy'],
+  ["Advanced connections configured directly in Free AI for Work and Super AI.",'cross-platform direct MCP copy'],
   ["{isChatDesktop&&<><h3>Independent research</h3>",'macOS SearXNG research configuration']
 ]) requireText(source,marker,label);
 

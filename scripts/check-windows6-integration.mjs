@@ -106,7 +106,12 @@ has(main,'function persistResponseMedia(items)','Desktop durable assistant-media
 has(preload,'readChatMedia','Persisted assistant media is not exposed through the safe preload bridge.');
 has(source,'function AssistantMedia({items=[]})','Assistant media renderer is missing.');
 has(source,"a.download=item.name||'free-ai-attachment'",'Persisted assistant files must remain downloadable after restart.');
-has(source,"const [view,setView]=useState(()=>isNative?'discover':'hints')",'Windows Plugins must open on provider apps, not an empty Direct MCP list.');
+has(source,"const [view,setView]=useState(()=>isNative?'discover':'directory')",'Windows Plugins must open on the combined plugin directory.');
+has(source,'<h2>Installed</h2>','Windows Plugins directory must expose installed provider/direct connections.');
+has(source,"['directory','Directory']",'Windows Plugins directory tab is missing.');
+has(source,"['configured','Direct MCP']",'Windows Plugins must keep advanced direct MCP management available.');
+has(source,'const installedItems=[','Windows Plugins must keep real installed provider/direct connections separate from public listings.');
+ok(!source.includes('installedByName'),'Public directory listings must never infer install/authorization state from display-name matching.');
 has(source,'Use in Chat','Provider-managed apps must expose a real Chat routing action.');
 has(contentScript,'const unique=[];','Provider tool labels must be deduplicated before they are shown or activated.');
 has(source,'media:Array.isArray(result.value?.media)','Parallel browser responses must retain generated media.');
