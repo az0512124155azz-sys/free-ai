@@ -113,6 +113,7 @@ async function hydrateResponseMedia(items){
       url:String(raw?.url||'')
     };
     let dataUrl=String(raw?.dataUrl||'');
+    let budgetedBytes=0;
     if(!dataUrl&&item.url.startsWith('data:'))dataUrl=item.url;
     if(!dataUrl&&/^https:\/\//i.test(item.url)){
       try{
@@ -121,6 +122,7 @@ async function hydrateResponseMedia(items){
           const bytes=new Uint8Array(await response.arrayBuffer());
           if(bytes.length&&bytes.length<=16*1024*1024&&totalBytes+bytes.length<=maxTotal){
             totalBytes+=bytes.length;
+            budgetedBytes=bytes.length;
             item.mime=String(response.headers.get('content-type')||item.mime).split(';')[0]||item.mime;
             dataUrl=responseMediaBytesToDataUrl(bytes,item.mime);
           }
@@ -129,8 +131,8 @@ async function hydrateResponseMedia(items){
     }
     if(dataUrl){
       const approxBytes=Math.ceil(dataUrl.length*0.75);
-      if(approxBytes<=16*1024*1024&&totalBytes+approxBytes<=maxTotal){
-        if(!item.url.startsWith('https://'))totalBytes+=approxBytes;
+      if(approxBytes<=16*1024*1024&&(budgetedBytes>0||totalBytes+approxBytes<=maxTotal)){
+        if(!budgetedBytes)totalBytes+=approxBytes;
         item.dataUrl=dataUrl;
       }
     }
