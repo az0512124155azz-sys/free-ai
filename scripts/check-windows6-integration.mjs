@@ -129,7 +129,9 @@ has(research,'reportDocx','DOCX report export is missing.');
 has(source,"readJSON('freeai.chats.free'",'Free AI chat restart persistence is missing.');
 has(source,"readJSON('freeai.prefs'",'Preferences restart persistence is missing.');
 has(source,'function openChat','Old chat loading path is missing.');
-has(source,'const fresh=selected?connected.find','Selected-provider refresh reconciliation is missing.');
+has(source,'const currentProviderId=selected?modelProviderId(selected):String(currentChat?.providerId||\'\').split(\':\')[0];','Persisted chats must recover their provider after bridge reconnect.');
+has(source,'const compatible=connected.filter(p=>p.source===currentSource&&modelProviderId(p)===currentProviderId','Provider recovery must survive browser tab-ID changes.');
+has(source,'const exactProvider=connected.find(p=>p.id===chat.providerId&&p.source===chat.source);','Opening a persisted chat must prefer the exact saved provider instance.');
 has(source,'if(selected){setSelected(null);setSelectedTool(null);setParallelCount(1)}','Truly stale selected providers must still be cleared when no refreshed provider entry exists.');
 has(source,"onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey)",'Composer keyboard submit behavior is missing.');
 
