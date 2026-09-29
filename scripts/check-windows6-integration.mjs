@@ -100,6 +100,8 @@ has(contentScript,'function responseMedia(root)','Provider generated-media extra
 has(contentScript,'const responseMediaOnly=now.media.filter(item=>{','Media-only provider responses must complete without requiring assistant text.');
 has(contentScript,'media:await materializePageMedia(responseMediaOnly)','Only media created by the current provider reply should be returned.');
 has(background,'async function hydrateResponseMedia(items)','Browser Bridge response-media hydration is missing.');
+has(background,'let budgetedBytes=0;','Browser Bridge media budget must distinguish already-counted HTTPS bytes.');
+has(background,'budgetedBytes>0||totalBytes+approxBytes<=maxTotal','HTTPS media must not be counted twice against the response budget.');
 has(main,'function persistResponseMedia(items)','Desktop durable assistant-media persistence is missing.');
 has(preload,'readChatMedia','Persisted assistant media is not exposed through the safe preload bridge.');
 has(source,'function AssistantMedia({items=[]})','Assistant media renderer is missing.');
