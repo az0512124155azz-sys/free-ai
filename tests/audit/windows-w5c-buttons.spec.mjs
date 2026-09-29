@@ -69,7 +69,11 @@ test('Windows W5C core button interaction sweep',async()=>{
       await collect('plugins');
 
       const tabs=page.getByRole('tablist',{name:'Plugin directory sections'});
-      for(const label of ['Provider apps','Direct MCP','Discover','AI providers']){
+      await expect(tabs.getByRole('tab',{name:'Directory',exact:true})).toHaveAttribute('aria-selected','true');
+      await expect(page.getByRole('heading',{name:'Installed',exact:true})).toBeVisible();
+      await expect(page.getByRole('heading',{name:'Popular',exact:true})).toBeVisible();
+      await expect(page.getByRole('heading',{name:'New & Noteworthy',exact:true})).toBeVisible();
+      for(const label of ['Direct MCP','AI providers','Directory']){
         await tabs.getByRole('tab',{name:label,exact:true}).click();
         await expect(tabs.getByRole('tab',{name:label,exact:true})).toHaveAttribute('aria-selected','true');
       }
