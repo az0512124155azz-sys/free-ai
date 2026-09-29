@@ -82,43 +82,64 @@ async function mountGemini(page,{mediaOnly=false}={}){
   },{png:generatedPng,mediaOnly});
 }
 
-async function mountChatGpt(page){
-  await page.evaluate(png=>{
+async function mountChatGpt(page,{imageOnlyOutsideRole=false}={}){
+  await page.evaluate(({png,imageOnlyOutsideRole})=>{
     document.body.innerHTML=`
       <main style="padding:20px">
         <div id="prompt-textarea" contenteditable="true" role="textbox" style="min-height:60px;border:1px solid #888"></div>
-        <button id="chatgpt-tools" aria-label="Tools" aria-expanded="false">Tools</button>
-        <div id="chatgpt-tool-menu" role="menu" aria-label="Apps" style="display:none">
+        <button id="chatgpt-add" aria-label="Add" aria-expanded="false">+</button>
+        <div id="chatgpt-add-menu" role="menu" aria-label="Add" style="display:none">
+          <button id="chatgpt-more" role="menuitem">More</button>
+        </div>
+        <div id="chatgpt-more-menu" role="menu" aria-label="More" style="display:none">
           <button id="gmail-tool" role="menuitem" data-testid="connector-gmail">Gmail</button>
-          <button id="custom-tool" role="menuitem">Acme Ops</button>
+          <button id="canva-tool" role="menuitem" data-testid="connector-canva">Canva</button>
         </div>
         <button id="chatgpt-send" data-testid="send-button" aria-label="Send prompt">Send</button>
         <div data-message-author-role="assistant" id="chatgpt-response" style="display:block;min-height:20px"></div>
+        <section data-testid="conversation-turn-image" id="chatgpt-image-turn" style="display:block"></section>
       </main>`;
-    document.querySelector('#chatgpt-tools').addEventListener('click',event=>{
-      const menu=document.querySelector('#chatgpt-tool-menu');
+    document.querySelector('#chatgpt-add').addEventListener('click',event=>{
+      const menu=document.querySelector('#chatgpt-add-menu');
       menu.style.display='block';
       event.currentTarget.setAttribute('aria-expanded','true');
     });
+    document.querySelector('#chatgpt-more').addEventListener('click',()=>{
+      document.querySelector('#chatgpt-more-menu').style.display='block';
+    });
     document.querySelector('#gmail-tool').addEventListener('click',event=>{
+      event.currentTarget.dataset.activated='true';
+    });
+    document.querySelector('#canva-tool').addEventListener('click',event=>{
       event.currentTarget.dataset.activated='true';
     });
     document.querySelector('#chatgpt-send').addEventListener('click',()=>{
       setTimeout(()=>{
         const response=document.querySelector('#chatgpt-response');
+        const imageTurn=document.querySelector('#chatgpt-image-turn');
         response.replaceChildren();
-        const p=document.createElement('p');
-        p.textContent='ChatGPT runtime reply';
-        response.append(p);
+        imageTurn.replaceChildren();
+        if(!imageOnlyOutsideRole){
+          const p=document.createElement('p');
+          p.textContent='ChatGPT runtime reply';
+          response.append(p);
+          const img=document.createElement('img');
+          img.src=png;
+          img.alt='Generated ChatGPT image';
+          img.style.width='240px';
+          img.style.height='180px';
+          response.append(img);
+          return;
+        }
         const img=document.createElement('img');
         img.src=png;
-        img.alt='Generated ChatGPT image';
+        img.alt='Generated image: outside assistant role';
         img.style.width='240px';
         img.style.height='180px';
-        response.append(img);
+        imageTurn.append(img);
       },120);
     });
-  },generatedPng);
+  },{png:generatedPng,imageOnlyOutsideRole});
 }
 
 test('Browser provider bridge sends prompts and returns text plus generated media',async()=>{
@@ -157,7 +178,7 @@ test('Browser provider bridge sends prompts and returns text plus generated medi
       handler({type:'freeai:scanCapabilities',provider:'chatgpt',probeModels:false,probeTools:true},{},resolve);
     }));
     expect(capabilities?.mcps).toContain('Gmail');
-    expect(capabilities?.mcps).toContain('Acme Ops');
+    expect(capabilities?.mcps).toContain('Canva');
 
     const chatgpt=await invokePrompt(page,{provider:'chatgpt',text:'summarize my mail',toolRequest:{mcp:'Gmail'}});
     expect(chatgpt?.error).toBeUndefined();
@@ -166,6 +187,14 @@ test('Browser provider bridge sends prompts and returns text plus generated medi
     expect(chatgpt?.media).toHaveLength(1);
     expect(chatgpt.media[0].dataUrl).toMatch(/^data:image\/png;base64,/);
     expect(await page.locator('#prompt-textarea').textContent()).toContain('summarize my mail');
+
+    await mountChatGpt(page,{imageOnlyOutsideRole:true});
+    const imageOnlyChatGpt=await invokePrompt(page,{provider:'chatgpt',text:'generate an image only'});
+    expect(imageOnlyChatGpt?.error).toBeUndefined();
+    expect(imageOnlyChatGpt?.text||'').toBe('');
+    expect(imageOnlyChatGpt?.media).toHaveLength(1);
+    expect(imageOnlyChatGpt.media[0].name).toContain('outside assistant role');
+    expect(imageOnlyChatGpt.media[0].dataUrl).toMatch(/^data:image\/png;base64,/);
   }finally{
     await app.close().catch(()=>{});
     await fs.rm(userData,{recursive:true,force:true}).catch(()=>{});

@@ -588,8 +588,8 @@
       for(const name of scanMcps())found.add(name);
       for(const name of visibleIntegrationNames())found.add(name);
 
-      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?)$/i.test(cleanLabel(controlLabel(el))));
-      for(const item of nested.slice(0,2)){
+      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?|more|view all(?: tools| apps| plugins)?)$/i.test(cleanLabel(controlLabel(el))));
+      for(const item of nested.slice(0,4)){
         try{
           item.click();await sleep(180);
           for(const name of scanMcps())found.add(name);
@@ -639,8 +639,8 @@
         return {ok:true,name:desired};
       }
 
-      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?)$/i.test(cleanLabel(controlLabel(el))));
-      for(const item of nested.slice(0,3)){
+      const nested=[...document.querySelectorAll('[role="menuitem"],[role="option"],button')].filter(el=>visible(el)&&/^(apps?|plugins?|connectors?|connected apps?|tools?|more|view all(?: tools| apps| plugins)?)$/i.test(cleanLabel(controlLabel(el))));
+      for(const item of nested.slice(0,5)){
         try{item.click();await sleep(180)}catch{continue}
         target=findTarget();
         if(target){
