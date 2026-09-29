@@ -69,7 +69,7 @@ test('Windows W5C core button interaction sweep',async()=>{
       await collect('plugins');
 
       const tabs=page.getByRole('tablist',{name:'Plugin directory sections'});
-      for(const label of ['Configured','Discover','Provider hints','AI providers']){
+      for(const label of ['Provider apps','Direct MCP','Discover','AI providers']){
         await tabs.getByRole('tab',{name:label,exact:true}).click();
         await expect(tabs.getByRole('tab',{name:label,exact:true})).toHaveAttribute('aria-selected','true');
       }

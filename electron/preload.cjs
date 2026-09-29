@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('desktopApi',{
   saveTextFile:(payload)=>ipcRenderer.invoke('shell:saveTextFile',payload||{}),
   saveDataFile:(payload)=>ipcRenderer.invoke('shell:saveDataFile',payload||{}),
   researchExportReport:(payload)=>ipcRenderer.invoke('research:exportReport',payload||{}),
+  readChatMedia:(payload)=>ipcRenderer.invoke('media:read',payload||{}),
   rendererZoomFactor:()=>webFrame.getZoomFactor(),
   getStatus:()=>ipcRenderer.invoke('bridge:getStatus'),
   scanProviders:(options)=>ipcRenderer.invoke('bridge:scanProviders',options||{}),

@@ -334,6 +334,51 @@ function MessageSources({sources,onOpen}){
   </div>;
 }
 
+function AssistantMedia({items=[]}){
+  const media=Array.isArray(items)?items.filter(Boolean).slice(0,8):[];
+  const [resolved,setResolved]=useState({});
+  const key=media.map(item=>String(item.storageId||item.url||item.name||'')).join('|');
+  useEffect(()=>{
+    let active=true;
+    if(!media.length)return()=>{active=false};
+    for(const item of media){
+      const id=String(item.storageId||'');
+      if(!id||resolved[id]||!window.desktopApi?.readChatMedia)continue;
+      window.desktopApi.readChatMedia({storageId:id,mime:item.mime}).then(result=>{
+        if(!active||!result?.dataUrl)return;
+        setResolved(current=>current[id]?current:{...current,[id]:result.dataUrl});
+      }).catch(()=>{});
+    }
+    return()=>{active=false};
+  },[key]);
+  if(!media.length)return null;
+  return <div className="assistantMediaGrid" aria-label="Assistant media">
+    {media.map((item,index)=>{
+      const id=String(item.storageId||'');
+      const src=(id&&resolved[id])||String(item.url||'');
+      const isImage=item.kind!=='file'&&String(item.mime||'').startsWith('image/');
+      if(isImage)return <figure className="assistantMediaItem" key={(id||item.url||item.name||'media')+'::'+index}>
+        {src?<img src={src} alt={item.name||'Generated image'} loading="lazy"/>:<div className="assistantMediaLoading"><Image size={18}/><span>Loading image…</span></div>}
+        {item.name&&item.name!=='Generated image'&&<figcaption>{item.name}</figcaption>}
+      </figure>;
+      const openFile=()=>{
+        if(!src)return;
+        if(/^https:\/\//i.test(src)){window.desktopApi?.openExternal?.(src);return}
+        const a=document.createElement('a');
+        a.href=src;
+        a.download=item.name||'free-ai-attachment';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
+      return <button type="button" className="assistantFileItem" key={(id||item.url||item.name||'file')+'::'+index}
+        disabled={!src} onClick={openFile}>
+        <File size={16}/><span><b>{item.name||'Attachment'}</b><small>{item.mime||'File'}{item.persisted?' · saved with chat':''}</small></span>
+      </button>;
+    })}
+  </div>;
+}
+
 function BrandMark({size=22,className=''}) {
   return <span className={'freeAiMark '+className} style={{'--mark-size':size+'px'}} aria-hidden="true">
     <img src={BRAND_LOGO_SRC} alt="" draggable="false"/>
@@ -915,7 +960,15 @@ function App(){
   },[connected]);
 
   useEffect(()=>{
-    const fresh=selected?connected.find(p=>p.id===selected.id&&p.source===selected.source):null;
+    const currentChat=currentChatId?chats.find(chat=>chat.id===currentChatId):null;
+    const currentProviderId=selected?modelProviderId(selected):String(currentChat?.providerId||'').split(':')[0];
+    const currentSource=selected?.source||currentChat?.source||'browser';
+    let fresh=selected?connected.find(p=>p.id===selected.id&&p.source===selected.source):null;
+    if(!fresh&&currentProviderId){
+      const compatible=connected.filter(p=>p.source===currentSource&&modelProviderId(p)===currentProviderId&&p.connected!==false);
+      const preferredLabel=selected?modelLabel(selected):String(currentChat?.modelName||'');
+      fresh=compatible.find(p=>preferredLabel&&modelLabel(p)===preferredLabel)||compatible[0]||null;
+    }
     if(fresh){
       if(fresh!==selected)setSelected(fresh);
       return;
@@ -927,7 +980,7 @@ function App(){
       if(automatic){setSelected(automatic);setSelectedTool(null);setParallelCount(1);return}
     }
     if(selected){setSelected(null);setSelectedTool(null);setParallelCount(1)}
-  },[connected,product]);
+  },[connected,product,currentChatId,chats]);
 
   useEffect(()=>{
     if(!selected||selected.source!=='browser'){setParallelCount(1);return}
@@ -1302,7 +1355,7 @@ function App(){
     if(!isChatDesktop||!isDesktop)return;
     setAttachmentError('');
     try{await window.desktopApi.scanProviders({probeModels:true})}
-    catch(error){setAttachmentError(error?.message||String(error))}
+    catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   async function selectProviderModelOption(modelName){
     if(!isChatDesktop||!isDesktop||selected?.source!=='browser')return;
@@ -1310,7 +1363,7 @@ function App(){
     try{
       await window.desktopApi.setProviderModel(selected.id,modelName);
       await window.desktopApi.scanProviders({probeModels:true});
-    }catch(error){setAttachmentError(error?.message||String(error))}
+    }catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   async function selectProviderEffortOption(nextEffort){
     if(!isChatDesktop||!isDesktop||selected?.source!=='browser'){setEffort(nextEffort);return}
@@ -1319,7 +1372,7 @@ function App(){
       await window.desktopApi.setProviderEffort(selected.id,nextEffort);
       setEffort(nextEffort);
       await window.desktopApi.scanProviders({probeModels:true});
-    }catch(error){setAttachmentError(error?.message||String(error))}
+    }catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   function openPluginsPage(){
     stopActiveWorkTask();setPlusMenu(false);setPage('plugins');setMobileNavOpen(false);
@@ -1431,7 +1484,11 @@ function App(){
     if(!sameLiveTask)stopActiveWorkTask();
     setAttachments(current=>{for(const item of current)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);return []});setAttachmentError('');setSelectedFile(null);
     setCurrentChatId(chat.id);setMessages(Array.isArray(chat.messages)?chat.messages:[]);
-    setSelected(connected.find(p=>p.id===chat.providerId&&p.source===chat.source)||null);
+    const exactProvider=connected.find(p=>p.id===chat.providerId&&p.source===chat.source);
+    const providerId=String(chat.providerId||'').split(':')[0];
+    const compatibleProviders=connected.filter(p=>p.source===chat.source&&modelProviderId(p)===providerId&&p.connected!==false);
+    const compatibleProvider=compatibleProviders.find(p=>String(chat.modelName||'')&&modelLabel(p)===String(chat.modelName||''))||compatibleProviders[0]||null;
+    setSelected(exactProvider||compatibleProvider);
     if(product==='free')setMode(chat.mode||'chat');
     if(product==='super'){
       setRepositoryWorkspace(chat.workspace||null);
@@ -1590,7 +1647,7 @@ function App(){
     }catch(e){
       if(activeWorkTaskIdRef.current===taskId)activeWorkTaskIdRef.current=null;
       setWorkTask(null);
-      const failed=[...next,{role:'error',text:e?.message||String(e)}];
+      const failed=[...next,{role:'error',text:desktopIpcErrorMessage(e,'Work task failed.')}];
       setMessages(failed);
       saveCurrentChat(failed,selected,{
         chatId:masterChatId||undefined,
@@ -1679,8 +1736,8 @@ function App(){
       const responses=settled.map((result,index)=>{
         const model=targets[index];
         const meta={provider:model.id,providerLabel:modelLabel(model)+' · Tab '+(model.tabId||'?'),parallel:true};
-        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,deepResearch:deepResearchEnabled,researchCompleted:deepResearchEnabled,research:deepResearchEnabled?{status:'complete',mode:'provider-native',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'}}:null,...meta};
-        return {role:'error',text:result.reason?.message||String(result.reason||'Parallel model request failed.'),...meta};
+        if(result.status==='fulfilled')return {role:'assistant',text:String(result.value?.text??result.value??''),media:Array.isArray(result.value?.media)?result.value.media.slice(0,8):[],sources:Array.isArray(result.value?.sources)?result.value.sources.slice(0,12):[],webSearch:webSearchEnabled,deepResearch:deepResearchEnabled,researchCompleted:deepResearchEnabled,research:deepResearchEnabled?{status:'complete',mode:'provider-native',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'}}:null,...meta};
+        return {role:'error',text:desktopIpcErrorMessage(result.reason,'Parallel model request failed.'),...meta};
       });
       const next=[...withUser,...responses];
       setMessages(next);saveCurrentChat(next,selected,{chatId:parallelChatId||undefined});
@@ -1802,7 +1859,8 @@ function App(){
       const researchMeta=nativeDeepResearch
         ? (result?.research||{status:'complete',mode:'provider-native',title:userText.slice(0,96)||'Research report',plan:researchConfigOverride?.plan||DEFAULT_RESEARCH_PLAN,sourceScope:{mode:'provider-managed'},completedAt:new Date().toISOString()})
         : null;
-      const next=[...withUser,{role:'assistant',text:finalText,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch,research:researchMeta}];
+      const resultMedia=Array.isArray(result?.media)?result.media.slice(0,8):[];
+      const next=[...withUser,{role:'assistant',text:finalText,media:resultMedia,provider:model.id,webSearch:nativeSearch,deepResearch:nativeDeepResearch,sources:resultSources,researchCompleted:nativeDeepResearch,research:researchMeta}];
       setMessages(next);saveCurrentChat(next,model,{chatId:generationChatId||undefined,mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
       if(chatAttachmentPlatform&&!retryContext){
         for(const item of activeAttachments)if(String(item.url||'').startsWith('blob:'))URL.revokeObjectURL(item.url);
@@ -1810,7 +1868,7 @@ function App(){
       }
     }catch(e){
       if(requestId&&cancelledRequestRef.current===requestId)return;
-      const next=[...withUser,{role:'error',text:e?.message||String(e)}];
+      const next=[...withUser,{role:'error',text:desktopIpcErrorMessage(e,'AI request failed.')}];
       setMessages(next);saveCurrentChat(next,model,{chatId:generationChatId||undefined,mode:currentChatMeta?.isAgentThread?'chat':undefined,meta:directAgentMeta});
     }finally{
       if(activeRequestRef.current===requestId)activeRequestRef.current=null;
@@ -1912,7 +1970,7 @@ function App(){
           sources:Array.isArray(message.sources)?message.sources:[]
         }
       });
-    }catch(error){setAttachmentError(error?.message||String(error))}
+    }catch(error){setAttachmentError(desktopIpcErrorMessage(error))}
   }
   async function copyMessage(text,index){
     try{
@@ -1939,7 +1997,7 @@ function App(){
       const added=await window.desktopApi.addMcpConnection(mcpDraft);
       setMcpConnections(current=>[...current.filter(item=>item.id!==added.id),added]);
       setMcpDraft({name:'',url:'',token:''});
-    }catch(error){setMcpError(error?.message||String(error))}
+    }catch(error){setMcpError(desktopIpcErrorMessage(error,'MCP connection failed.'))}
   }
   async function removeMcpConnection(id){
     if(!isChatDesktop)return;
@@ -1948,7 +2006,7 @@ function App(){
       const items=await window.desktopApi.removeMcpConnection(id);
       setMcpConnections(Array.isArray(items)?items:[]);
       setSelectedMcpIds(current=>current.filter(value=>value!==id));
-    }catch(error){setMcpError(error?.message||String(error))}
+    }catch(error){setMcpError(desktopIpcErrorMessage(error,'MCP connection failed.'))}
   }
   async function refreshMcpConnections(){
     if(!isChatDesktop)return;
@@ -1956,7 +2014,7 @@ function App(){
     try{
       const items=await window.desktopApi.refreshAllMcpConnections();
       setMcpConnections(Array.isArray(items)?items:[]);
-    }catch(error){setMcpError(error?.message||String(error))}
+    }catch(error){setMcpError(desktopIpcErrorMessage(error,'MCP connection failed.'))}
   }
   function toggleMcpConnection(id){
     if(workBusy)return;
@@ -2349,6 +2407,7 @@ function App(){
                     {m.role!=='user'&&!isChatDesktop&&<div className="messageAuthor">{m.role==='error'?'Error':modelLabel(selected)}</div>}
                     {isChatDesktop&&m.role!=='user'&&m.providerLabel&&<div className="messageAuthor">{m.role==='error'?'Error · ':''}{m.providerLabel}</div>}
                     <div className="messageBody" dir="auto">{m.streaming&&!m.text?<span className="messageActivity"><RefreshCw className="spin" size={14}/>{m.activity||'Working…'}</span>:m.text}</div>
+                    {isChatDesktop&&m.role==='assistant'&&<AssistantMedia items={m.media}/>}
                     {isChatDesktop&&m.role==='assistant'&&m.deepResearch&&<div className={'deepResearchStatus '+(m.streaming?'running':'complete')}>
                       <Sparkles size={13}/><span>{m.streaming?(m.activity||'Deep research in progress…'):'Deep research report'}</span>{!m.streaming&&<Check size={13}/>}
                       {!m.streaming&&<div className="researchReportActions" aria-label="Export research report">
@@ -2421,7 +2480,8 @@ function App(){
         mcpDraft={mcpDraft} setMcpDraft={setMcpDraft} mcpError={mcpError}
         onAddMcp={addMcpConnection} onRemoveMcp={removeMcpConnection} onRefreshMcp={refreshMcpConnections}
         onBack={()=>setPage('chat')} onExplore={()=>setPage('explore')} onOpenPublicDirectory={openPublicPluginDirectory}
-        onRefresh={()=>{window.desktopApi?.scanProviders?.().catch(()=>{});refreshMcpConnections().catch(()=>{})}}
+        onUseProviderTool={tool=>{setSelectedTool(tool);setMode('chat');setPage('chat');setPlusMenu(false);setMobileNavOpen(false)}}
+        onRefresh={()=>{window.desktopApi?.scanProviders?.({probeTools:true}).catch(()=>{});refreshMcpConnections().catch(()=>{})}}
       />}
       {page==='explore'&&<ExplorePage
         tools={mcpTools} chats={chats} directMcpConnections={mcpConnections}
@@ -3336,7 +3396,7 @@ function pluginSearchMatch(values,needle){
   return values.filter(Boolean).join(' ').toLowerCase().includes(needle);
 }
 
-function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,onRemoveMcp,onToggleMcp,selectedMcpIds=[]}){
+function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,onRemoveMcp,onToggleMcp,onUseProviderTool,selectedMcpIds=[]}){
   if(!item)return null;
   const direct=item.kind==='direct'?item.connection:null;
   const publicItem=item.kind==='public'?item.entry:null;
@@ -3399,13 +3459,14 @@ function PluginDetailsDialog({item,onClose,onOpenPublicDirectory,onRefreshMcp,on
       </>}
 
       {hint&&<>
-        <div className="pluginDetailsStatusRow"><span className="warningBadge">Unverified hint</span><span>{hint.ownerName||'Browser provider'}</span></div>
-        <div className="pluginDetailsBlock"><b>Detected label</b><span>{hint.mcp}</span></div>
+        <div className="pluginDetailsStatusRow"><span className="warningBadge">Provider-managed</span><span>{hint.ownerName||'Browser provider'}</span></div>
+        <div className="pluginDetailsBlock"><b>Detected app</b><span>{hint.mcp}</span></div>
         <div className="pluginDetailsBlock">
-          <b>What Free AI knows</b>
-          <span>This label was observed in a connected AI provider's browser UI.</span>
-          <small>It is not proof that an MCP server is reachable, that a tool exists, or that the provider used it. Provider authorization and permissions remain outside Free AI.</small>
+          <b>How it works</b>
+          <span>Free AI detected this app/tool in the connected provider UI and can ask that provider tab to activate it for the next Chat request.</span>
+          <small>Authorization and permissions stay with the provider account. Free AI only reports the provider response and never claims the app ran unless the provider returns a result.</small>
         </div>
+        <div className="pluginDetailsActions"><button className="primaryAction" onClick={()=>onUseProviderTool?.(hint)}>Use in Chat</button></div>
       </>}
     </div>
   </div>;
@@ -3421,10 +3482,10 @@ function PublicDirectoryCard({entry,onOpen}){
 
 function PluginsPage({
   tools,connected,directMcpConnections=[],selectedMcpIds=[],onToggleMcp,
-  mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh,onExplore,onOpenPublicDirectory
+  mcpDraft,setMcpDraft,mcpError,onAddMcp,onRemoveMcp,onRefreshMcp,onBack,onRefresh,onExplore,onOpenPublicDirectory,onUseProviderTool
 }){
   const [query,setQuery]=useState('');
-  const [view,setView]=useState(()=>isNative?'discover':'configured');
+  const [view,setView]=useState(()=>isNative?'discover':'hints');
   const [category,setCategory]=useState('All');
   const [details,setDetails]=useState(null);
   const pageName=isNative?'Apps':'Plugins';
@@ -3481,7 +3542,7 @@ function PluginsPage({
           </section>}
         </div>
         {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
-          onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+          onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} onUseProviderTool={tool=>{onUseProviderTool?.(tool);setDetails(null)}} selectedMcpIds={selectedMcpIds}/>}
       </div>;
     }
     return <div className="contentPage">
@@ -3534,7 +3595,7 @@ function PluginsPage({
 
       <div className="searchBar"><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder={isChatDesktop?'Search configured apps, public listings, or hints':'Search provider hints'}/></div>
       {isChatDesktop&&<div className="directoryTabs" role="tablist" aria-label="Plugin directory sections">
-        {[['configured','Configured'],['discover','Discover'],['hints','Provider hints'],['providers','AI providers']].map(([id,label])=>
+        {[['hints','Provider apps'],['configured','Direct MCP'],['discover','Discover'],['providers','AI providers']].map(([id,label])=>
           <button key={id} role="tab" aria-selected={view===id} className={view===id?'active':''} onClick={()=>setView(id)}>{label}</button>
         )}
       </div>}
@@ -3588,11 +3649,11 @@ function PluginsPage({
       </section>}
 
       {(!isChatDesktop||view==='hints')&&<section className="pluginSection">
-        <div className="sectionHeading"><div><h2>Provider-managed connector hints</h2><small>Labels observed in provider UI; not direct MCP verification.</small></div><span className="pluginMeta">{visibleTools.length} hints</span></div>
-        <div className="pluginHint warningHint"><Chrome size={20}/><div><b>Unverified</b><span>These labels do not prove a tool exists, that it is connected, or that the provider used it. Free AI never promotes them to callable MCP tools.</span></div></div>
+        <div className="sectionHeading"><div><h2>Apps from connected providers</h2><small>Detected directly from the UI of connected ChatGPT, Claude, Gemini, and other provider tabs.</small></div><span className="pluginMeta">{visibleTools.length} apps</span></div>
+        <div className="pluginHint directoryNotice"><Chrome size={20}/><div><b>Uses your existing provider connection</b><span>Select an app to route the next Chat request through the provider tab that exposed it. Provider authorization and permissions stay with that provider.</span></div></div>
         <div className="hintGrid">
-          {visibleTools.map(t=><button key={t.key} className="hintCard" onClick={()=>setDetails({kind:'hint',hint:t})}><span className="pluginIcon"><Plug size={16}/></span><span><b>{t.mcp}</b><small>{t.ownerName||'Provider UI'} · unverified</small></span><ChevronRight size={14}/></button>)}
-          {!visibleTools.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{query?'No provider hint matches':'No provider-managed hints detected'}</b><span>Hints appear only when the browser extension can observe them in a connected provider UI.</span></div>}
+          {visibleTools.map(t=><button key={t.key} className="hintCard" onClick={()=>setDetails({kind:'hint',hint:t})}><span className="pluginIcon"><Plug size={16}/></span><span><b>{t.mcp}</b><small>{t.ownerName||'Provider UI'} · available in provider</small></span><ChevronRight size={14}/></button>)}
+          {!visibleTools.length&&<div className="pluginEmptyCard"><Plug size={22}/><b>{query?'No provider app matches':'No provider apps detected yet'}</b><span>Open the provider app/tool menu once, then press Refresh connections. Free AI only shows labels it can actually observe in that provider tab.</span></div>}
         </div>
       </section>}
 
@@ -3610,7 +3671,7 @@ function PluginsPage({
     </div>
 
     {details&&<PluginDetailsDialog item={details} onClose={()=>setDetails(null)} onOpenPublicDirectory={onOpenPublicDirectory}
-      onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} selectedMcpIds={selectedMcpIds}/>}
+      onRefreshMcp={onRefreshMcp} onRemoveMcp={onRemoveMcp} onToggleMcp={onToggleMcp} onUseProviderTool={tool=>{onUseProviderTool?.(tool);setDetails(null)}} selectedMcpIds={selectedMcpIds}/>}
   </div>;
 }
 

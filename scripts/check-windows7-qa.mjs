@@ -202,7 +202,9 @@ ok(!/extensionSocket=null;\s*browserProviders=\[\];/.test(main),'Transient Brows
 has(main,"request.reject(new Error('Browser extension disconnected during generation.'))",'Active browser generations must fail immediately when the extension disconnects.');
 has(main,"for(const [id,request] of pending)",'Extension disconnect must drain pending browser prompts.');
 has(source,"if(product==='super'){",'Super AI must recover a controller automatically from the connected provider set.');
-has(source,"const fresh=selected?connected.find",'Renderer must reconcile a selected provider against refreshed bridge state.');
+has(source,"let fresh=selected?connected.find",'Renderer must reconcile a selected provider against refreshed bridge state.');
+has(source,"const currentProviderId=selected?modelProviderId(selected):String(currentChat?.providerId||'').split(':')[0];",'Renderer must recover a persisted chat provider after Browser Bridge reconnect.');
+has(source,"modelProviderId(p)===currentProviderId",'Provider recovery must tolerate browser tab-ID changes.');
 
 // Browser Bridge / Super AI hotfix coverage.
 ok(Array.isArray(extensionManifest.permissions)&&extensionManifest.permissions.includes('alarms'),'Browser Bridge manifest must allow wake alarms.');
@@ -241,7 +243,7 @@ has(background,"adapterReady:capabilities?.adapterReady===true",'Browser Bridge 
 has(background,"adapterIssue:String(capabilities?.adapterIssue||'')",'Browser Bridge must preserve adapter failure details.');
 has(main,"connected:extensionConnected&&p.adapterReady!==false",'Desktop provider status must disable unhealthy adapters.');
 has(main,"if(provider.adapterReady===false)",'Browser routing must reject an unhealthy provider adapter.');
-has(source,"const fresh=selected?connected.find",'Selected provider reconciliation must remain present.');
+has(source,"let fresh=selected?connected.find",'Selected provider reconciliation must remain present.');
 has(source,"function modelConnectionDetail(model)",'Model picker must distinguish adapter failure from reconnecting state.');
 has(source,"return ' · adapter unavailable';",'Model picker must label provider adapter failures truthfully.');
 has(source,"title={model.adapterIssue||undefined}",'Provider adapter failure reason must be available in the picker.');

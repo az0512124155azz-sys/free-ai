@@ -1889,6 +1889,67 @@ Start-Sleep -Milliseconds 30
   await runPowerShell(script);
 }
 
+function responseMediaStorePath(){return path.join(app.getPath('userData'),'chat-media')}
+
+function responseMediaExtension(mime){
+  const type=String(mime||'').toLowerCase().split(';')[0];
+  return {
+    'image/png':'png','image/jpeg':'jpg','image/webp':'webp','image/gif':'gif','image/svg+xml':'svg',
+    'application/pdf':'pdf',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document':'docx',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':'xlsx',
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation':'pptx',
+    'application/zip':'zip','text/csv':'csv','text/plain':'txt'
+  }[type]||'bin';
+}
+
+function persistResponseMedia(items){
+  const stored=[];
+  for(const raw of Array.isArray(items)?items.slice(0,8):[]){
+    const dataUrl=String(raw?.dataUrl||'');
+    const match=dataUrl.match(/^data:([^;,]+);base64,([A-Za-z0-9+/=\r\n]+)$/);
+    const base={
+      kind:raw?.kind==='file'?'file':'image',
+      name:String(raw?.name||'').slice(0,140),
+      mime:String(raw?.mime||match?.[1]||'application/octet-stream').split(';')[0],
+      width:Number(raw?.width)||0,
+      height:Number(raw?.height)||0
+    };
+    if(match){
+      try{
+        const buffer=Buffer.from(match[2].replace(/\s+/g,''),'base64');
+        if(buffer.length&&buffer.length<=16*1024*1024){
+          const hash=crypto.createHash('sha256').update(buffer).digest('hex');
+          const ext=responseMediaExtension(base.mime||match[1]);
+          const directory=responseMediaStorePath();
+          const target=path.join(directory,hash+'.'+ext);
+          fs.mkdirSync(directory,{recursive:true});
+          if(!fs.existsSync(target))fs.writeFileSync(target,buffer,{flag:'wx'});
+          stored.push({...base,mime:base.mime||match[1],size:buffer.length,storageId:hash,persisted:true});
+          continue;
+        }
+      }catch{}
+    }
+    const url=String(raw?.url||'');
+    if(/^https:\/\//i.test(url))stored.push({...base,url,persisted:false});
+  }
+  return stored;
+}
+
+function readResponseMedia(input={}){
+  const storageId=String(input.storageId||'');
+  const mime=String(input.mime||'application/octet-stream').split(';')[0];
+  if(!/^[a-f0-9]{64}$/i.test(storageId))throw new Error('Invalid media identifier.');
+  const ext=responseMediaExtension(mime);
+  const target=path.join(responseMediaStorePath(),storageId+'.'+ext);
+  const root=path.resolve(responseMediaStorePath())+path.sep;
+  const resolved=path.resolve(target);
+  if(!resolved.startsWith(root)||!fs.existsSync(resolved))return {found:false,dataUrl:''};
+  const buffer=fs.readFileSync(resolved);
+  if(!buffer.length||buffer.length>16*1024*1024)return {found:false,dataUrl:''};
+  return {found:true,dataUrl:'data:'+mime+';base64,'+buffer.toString('base64'),size:buffer.length};
+}
+
 function apiStorePath(){return path.join(app.getPath('userData'),'api-connections.json')}
 
 function mcpStorePath(){return path.join(app.getPath('userData'),'mcp-connections.json')}
@@ -2570,7 +2631,15 @@ function startLocalBridge(){
         const p=pending.get(m.id);
         clearTimeout(p.timer);
         pending.delete(m.id);
-        m.error?p.reject(new Error(m.error)):p.resolve(m);
+        const media=m.error?[]:persistResponseMedia(m.media);
+        console.info('[FreeAI runtime] browser response',{
+          id:String(m.id||'').slice(0,48),
+          provider:String(p?.provider||'').slice(0,80),
+          textChars:String(m.text||'').length,
+          mediaCount:media.length,
+          error:!!m.error
+        });
+        m.error?p.reject(new Error(m.error)):p.resolve({...m,media});
       }
     });
     ws.on('close',()=>{
@@ -4274,6 +4343,7 @@ ipcMain.handle('shell:saveDataFile',async(_e,payload={})=>{
   return {saved:true,filePath:result.filePath};
 });
 ipcMain.handle('research:exportReport',(_e,payload={})=>exportResearchReport(win,payload));
+ipcMain.handle('media:read',(_e,payload={})=>readResponseMedia(payload));
 ipcMain.handle('bridge:getStatus',()=>status());
 ipcMain.handle('bridge:scanProviders',(_e,options={})=>{sendExtension({type:'scanProviders',probeModels:!!options.probeModels,probeTools:!!options.probeTools});return status()});
 ipcMain.handle('bridge:setProviderModel',async(_e,{id,modelName}={})=>{const provider=browserProviders.find(item=>item.id===String(id||''));if(!provider)throw new Error('That browser model is not currently connected.');const result=await requestExtensionBrowser('setProviderModel',{tabId:provider.tabId,providerId:provider.providerId||String(provider.id||'').split(':')[0],modelName:String(modelName||'')},20000);sendExtension({type:'scanProviders',probeModels:true});return result;});
