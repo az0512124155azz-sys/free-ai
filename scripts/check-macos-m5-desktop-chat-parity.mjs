@@ -79,8 +79,8 @@ for(const [marker,label] of [
 ]) requireText(preload,marker,label);
 
 // M6 promotion: M5 Chat parity must remain intact after App/update settings become shared with macOS.
-requireText(main,"if(process.platform!=='win32'&&process.platform!=='darwin')throw new Error('Update checks are currently available on Windows and macOS.');",'shared desktop update boundary after M6');
-requireText(source,"{section==='App'&&isChatDesktop&&<DesktopAppSettings/>}",'shared Windows/macOS App settings after M6');
+requireText(main,"if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Update checks are currently available on Windows, macOS, and Linux.');",'shared desktop update boundary after M6');
+requireText(source,"{section==='App'&&isWorkDesktop&&<DesktopAppSettings/>}",'shared desktop App settings after M6');
 
 if(!pkg.includes('node scripts/check-macos-m5-desktop-chat-parity.mjs')){
   fail('package validate does not run macOS M5 parity guard');

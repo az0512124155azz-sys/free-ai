@@ -4085,9 +4085,9 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
     </div>
 
     <div className="browserToolbar">
-      <button disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
-      <button disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
-      <button onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
+      <button aria-label="Back" title="Back" disabled={!state.canGoBack} onClick={()=>window.desktopApi?.browserBack()}><ArrowLeft size={15}/></button>
+      <button aria-label="Forward" title="Forward" disabled={!state.canGoForward} onClick={()=>window.desktopApi?.browserForward()}><ArrowRight size={15}/></button>
+      <button aria-label="Reload" title="Reload" onClick={()=>window.desktopApi?.browserReload()}><RefreshCw className={state.loading?'spin':''} size={15}/></button>
       <form onSubmit={e=>{e.preventDefault();navigate()}}><input value={url} onFocus={()=>{addressEditingRef.current=true}} onBlur={()=>{addressEditingRef.current=false;if(state.url)setUrl(state.url)}} onChange={e=>setUrl(e.target.value)} placeholder="Search or enter a URL" aria-label="Address and search"/></form>
       {isWorkDesktop&&downloads.length>0&&<button className={downloadsOpen?'downloadStatus browserToolButton active':'downloadStatus browserToolButton'} onClick={()=>{setSiteToolsOpen(false);setDownloadsOpen(v=>!v);setDownloadActionStatus('')}} title={activeDownloads?activeDownloads+' active download'+(activeDownloads===1?'':'s'):'Downloads'}><Download size={14}/><small>{activeDownloads||downloads.length}</small></button>}
       {siteToolsEnabled&&siteTools.length>0&&<button className={siteToolsOpen?'browserToolButton active':'browserToolButton'} onClick={()=>{setDownloadsOpen(false);setDownloadActionStatus('');setSiteToolsOpen(v=>!v)}} title={siteTools.length+' site tool'+(siteTools.length===1?'':'s')}><ChevronDown size={15}/></button>}
@@ -4167,7 +4167,7 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
 
 function FilePane({file,onClose}){
   return <aside className="sidePane filePane">
-    <div className="paneTabs"><div className="browserTab"><File size={14}/><span>{file?.name||'File'}</span></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="paneTabs"><div className="browserTab"><File size={14}/><span>{file?.name||'File'}</span></div><button onClick={onClose} aria-label="Close file preview" title="Close file preview"><X size={16}/></button></div>
     <div className="fileMeta"><span>{file?.name}</span><small>{file?.type||'File'} · {humanSize(file?.size)}</small></div>
     <div className="filePreview">
       {file?.kind==='image'&&<img src={file.url} alt={file.name}/>}
@@ -4185,7 +4185,7 @@ function SettingsView(props){
   const visibleSettings=settingsSections.filter(([,label])=>
     (!isNative||!hiddenOnMobile.has(label))&&
     (label!=='Files'||isWorkDesktop)&&
-    (label!=='App'||isChatDesktop)&&
+    (label!=='App'||isWorkDesktop)&&
     (!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase()))
   );
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} data-section={section} role="dialog" aria-modal="true" aria-label="Settings">
@@ -4204,7 +4204,7 @@ function SettingsView(props){
         <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
       </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='App'&&isChatDesktop&&<DesktopAppSettings/>}
+      {section==='App'&&isWorkDesktop&&<DesktopAppSettings/>}
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
@@ -4258,6 +4258,13 @@ function DesktopAppSettings(){
   const [update,setUpdate]=useState(null);
   const [checking,setChecking]=useState(false);
   const [error,setError]=useState('');
+  const desktopAppLabel=desktopPlatform==='darwin'?'macOS app':desktopPlatform==='linux'?'Linux app':'Windows app';
+  const desktopPackageLabel=desktopPlatform==='darwin'?'Distribution package':desktopPlatform==='linux'?'AppImage':'Installer';
+  const desktopPackageDescription=desktopPlatform==='darwin'
+    ? 'macOS releases use a DMG. The release workflow requires Developer ID signing and Apple notarization by default, but can publish an explicitly marked unsigned DMG when the release operator opts in.'
+    : desktopPlatform==='linux'
+      ? 'Linux releases use the AppImage produced by the Free AI release workflow.'
+      : 'Windows builds use the NSIS installer produced by the Free AI release workflow.';
   useEffect(()=>{
     let cancelled=false;
     window.desktopApi?.getAppInfo?.().then(value=>{if(!cancelled)setInfo(value)}).catch(()=>{});
@@ -4273,7 +4280,7 @@ function DesktopAppSettings(){
     if(update?.url)await window.desktopApi?.openExternal?.(update.url);
   }
   return <div className="settingsPane">
-    <h3>{desktopPlatform==='darwin'?'macOS app':'Windows app'}</h3>
+    <h3>{desktopAppLabel}</h3>
     <div className="settingBlock">
       <SettingRow title="Version" desc="The installed Free AI desktop version." control={<span className="valuePill">{info?.version||'Loading…'}</span>}/>
       <SettingRow title="Authentication link handler" desc="Free AI uses the freeai:// protocol to return securely from desktop sign-in." control={<span className={'connectionStatus '+(info?.authProtocolRegistered?'good':'')}>{info?.authProtocolRegistered?'Registered':'Not registered'}</span>}/>
@@ -4287,7 +4294,7 @@ function DesktopAppSettings(){
     {error&&<div className="settingsStatus">{error}</div>}
     <h3>Install</h3>
     <div className="settingBlock">
-      <SettingRow title={desktopPlatform==='darwin'?'Distribution package':'Installer'} desc={desktopPlatform==='darwin'?'macOS releases use a DMG. The release workflow requires Developer ID signing and Apple notarization by default, but can publish an explicitly marked unsigned DMG when the release operator opts in.':'Windows builds use the NSIS installer produced by the Free AI release workflow.'} control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
+      <SettingRow title={desktopPackageLabel} desc={desktopPackageDescription} control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
     </div>
   </div>
 }

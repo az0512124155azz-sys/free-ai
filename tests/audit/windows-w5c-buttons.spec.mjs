@@ -222,10 +222,15 @@ test('Windows W5C core button interaction sweep',async()=>{
     },'10-new-chat.png');
 
     const zeroSize=inventory.filter(x=>!x.disabled&&(x.width<8||x.height<8));
+    const unlabeled=inventory.filter(x=>!String(x.label||'').trim());
     await record('Visible enabled button inventory has no zero-size controls',async()=>{
       expect(zeroSize,JSON.stringify(zeroSize,null,2)).toEqual([]);
       expect(inventory.length).toBeGreaterThan(40);
       return inventory.length+' visible button states inventoried across core views';
+    });
+    await record('Visible button inventory has accessible labels',async()=>{
+      expect(unlabeled,JSON.stringify(unlabeled,null,2)).toEqual([]);
+      return inventory.length+' visible button states have text, title, or aria-label';
     });
 
     await fs.writeFile(path.join(out,'button-inventory.json'),JSON.stringify(inventory,null,2));
