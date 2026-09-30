@@ -19,6 +19,9 @@ for(const [text,label] of [
   ["if(!isWorkDesktop)return;",'repository picker remains enabled on Linux through the shared desktop Work gate'],
   ["(product!=='super'||isWorkDesktop)&&<>",'Super repository control is only shown on supported desktop Work platforms'],
   ["{mode==='work'&&!isAndroidNative&&!isLinuxDesktop&&<MenuRow icon={Paperclip} label=\"Attach files\"",'Linux Work suppresses the duplicate Attach files row']
+  ["const desktopAppLabel=desktopPlatform==='darwin'?'macOS app':desktopPlatform==='linux'?'Linux app':'Windows app';",'Linux App settings title'],
+  ["const desktopPackageLabel=desktopPlatform==='darwin'?'Distribution package':desktopPlatform==='linux'?'AppImage':'Installer';",'Linux AppImage settings label'],
+  ["'Linux releases use the AppImage produced by the Free AI release workflow.'",'Linux AppImage distribution copy']
 ]) requireText(renderer,text,label);
 
 if(renderer.includes("if(!isWindowsDesktop)return;\n    stopActiveWorkTask();\n    setMode('work')")){
