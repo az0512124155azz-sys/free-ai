@@ -2111,12 +2111,38 @@ function App(){
   useEffect(()=>{
     if(!(isWindowsDesktop||isMacDesktop)||!isDesktop)return;
     const off=window.desktopApi.onAppCommand?.(command=>{
-      if(command!=='toggle-browser')return;
-      if(sidePanel==='browser'){
-        setSidePanel(null);
+      if(command==='new-chat'){
+        setSettingsOpen(false);
+        newChat();
         return;
       }
-      openBrowser();
+      if(command==='settings'){
+        setSettingsSection('General');
+        setMobileSettingsList(true);
+        setSettingsOpen(true);
+        return;
+      }
+      if(command==='about'){
+        setSettingsSection('App');
+        setMobileSettingsList(true);
+        setSettingsOpen(true);
+        return;
+      }
+      if(command==='toggle-sidebar'){
+        setSidebarOpen(value=>!value);
+        return;
+      }
+      if(command==='open-browser'){
+        openBrowser();
+        return;
+      }
+      if(command==='toggle-browser'){
+        if(sidePanel==='browser'){
+          setSidePanel(null);
+          return;
+        }
+        openBrowser();
+      }
     });
     return()=>off?.();
   },[sidePanel,product,mode,currentChatId,messages.length]);
