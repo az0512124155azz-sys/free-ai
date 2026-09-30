@@ -4167,7 +4167,7 @@ function BrowserPane({siteToolsEnabled=true,onAnnotate,onClose}){
 
 function FilePane({file,onClose}){
   return <aside className="sidePane filePane">
-    <div className="paneTabs"><div className="browserTab"><File size={14}/><span>{file?.name||'File'}</span></div><button onClick={onClose}><X size={16}/></button></div>
+    <div className="paneTabs"><div className="browserTab"><File size={14}/><span>{file?.name||'File'}</span></div><button onClick={onClose} aria-label="Close file preview" title="Close file preview"><X size={16}/></button></div>
     <div className="fileMeta"><span>{file?.name}</span><small>{file?.type||'File'} · {humanSize(file?.size)}</small></div>
     <div className="filePreview">
       {file?.kind==='image'&&<img src={file.url} alt={file.name}/>}
