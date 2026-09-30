@@ -560,6 +560,7 @@ jobs:
             artifacts/windows-w5b/**
             artifacts/windows-w5c/**
             artifacts/windows-w5d/**
+            artifacts/windows-w5e/**
           if-no-files-found: error
 
   android:
