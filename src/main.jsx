@@ -4185,7 +4185,7 @@ function SettingsView(props){
   const visibleSettings=settingsSections.filter(([,label])=>
     (!isNative||!hiddenOnMobile.has(label))&&
     (label!=='Files'||isWorkDesktop)&&
-    (label!=='App'||isChatDesktop)&&
+    (label!=='App'||isWorkDesktop)&&
     (!settingsQuery.trim()||label.toLowerCase().includes(settingsQuery.trim().toLowerCase()))
   );
   return <div className={'settingsScreen '+(mobileList?'mobileSettingsList':'mobileSettingsDetail')} data-section={section} role="dialog" aria-modal="true" aria-label="Settings">
@@ -4204,7 +4204,7 @@ function SettingsView(props){
         <button className="settingsClose" onClick={onClose} aria-label="Close settings"><X size={18}/></button>
       </div>
       {section==='General'&&<GeneralSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='App'&&isChatDesktop&&<DesktopAppSettings/>}
+      {section==='App'&&isWorkDesktop&&<DesktopAppSettings/>}
       {section==='Profile'&&<ProfileSettings session={session}/>} 
       {section==='Appearance'&&<AppearanceSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Voice'&&<VoiceSettings prefs={prefs} setPrefs={setPrefs}/>}
