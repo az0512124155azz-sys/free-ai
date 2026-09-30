@@ -38,7 +38,8 @@ for(const [text,label] of [
 
 for(const [text,label] of [
   ["if((isWindowsDesktop||isMacDesktop)&&product==='free'&&mode!=='work')selectExperience('work');",'macOS Browser opens Free AI Work'],
-  ["if(!(isWindowsDesktop||isMacDesktop)||!isDesktop)return;\n    const off=window.desktopApi.onAppCommand?.(command=>{\n      if(command!=='toggle-browser')return;",'macOS Browser keyboard toggle'],
+  ["if(!isDesktop)return;\n    const off=window.desktopApi.onAppCommand?.(command=>{",'single desktop app-command subscription'],
+  ["if(command==='toggle-browser'&&(isWindowsDesktop||isMacDesktop)){",'macOS Browser keyboard toggle'],
   ["{isWorkDesktop&&downloads.length>0&&<button className={downloadsOpen?",'macOS downloads UI'],
   ["{isWorkDesktop&&permissionRequest&&<div className=\"siteToolsHeader browserPermissionBar\"",'macOS permission UI'],
   ["{isWorkDesktop&&state.error&&<div className=\"siteToolsHeader browserErrorBar\"",'macOS Browser error UI'],
