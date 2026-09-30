@@ -4,11 +4,15 @@ import path from 'node:path';
 import { test, expect, _electron as electron } from '@playwright/test';
 
 const out=path.resolve('artifacts/windows-w5g');
-async function sendCommand(app,command){
-  await app.evaluate(({BrowserWindow},value)=>{
-    const win=BrowserWindow.getAllWindows()[0];
-    win?.webContents.send('app-command',value);
-  },command);
+async function invokeMenuItem(app,topLabel,itemLabel){
+  return await app.evaluate(({Menu},{topLabel,itemLabel})=>{
+    const menu=Menu.getApplicationMenu();
+    const top=menu?.items?.find(item=>item.label===topLabel);
+    const item=top?.submenu?.items?.find(entry=>entry.label===itemLabel);
+    if(!item||typeof item.click!=='function')throw new Error('Missing app-menu item: '+topLabel+' > '+itemLabel);
+    item.click();
+    return {label:item.label,accelerator:item.accelerator||''};
+  },{topLabel,itemLabel});
 }
 async function shot(page,name){
   await fs.mkdir(out,{recursive:true});
@@ -48,27 +52,31 @@ test('Windows W5G native app-menu commands execute their advertised actions',asy
     await recent.locator('.recentItem').click();
     await expect(page.locator('.chatMessage')).toHaveCount(2);
 
-    await sendCommand(app,'settings');
+    const settingsMenu=await invokeMenuItem(app,'File','Settings');
+    expect(settingsMenu.accelerator).toBeTruthy();
     await expect(page.locator('.settingsScreen')).toBeVisible();
     await expect(page.locator('.settingsContentTop h1')).toHaveText('General');
 
-    await sendCommand(app,'about');
+    await invokeMenuItem(app,'Help','About Free AI');
     await expect(page.locator('.settingsContentTop h1')).toHaveText('App');
     await page.getByRole('button',{name:'Close settings'}).click();
 
     await expect(page.locator('.gptSidebar')).toBeVisible();
-    await sendCommand(app,'toggle-sidebar');
+    const sidebarMenu=await invokeMenuItem(app,'View','Toggle sidebar');
+    expect(sidebarMenu.accelerator).toBeTruthy();
     await expect(page.locator('.gptSidebar')).toHaveCount(0);
-    await sendCommand(app,'toggle-sidebar');
+    await invokeMenuItem(app,'View','Toggle sidebar');
     await expect(page.locator('.gptSidebar')).toBeVisible();
 
-    await sendCommand(app,'new-chat');
+    const newChatMenu=await invokeMenuItem(app,'File','New chat');
+    expect(newChatMenu.accelerator).toBeTruthy();
     await expect(page.locator('.chatMessage')).toHaveCount(0);
     await expect(page.locator('.gptComposer')).toBeVisible();
 
-    await sendCommand(app,'toggle-browser');
+    const browserMenu=await invokeMenuItem(app,'View','Toggle browser');
+    expect(browserMenu.accelerator).toBeTruthy();
     await expect(page.locator('.browserPane')).toBeVisible({timeout:8000});
-    await sendCommand(app,'toggle-browser');
+    await invokeMenuItem(app,'View','Toggle browser');
     await expect(page.locator('.browserPane')).toHaveCount(0);
 
     await shot(page,'01-native-menu-commands.png');
