@@ -158,7 +158,7 @@ function trustedFreeAiReleaseUrl(value){
 }
 
 async function checkForDesktopUpdates(){
-  if(process.platform!=='win32'&&process.platform!=='darwin')throw new Error('Update checks are currently available on Windows and macOS.');
+  if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Update checks are currently available on Windows, macOS, and Linux.');
   if(!net.isOnline())throw new Error('You appear to be offline. Connect to the internet and try again.');
   const controller=new AbortController();
   const timer=setTimeout(()=>controller.abort(),DESKTOP_UPDATE_TIMEOUT_MS);
