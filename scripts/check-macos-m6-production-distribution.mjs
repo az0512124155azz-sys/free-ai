@@ -22,7 +22,7 @@ for(const [marker,label] of [
   ["authProtocolRegistered:(process.platform==='win32'||process.platform==='darwin')?app.isDefaultProtocolClient(AUTH_SCHEME):false",'macOS auth protocol status'],
   ["const DESKTOP_UPDATE_TIMEOUT_MS=15000;",'shared desktop update timeout'],
   ["async function checkForDesktopUpdates(){",'shared update-check runtime'],
-  ["if(process.platform!=='win32'&&process.platform!=='darwin')throw new Error('Update checks are currently available on Windows and macOS.');",'macOS update platform gate'],
+  ["if(process.platform!=='win32'&&process.platform!=='darwin'&&process.platform!=='linux')throw new Error('Update checks are currently available on Windows, macOS, and Linux.');",'desktop update platform gate'],
   ["https://api.github.com/repos/az0512124155azz-sys/free-ai/releases/latest",'official GitHub release source'],
   ["trustedFreeAiReleaseUrl",'trusted release URL validation'],
   ["ipcMain.handle('shell:getAppInfo',()=>desktopAppInfo());",'desktop app info IPC'],
@@ -33,7 +33,7 @@ for(const [marker,label] of [
   ["(label!=='App'||isChatDesktop)",'App settings visible on Windows/macOS'],
   ["{section==='App'&&isChatDesktop&&<DesktopAppSettings/>}",'shared desktop App settings surface'],
   ["function DesktopAppSettings(){",'shared desktop App settings component'],
-  ["desktopPlatform==='darwin'?'macOS app':'Windows app'",'macOS App heading'],
+  ["const desktopAppLabel=desktopPlatform==='darwin'?'macOS app':desktopPlatform==='linux'?'Linux app':'Windows app';",'macOS App heading'],
   ["Signed macOS releases use Developer ID and Apple notarization; an explicitly marked release may be published unsigned when Apple signing is unavailable.",'macOS update trust copy'],
   ["macOS releases use a DMG. The release workflow requires Developer ID signing and Apple notarization by default, but can publish an explicitly marked unsigned DMG when the release operator opts in.",'macOS distribution settings copy']
 ]) requireText(renderer,marker,label);
