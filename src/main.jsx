@@ -4258,6 +4258,13 @@ function DesktopAppSettings(){
   const [update,setUpdate]=useState(null);
   const [checking,setChecking]=useState(false);
   const [error,setError]=useState('');
+  const desktopAppLabel=desktopPlatform==='darwin'?'macOS app':desktopPlatform==='linux'?'Linux app':'Windows app';
+  const desktopPackageLabel=desktopPlatform==='darwin'?'Distribution package':desktopPlatform==='linux'?'AppImage':'Installer';
+  const desktopPackageDescription=desktopPlatform==='darwin'
+    ? 'macOS releases use a DMG. The release workflow requires Developer ID signing and Apple notarization by default, but can publish an explicitly marked unsigned DMG when the release operator opts in.'
+    : desktopPlatform==='linux'
+      ? 'Linux releases use the AppImage produced by the Free AI release workflow.'
+      : 'Windows builds use the NSIS installer produced by the Free AI release workflow.';
   useEffect(()=>{
     let cancelled=false;
     window.desktopApi?.getAppInfo?.().then(value=>{if(!cancelled)setInfo(value)}).catch(()=>{});
@@ -4273,7 +4280,7 @@ function DesktopAppSettings(){
     if(update?.url)await window.desktopApi?.openExternal?.(update.url);
   }
   return <div className="settingsPane">
-    <h3>{desktopPlatform==='darwin'?'macOS app':'Windows app'}</h3>
+    <h3>{desktopAppLabel}</h3>
     <div className="settingBlock">
       <SettingRow title="Version" desc="The installed Free AI desktop version." control={<span className="valuePill">{info?.version||'Loading…'}</span>}/>
       <SettingRow title="Authentication link handler" desc="Free AI uses the freeai:// protocol to return securely from desktop sign-in." control={<span className={'connectionStatus '+(info?.authProtocolRegistered?'good':'')}>{info?.authProtocolRegistered?'Registered':'Not registered'}</span>}/>
@@ -4287,7 +4294,7 @@ function DesktopAppSettings(){
     {error&&<div className="settingsStatus">{error}</div>}
     <h3>Install</h3>
     <div className="settingBlock">
-      <SettingRow title={desktopPlatform==='darwin'?'Distribution package':'Installer'} desc={desktopPlatform==='darwin'?'macOS releases use a DMG. The release workflow requires Developer ID signing and Apple notarization by default, but can publish an explicitly marked unsigned DMG when the release operator opts in.':'Windows builds use the NSIS installer produced by the Free AI release workflow.'} control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
+      <SettingRow title={desktopPackageLabel} desc={desktopPackageDescription} control={<span className="valuePill">{info?.packaged?'Installed build':'Development build'}</span>}/>
     </div>
   </div>
 }
