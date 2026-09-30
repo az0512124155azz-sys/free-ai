@@ -896,18 +896,10 @@ function App(){
       syncWorkTaskAgentChats(state);
       setWorkTask(state);
     });
-    const offCommand=window.desktopApi.onAppCommand?.(command=>{
-      if(command==='new-chat')newChat();
-      if(command==='settings'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
-      if(command==='about'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
-      if(command==='open-browser')openBrowser();
-      if(command==='open-computer'){setSettingsOpen(false);setSidePanel(null);setProduct('free');setMode('work');setPage('chat')}
-      if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
-    });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
     window.desktopApi.listMcpConnections?.().then(items=>active&&setMcpConnections(Array.isArray(items)?items:[])).catch(()=>{});
-    return()=>{active=false;offStatus?.();offWork?.();offCommand?.()};
+    return()=>{active=false;offStatus?.();offWork?.()};
   },[]);
 
   useEffect(()=>{
@@ -2109,14 +2101,54 @@ function App(){
   }
 
   useEffect(()=>{
-    if(!(isWindowsDesktop||isMacDesktop)||!isDesktop)return;
+    if(!isDesktop)return;
     const off=window.desktopApi.onAppCommand?.(command=>{
-      if(command!=='toggle-browser')return;
-      if(sidePanel==='browser'){
-        setSidePanel(null);
+      if(command==='new-chat'){
+        setSettingsOpen(false);
+        newChat();
         return;
       }
-      openBrowser();
+      if(command==='settings'){
+        stopActiveWorkTask();
+        setMobileNavOpen(false);
+        setProfileMenu(false);
+        setSettingsSection('General');
+        setMobileSettingsList(true);
+        setSettingsOpen(true);
+        return;
+      }
+      if(command==='about'){
+        stopActiveWorkTask();
+        setMobileNavOpen(false);
+        setProfileMenu(false);
+        setSettingsSection('App');
+        setMobileSettingsList(true);
+        setSettingsOpen(true);
+        return;
+      }
+      if(command==='toggle-sidebar'){
+        setSidebarOpen(value=>!value);
+        return;
+      }
+      if(command==='open-browser'){
+        openBrowser();
+        return;
+      }
+      if(command==='open-computer'){
+        setSettingsOpen(false);
+        setSidePanel(null);
+        setProduct('free');
+        setMode('work');
+        setPage('chat');
+        return;
+      }
+      if(command==='toggle-browser'&&(isWindowsDesktop||isMacDesktop)){
+        if(sidePanel==='browser'){
+          setSidePanel(null);
+          return;
+        }
+        openBrowser();
+      }
     });
     return()=>off?.();
   },[sidePanel,product,mode,currentChatId,messages.length]);
@@ -4211,7 +4243,7 @@ function SettingsView(props){
       {section==='Personalization'&&<PersonalizationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
+      {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Toggle sidebar','Ctrl+Shift+S'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<SimpleSettings title="Computer use" rows={[
         ['Availability',desktopPlatform==='linux'?'Available after the system Remote Desktop permission':desktopPlatform==='darwin'?'Available after macOS Screen Recording and Accessibility permissions':'Available to Work and Super AI on this computer'],
         ['Screen handling','Screenshots are used internally by the active AI task; no screen-mirror panel is shown'],

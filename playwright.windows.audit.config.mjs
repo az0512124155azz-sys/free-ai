@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   testDir:'./tests/audit',
-  testMatch:/windows-(?:known-fixes|w5a-native|w5b-restart|w5c-buttons|w5d-settings|w5e-provider-fixtures)\.spec\.mjs$/,
+  testMatch:/windows-(?:known-fixes|w5a-native|w5b-restart|w5c-buttons|w5d-settings|w5e-provider-fixtures|w5f-recents|w5g-app-menu)\.spec\.mjs$/,
   timeout:180_000,
   workers:1,
   fullyParallel:false,
