@@ -93,6 +93,11 @@ has(preload,'saveDataFile','Desktop Save As bridge for local data export is miss
 has(main,"ipcMain.handle('shell:saveDataFile'",'Desktop Save As handler for local data export is missing.');
 has(source,"window.desktopApi?.saveDataFile",'Windows data export must use the native desktop Save As bridge.');
 
+has(source,"command==='new-chat'",'Native app-menu New chat command must be handled by the renderer.');
+has(source,"command==='settings'",'Native app-menu Settings command must be handled by the renderer.');
+has(source,"command==='toggle-sidebar'",'Native app-menu sidebar command must be handled by the renderer.');
+has(source,"command==='about'",'Native app-menu About command must be handled by the renderer.');
+
 has(source,'webSearchEnabled','Web Search state is missing.');
 has(source,'function MessageSources','Source cards are missing.');
 has(contentScript,"function responseSnapshot(config,provider='')",'Structured provider response capture is missing.');
