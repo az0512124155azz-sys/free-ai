@@ -30,8 +30,8 @@ for(const [marker,label] of [
 ]) requireText(main,marker,label);
 
 for(const [marker,label] of [
-  ["(label!=='App'||isChatDesktop)",'App settings visible on Windows/macOS'],
-  ["{section==='App'&&isChatDesktop&&<DesktopAppSettings/>}",'shared desktop App settings surface'],
+  ["(label!=='App'||isWorkDesktop)",'App settings visible on desktop platforms'],
+  ["{section==='App'&&isWorkDesktop&&<DesktopAppSettings/>}",'shared desktop App settings surface'],
   ["function DesktopAppSettings(){",'shared desktop App settings component'],
   ["const desktopAppLabel=desktopPlatform==='darwin'?'macOS app':desktopPlatform==='linux'?'Linux app':'Windows app';",'macOS App heading'],
   ["Signed macOS releases use Developer ID and Apple notarization; an explicitly marked release may be published unsigned when Apple signing is unavailable.",'macOS update trust copy'],
