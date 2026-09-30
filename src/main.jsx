@@ -896,18 +896,10 @@ function App(){
       syncWorkTaskAgentChats(state);
       setWorkTask(state);
     });
-    const offCommand=window.desktopApi.onAppCommand?.(command=>{
-      if(command==='new-chat')newChat();
-      if(command==='settings'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
-      if(command==='about'){stopActiveWorkTask();setMobileNavOpen(false);setProfileMenu(false);setSettingsSection('General');setMobileSettingsList(true);setSettingsOpen(true)}
-      if(command==='open-browser')openBrowser();
-      if(command==='open-computer'){setSettingsOpen(false);setSidePanel(null);setProduct('free');setMode('work');setPage('chat')}
-      if(command==='toggle-sidebar')setSidebarOpen(v=>!v);
-    });
     window.desktopApi.configureRelay(settings).then(s=>active&&setStatus(s)).catch(()=>{});
     window.desktopApi.scanProviders().catch(()=>{});
     window.desktopApi.listMcpConnections?.().then(items=>active&&setMcpConnections(Array.isArray(items)?items:[])).catch(()=>{});
-    return()=>{active=false;offStatus?.();offWork?.();offCommand?.()};
+    return()=>{active=false;offStatus?.();offWork?.()};
   },[]);
 
   useEffect(()=>{
@@ -2109,7 +2101,7 @@ function App(){
   }
 
   useEffect(()=>{
-    if(!(isWindowsDesktop||isMacDesktop)||!isDesktop)return;
+    if(!isDesktop)return;
     const off=window.desktopApi.onAppCommand?.(command=>{
       if(command==='new-chat'){
         setSettingsOpen(false);
@@ -2117,12 +2109,18 @@ function App(){
         return;
       }
       if(command==='settings'){
+        stopActiveWorkTask();
+        setMobileNavOpen(false);
+        setProfileMenu(false);
         setSettingsSection('General');
         setMobileSettingsList(true);
         setSettingsOpen(true);
         return;
       }
       if(command==='about'){
+        stopActiveWorkTask();
+        setMobileNavOpen(false);
+        setProfileMenu(false);
         setSettingsSection('App');
         setMobileSettingsList(true);
         setSettingsOpen(true);
@@ -2136,7 +2134,15 @@ function App(){
         openBrowser();
         return;
       }
-      if(command==='toggle-browser'){
+      if(command==='open-computer'){
+        setSettingsOpen(false);
+        setSidePanel(null);
+        setProduct('free');
+        setMode('work');
+        setPage('chat');
+        return;
+      }
+      if(command==='toggle-browser'&&(isWindowsDesktop||isMacDesktop)){
         if(sidePanel==='browser'){
           setSidePanel(null);
           return;
