@@ -4237,7 +4237,7 @@ function SettingsView(props){
       {section==='Personalization'&&<PersonalizationSettings prefs={prefs} setPrefs={setPrefs}/>}
       {section==='Data controls'&&<DataControlsSettings onExportData={onExportData} onClearHistory={onClearHistory}/>}
       {section==='Configuration'&&<ConfigurationSettings prefs={prefs} setPrefs={setPrefs}/>}
-      {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Settings','Ctrl+,']]}/>}
+      {section==='Keyboard shortcuts'&&!isNative&&<SimpleSettings title="Keyboard shortcuts" rows={[['New chat','Ctrl+N'],['Browser','Ctrl+Shift+B'],['Toggle sidebar','Ctrl+Shift+S'],['Settings','Ctrl+,']]}/>}
       {section==='Computer use'&&!isNative&&<SimpleSettings title="Computer use" rows={[
         ['Availability',desktopPlatform==='linux'?'Available after the system Remote Desktop permission':desktopPlatform==='darwin'?'Available after macOS Screen Recording and Accessibility permissions':'Available to Work and Super AI on this computer'],
         ['Screen handling','Screenshots are used internally by the active AI task; no screen-mirror panel is shown'],
