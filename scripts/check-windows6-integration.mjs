@@ -96,6 +96,9 @@ has(source,"window.desktopApi?.saveDataFile",'Windows data export must use the n
 has(source,'webSearchEnabled','Web Search state is missing.');
 has(source,'function MessageSources','Source cards are missing.');
 has(contentScript,"function responseSnapshot(config,provider='')",'Structured provider response capture is missing.');
+has(contentScript,"'#composer-submit-button'",'ChatGPT current composer submit-button fallback is missing.');
+has(contentScript,'[data-turn-key]:has([data-conversation-role="assistant"])','ChatGPT grouped assistant-turn fallback is missing.');
+has(contentScript,'div[contenteditable="true"][role="textbox"][aria-label*="Chat" i]','ChatGPT current contenteditable composer fallback is missing.');
 has(contentScript,'function responseMedia(root)','Provider generated-media extraction is missing.');
 has(contentScript,'const responseMediaOnly=now.media.filter(item=>{','Media-only provider responses must complete without requiring assistant text.');
 has(contentScript,'media:await materializePageMedia(responseMediaOnly)','Only media created by the current provider reply should be returned.');

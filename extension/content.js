@@ -228,13 +228,33 @@
   };
   const configs={
     chatgpt:{
-      inputs:['#prompt-textarea','textarea[placeholder*="Message"]','div[contenteditable="true"][data-virtualkeyboard]','div[contenteditable="true"][role="textbox"]'],
-      send:['button[data-testid="send-button"]','button[aria-label*="Send"]','button[aria-label*="send"]','button[type="submit"]'],
-      stop:['button[data-testid="stop-button"]','button[aria-label*="Stop"]'],
+      inputs:[
+        '#prompt-textarea',
+        'div[contenteditable="true"][role="textbox"][aria-label*="Chat" i]',
+        'textarea[aria-label*="Chat" i]',
+        'textarea[placeholder*="Ask" i]',
+        'textarea[placeholder*="Message" i]',
+        'div[contenteditable="true"][data-virtualkeyboard]',
+        'div[contenteditable="true"][role="textbox"]'
+      ],
+      send:[
+        'button[data-testid="send-button"]',
+        '#composer-submit-button',
+        'button[aria-label="Send prompt"]',
+        'button[aria-label*="Send" i]',
+        'button[type="submit"]'
+      ],
+      stop:[
+        'button[data-testid="stop-button"]',
+        'form[data-chatgpt-composer] button[type="button"][aria-label="Stop"]',
+        'button[aria-label*="Stop" i]'
+      ],
       answers:[
         '[data-message-author-role="assistant"]',
         'section[data-turn="assistant"]',
         '[data-testid^="conversation-turn-"][data-turn="assistant"]',
+        '[data-testid^="conversation-turn-"][data-message-author-role="assistant"]',
+        '[data-testid^="conversation-turn-"]:has([data-message-author-role="assistant"])',
         '[data-turn-key]:has([data-conversation-role="assistant"])'
       ]
     },

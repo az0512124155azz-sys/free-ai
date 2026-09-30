@@ -130,6 +130,42 @@ test('Windows W5E provider adapter fixtures cover Gemini send and ChatGPT image 
       return 'Image-only response returned '+reply.media.length+' generated media item(s)';
     });
 
+    await record('ChatGPT current composer and grouped assistant shell stay routable',async()=>{
+      const frame=await fixtureFrame(page,source,`<!doctype html><html><head><style>
+        form{display:block;width:720px}.composer{display:flex;gap:8px}
+        [contenteditable="true"]{display:block;width:620px;min-height:54px;border:1px solid #ccc}
+        button{display:block;width:48px;height:48px}
+        [data-turn-key]{display:block;margin-top:20px;min-height:50px}
+      </style></head><body>
+        <form data-chatgpt-composer>
+          <div class="composer">
+            <div contenteditable="true" role="textbox" aria-label="Chat message"></div>
+            <button id="composer-submit-button" type="button" aria-label="Send prompt">Send</button>
+          </div>
+        </form>
+        <main></main>
+        <script>
+          const input=document.querySelector('[contenteditable="true"]');
+          document.getElementById('composer-submit-button').addEventListener('click',()=>{
+            const wrapper=document.createElement('section');
+            wrapper.dataset.turnKey='fixture-turn';
+            const role=document.createElement('div');
+            role.dataset.conversationRole='assistant';
+            role.textContent='Grouped ChatGPT fixture reply';
+            wrapper.appendChild(role);
+            document.querySelector('main').appendChild(wrapper);
+          });
+        </script>
+      </body></html>`,'chatgpt-current-shell');
+      const health=await bridgeCall(frame,{type:'freeai:scanCapabilities',provider:'chatgpt'});
+      expect(health.adapterReady).toBe(true);
+      const reply=await bridgeCall(frame,{type:'freeai:prompt',provider:'chatgpt',text:'hello current chatgpt shell',id:'w5e-chatgpt-current'});
+      expect(reply.error).toBeUndefined();
+      expect(reply.text).toContain('Grouped ChatGPT fixture reply');
+      expect(await frame.locator('[contenteditable="true"]').textContent()).toContain('hello current chatgpt shell');
+      return 'Current composer id + grouped assistant turn routed successfully';
+    });
+
     await fs.writeFile(path.join(out,'results.json'),JSON.stringify(results,null,2));
     expect(results.filter(r=>r.status==='FAIL'),JSON.stringify(results,null,2)).toEqual([]);
   }finally{
