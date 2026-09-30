@@ -63,7 +63,7 @@
   }
 
   function responseScope(root){
-    return root?.closest?.('section[data-turn],section[data-testid^="conversation-turn-"],article[data-turn],article[data-testid^="conversation-turn-"],article[data-testid*="conversation-turn"],article,[role="article"],[data-testid*="message"]')||root||null;
+    return root?.closest?.('[data-turn-key],section[data-turn],section[data-testid^="conversation-turn-"],article[data-turn],article[data-testid^="conversation-turn-"],article[data-testid*="conversation-turn"],article,[role="article"],[data-testid*="message"]')||root||null;
   }
 
   function responseMimeFromUrl(url,fallback='application/octet-stream'){

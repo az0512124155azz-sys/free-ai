@@ -153,6 +153,12 @@ test('Windows W5E provider adapter fixtures cover Gemini send and ChatGPT image 
             role.dataset.conversationRole='assistant';
             role.textContent='Grouped ChatGPT fixture reply';
             wrapper.appendChild(role);
+            const image=document.createElement('img');
+            image.alt='Grouped generated image';
+            image.src='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2n0sAAAAASUVORK5CYII=';
+            image.style.width='256px';
+            image.style.height='256px';
+            wrapper.appendChild(image);
             document.querySelector('main').appendChild(wrapper);
           });
         </script>
@@ -162,8 +168,11 @@ test('Windows W5E provider adapter fixtures cover Gemini send and ChatGPT image 
       const reply=await bridgeCall(frame,{type:'freeai:prompt',provider:'chatgpt',text:'hello current chatgpt shell',id:'w5e-chatgpt-current'});
       expect(reply.error).toBeUndefined();
       expect(reply.text).toContain('Grouped ChatGPT fixture reply');
+      expect(reply.media).toHaveLength(1);
+      expect(reply.media[0]).toEqual(expect.objectContaining({kind:'image',name:'Grouped generated image'}));
+      expect(String(reply.media[0].dataUrl||'')).toMatch(/^data:image\/png;base64,/);
       expect(await frame.locator('[contenteditable="true"]').textContent()).toContain('hello current chatgpt shell');
-      return 'Current composer id + grouped assistant turn routed successfully';
+      return 'Current composer id + grouped assistant turn + sibling media routed successfully';
     });
 
     await fs.writeFile(path.join(out,'results.json'),JSON.stringify(results,null,2));
